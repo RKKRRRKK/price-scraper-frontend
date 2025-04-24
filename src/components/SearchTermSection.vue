@@ -17,7 +17,7 @@ const showModal = ref(false)
   <!-- Add the custom class 'min-w-section' to the root section -->
   <section class="min-w-section mb-5 p-3 md:p-4 border-round surface-section shadow-1">
     <div class="flex justify-content-between align-items-center mb-4">
-      <h2 class="text-xl font-semibold m-0">{{ title }}</h2>
+      <h2 class="text-xxl font-bold m-0">{{ title }}</h2>
       <Button
         icon="pi pi-plus"
         rounded
