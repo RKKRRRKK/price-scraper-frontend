@@ -90,14 +90,15 @@ function addExclude() {
   form.exclude.push('')
 }
 
-function save() {
+async function save () {
   const clean = {
-    ...form,
-    include: form.include.filter((v) => v?.trim().length),
-    exclude: form.exclude.filter((v) => v?.trim().length),
     marketplace: props.marketplace,
+    term:        form.term,
+    primeOnly:   form.primeOnly,
+    include:     form.include.filter(v => v?.trim().length),
+    exclude:     form.exclude.filter(v => v?.trim().length),
   }
-  store.addTerm(clean)
+  await store.addTerm(clean)   // <- use the correct action
   emit('close')
 }
 </script>

@@ -1,11 +1,23 @@
 <script setup>
 import { RouterView } from 'vue-router'
 import Menubar from 'primevue/menubar'
+import { onMounted } from 'vue'
+import { useSearchTerms } from '@/stores/searchTerms'
+
 
 const items = [
   { label: 'Home', icon: 'pi pi-home', route: '/' },
   { label: 'Dashboard', icon: 'pi pi-chart-bar', route: '/dashboard' },
 ]
+
+
+onMounted(() => {
+  const store = useSearchTerms()
+  store.fetchAll()       // initial load
+  store.initRealtime()   // start listening
+})
+
+
 </script>
 
 <template>
