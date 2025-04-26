@@ -17,7 +17,6 @@ import SearchTermSection from '@/components/SearchTermSection.vue'
   gap: 1rem; /* space between cards */
   justify-content: center; /* this does the horizontal centring */
   grid-template-columns: 1fr; /* mobile default */
-  margin-top: -1rem;
   transform-origin: top center;
   scale: 0.8;
 }
@@ -27,7 +26,7 @@ import SearchTermSection from '@/components/SearchTermSection.vue'
     grid-template-columns: repeat(2, minmax(300px, 1fr));
     gap: 10rem;
     margin: 5rem;
-    margin-top: -1rem;
+    margin-top: 1rem;
   }
 }
 </style>
