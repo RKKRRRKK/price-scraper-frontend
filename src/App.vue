@@ -3,6 +3,7 @@ import { RouterView, useRoute } from 'vue-router'
 import Menubar from 'primevue/menubar'
 import { onMounted } from 'vue'
 import { useSearchTerms } from '@/stores/searchTerms'
+import { useSearchTags } from '@/stores/searchTags'
 
 const route = useRoute()
 console.log('[App.vue] setup: route is', route.fullPath)
@@ -12,21 +13,21 @@ const items = [
   { label: 'Dashboard', icon: 'pi pi-chart-bar', route: '/dashboard' },
 ]
 
-const endItems = [
-  { label: 'Login', icon: 'pi pi-user', route: '/login' },
-]
+const endItems = [{ label: 'Login', icon: 'pi pi-user', route: '/login' }]
 
 onMounted(async () => {
   console.log('[App.vue] onMounted: fetching search terms')
   const store = useSearchTerms()
+  const tagsStore = useSearchTags()
+  await tagsStore.fetchTags()
   try {
-    await store.fetchAll()       // initial load
+    await store.fetchAll() // initial load
     console.log('[App.vue] onMounted: fetchAll complete, terms count', store.terms.length)
   } catch (err) {
     console.error('[App.vue] onMounted fetchAll error:', err)
   }
   console.log('[App.vue] onMounted: initializing realtime')
-  store.initRealtime()           // start listening
+  store.initRealtime() // start listening
 })
 </script>
 
@@ -39,24 +40,13 @@ onMounted(async () => {
       style="padding-inline: 1rem"
     >
       <template #item="{ item, props }">
-        <router-link
-          v-if="item.route"
-          v-slot="{ href, navigate }"
-          :to="item.route"
-          custom
-        >
+        <router-link v-if="item.route" v-slot="{ href, navigate }" :to="item.route" custom>
           <a v-ripple :href="href" v-bind="props.action" @click="navigate">
             <span :class="item.icon" class="mr-2" />
             <span>{{ item.label }}</span>
           </a>
         </router-link>
-        <a
-          v-else
-          v-ripple
-          :href="item.url"
-          :target="item.target"
-          v-bind="props.action"
-        >
+        <a v-else v-ripple :href="item.url" :target="item.target" v-bind="props.action">
           <span :class="item.icon" class="mr-2" />
           <span>{{ item.label }}</span>
         </a>
@@ -77,14 +67,9 @@ onMounted(async () => {
       </template>
     </Menubar>
 
-    <main
-  :class="[
-    'flex-1',
-    route.path === '/login' ? 'flex items-center justify-center' : ''
-  ]"
->
-  <RouterView />
-</main>
+    <main :class="['flex-1', route.path === '/login' ? 'flex items-center justify-center' : '']">
+      <RouterView />
+    </main>
   </div>
 </template>
 

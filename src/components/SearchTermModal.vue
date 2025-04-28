@@ -5,9 +5,17 @@
       <InputText v-model="form.term" placeholder="Search term" />
 
       <!-- prime-only toggle -->
-      <div class="flex align-items-center gap-2">
-        <Checkbox v-model="form.primeOnly" :binary="true" />
-        <label>Prime only</label>
+
+      <div class="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4 gap-3">
+        <label class="inline-flex items-center">
+          <Checkbox v-model="form.primeOnly" :binary="true" />
+          <span class="ml-2 text-sm">Prime only</span>
+        </label>
+
+        <label class="inline-flex items-center">
+          <Checkbox v-model="form.lensOnly" :binary="true" />
+          <span class="ml-2 text-sm">Lens only</span>
+        </label>
       </div>
 
       <!-- INCLUDE section -->
@@ -79,6 +87,7 @@ const store = useSearchTerms()
 const form = reactive({
   term: '',
   primeOnly: false,
+  lensOnly: false,
   include: [],
   exclude: [],
 })
@@ -90,15 +99,23 @@ function addExclude() {
   form.exclude.push('')
 }
 
-async function save () {
+async function save() {
   const clean = {
     marketplace: props.marketplace,
-    term:        form.term,
-    primeOnly:   form.primeOnly,
-    include:     form.include.filter(v => v?.trim().length),
-    exclude:     form.exclude.filter(v => v?.trim().length),
+    term: form.term,
+    primeOnly: form.primeOnly,
+    lensOnly: form.lensOnly,
+    include: form.include.filter((v) => v?.trim().length),
+    exclude: form.exclude.filter((v) => v?.trim().length),
   }
-  await store.addTerm(clean)   // <- use the correct action
+  await store.addTerm(clean) // <- use the correct action
   emit('close')
 }
 </script>
+
+<style scoped>
+.checkboxes {
+  display: flex;
+  gap: 1rem;
+}
+</style>
