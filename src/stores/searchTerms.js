@@ -21,10 +21,18 @@ export const useSearchTerms = defineStore('searchTerms', {
     },
 
     _mergePrice(row) {
-      console.log('[searchTerms] _mergePrice for term:', row.search_term, row)
-      const term = this.terms.find((t) => t.term === row.search_term)
+      console.log('[searchTerms] _mergePrice for term:', row.search_term, 'on', row.source)
+
+      const term = this.terms.find(
+        (t) => t.term === row.search_term && t.marketplace === row.source,
+      )
       if (!term) {
-        console.warn('[searchTerms] _mergePrice: no matching term for', row.search_term)
+        console.warn(
+          '[searchTerms] _mergePrice: no matching term for',
+          row.search_term,
+          'in',
+          row.source,
+        )
         return
       }
 
@@ -33,8 +41,6 @@ export const useSearchTerms = defineStore('searchTerms', {
       term.link = row.link
       term.offersTotal = row.offers_total
       term.offersCurrent = row.offers_current
-
-      // ← assign the condition from your RPC (e.g. winner_condition)
       term.condition = row.current_condition
 
       if (term.lowestPrice == null || row.current_lowest_price < term.lowestPrice) {

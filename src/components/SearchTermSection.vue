@@ -143,7 +143,7 @@ async function syncFromOther() {
 
     <div class="flex flex-column gap-3">
       <template v-if="filteredTerms.length > 0">
-        <SearchTermCard v-for="t in filteredTerms" :key="t.id" :term="t" class="w-full" />
+        <SearchTermCard v-for="t in filteredTerms" :key="t.id" :term="t" />
       </template>
       <div
         v-else
