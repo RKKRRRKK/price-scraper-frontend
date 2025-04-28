@@ -80,6 +80,7 @@ async function syncFromOther() {
           exclude_terms: o.exclude,
           exclude_zoom: o.primeOnly,
           exclude_bodies: o.lensOnly,
+          exclude_acc: o.excludeAcc,
         })
         .select('*')
         .single()
@@ -93,6 +94,7 @@ async function syncFromOther() {
         term: inserted.search_term,
         primeOnly: inserted.exclude_zoom,
         lensOnly: inserted.exclude_bodies,
+        excludeAcc: inserted.exclude_acc,
         include: inserted.include_terms,
         exclude: inserted.exclude_terms,
         link: null,

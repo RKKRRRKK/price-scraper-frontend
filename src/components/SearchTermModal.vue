@@ -9,12 +9,17 @@
       <div class="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4 gap-3">
         <label class="inline-flex items-center">
           <Checkbox v-model="form.primeOnly" :binary="true" />
-          <span class="ml-2 text-sm">Prime only</span>
+          <span class="ml-2 text-sm">Exclude Zooms</span>
         </label>
 
         <label class="inline-flex items-center">
           <Checkbox v-model="form.lensOnly" :binary="true" />
-          <span class="ml-2 text-sm">Lens only</span>
+          <span class="ml-2 text-sm">Exclude Bodies</span>
+        </label>
+
+        <label class="inline-flex items-center">
+          <Checkbox v-model="form.excludeAcc" :binary="true" />
+          <span class="ml-2 text-sm">Exclude Accesories</span>
         </label>
       </div>
 
@@ -88,6 +93,7 @@ const form = reactive({
   term: '',
   primeOnly: false,
   lensOnly: false,
+  excludeAcc: true,
   include: [],
   exclude: [],
 })
@@ -105,6 +111,7 @@ async function save() {
     term: form.term,
     primeOnly: form.primeOnly,
     lensOnly: form.lensOnly,
+    excludeAcc: form.excludeAcc,
     include: form.include.filter((v) => v?.trim().length),
     exclude: form.exclude.filter((v) => v?.trim().length),
   }

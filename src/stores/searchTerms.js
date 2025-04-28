@@ -35,7 +35,7 @@ export const useSearchTerms = defineStore('searchTerms', {
       term.offersCurrent = row.offers_current
 
       // ← assign the condition from your RPC (e.g. winner_condition)
-      term.condition = row.condition
+      term.condition = row.current_condition
 
       if (term.lowestPrice == null || row.current_lowest_price < term.lowestPrice) {
         term.lowestPrice = row.current_lowest_price
@@ -56,6 +56,7 @@ export const useSearchTerms = defineStore('searchTerms', {
           term: j.search_term,
           primeOnly: j.exclude_zoom,
           lensOnly: j.exclude_bodies,
+          excludeAcc: j.exclude_acc,
           include: j.include_terms,
           exclude: j.exclude_terms,
           link: null,
@@ -81,7 +82,7 @@ export const useSearchTerms = defineStore('searchTerms', {
       }
     },
 
-    async addTerm({ marketplace, term, primeOnly, lensOnly, include, exclude }) {
+    async addTerm({ marketplace, term, primeOnly, lensOnly, excludeAcc, include, exclude }) {
       console.log('[searchTerms] addTerm:', term)
       const { data, error } = await supabase
         .from('scrape_jobs')
@@ -92,6 +93,7 @@ export const useSearchTerms = defineStore('searchTerms', {
           exclude_terms: exclude,
           exclude_zoom: primeOnly,
           exclude_bodies: lensOnly,
+          exclude_acc: excludeAcc,
         })
         .select('*')
         .single()
@@ -105,6 +107,7 @@ export const useSearchTerms = defineStore('searchTerms', {
         term: data.search_term,
         primeOnly,
         lensOnly,
+        excludeAcc,
         include,
         exclude,
         link: null,
@@ -148,6 +151,7 @@ export const useSearchTerms = defineStore('searchTerms', {
                 term: n.search_term,
                 primeOnly: n.exclude_zoom,
                 lensOnly: n.exclude_bodies,
+                excludeAcc: n.exclude_acc,
                 include: n.include_terms,
                 exclude: n.exclude_terms,
                 link: null,

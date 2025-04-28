@@ -20,9 +20,9 @@
               v-if="term.condition"
               :value="term.condition"
               :severity="conditionSeverity"
-              class="ml-2"
+              class="ml-1"
             />
-            <span class="text-sm text-color-secondary ml-2">
+            <span class="text-sm text-color-secondary ml-4">
               (last price change: {{ lastChangedHuman }})
             </span>
           </span>
@@ -102,7 +102,13 @@
               <!-- tags display -->
               <div>
                 <template v-if="tagsList.length">
-                  <Tag v-for="tag in tagsList" :key="tag" :value="tag" class="mr-2" />
+                  <Tag
+                    v-for="tag in tagsList"
+                    :key="tag"
+                    :value="tag"
+                    severity="secondary"
+                    class="mr-2"
+                  />
                 </template>
               </div>
 
@@ -239,8 +245,9 @@ const offersTotal = computed(() => (props.term.offersTotal == null ? '0' : props
 
 const tagsList = computed(() => {
   const list = [...(props.term.tags || [])]
-  if (props.term.primeOnly) list.unshift('Prime only')
-  if (props.term.lensOnly) list.unshift('Lens only')
+  if (props.term.primeOnly) list.unshift('Exclude Zooms')
+  if (props.term.lensOnly) list.unshift('Exclude Bodies')
+  if (props.term.excludeAcc) list.unshift('Exclude Accessories')
   return list
 })
 
@@ -251,6 +258,7 @@ const severityMap = {
   Gut: 'warn',
   'In Ordnung': 'danger',
   Defekt: 'contrast',
+  NULL: 'primary',
 }
 const conditionSeverity = computed(() => severityMap[props.term.condition] || 'primary')
 
