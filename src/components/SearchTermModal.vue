@@ -5,21 +5,18 @@
       <InputText v-model="form.term" placeholder="Search term" />
 
       <!-- prime-only toggle -->
-
-      <div class="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4 gap-3">
-        <label class="inline-flex items-center">
+      <div class="flex flex-column gap-2">
+        <label class="flex align-items-center gap-2">
           <Checkbox v-model="form.primeOnly" :binary="true" />
-          <span class="ml-2 text-sm">Exclude Zooms</span>
+          <span>Exclude Zooms</span>
         </label>
-
-        <label class="inline-flex items-center">
+        <label class="flex align-items-center gap-2">
           <Checkbox v-model="form.lensOnly" :binary="true" />
-          <span class="ml-2 text-sm">Exclude Bodies</span>
+          <span>Exclude Bodies</span>
         </label>
-
-        <label class="inline-flex items-center">
+        <label class="flex align-items-center gap-2">
           <Checkbox v-model="form.excludeAcc" :binary="true" />
-          <span class="ml-2 text-sm">Exclude Accesories</span>
+          <span>Exclude Accessories</span>
         </label>
       </div>
 
