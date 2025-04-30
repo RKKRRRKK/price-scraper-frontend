@@ -1,5 +1,5 @@
 <template>
-  <Dialog v-model:visible="visible" header="Add new term" modal>
+  <Dialog v-model:visible="visible" header="Add new scrape job" modal>
     <div class="flex flex-column gap-3">
       <!-- main search term -->
       <InputText v-model="form.term" placeholder="Search term" />
