@@ -11,6 +11,33 @@ import App from './App.vue'
 import router from './router'
 
 
+
+// ECHARTS STUFF BELOW 
+
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'            
+import { BarChart, LineChart } from 'echarts/charts'       
+import {
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+  LegendComponent
+} from 'echarts/components'                            
+import { UniversalTransition } from 'echarts/features'       
+use([
+  CanvasRenderer,
+  BarChart,
+  LineChart,
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+  LegendComponent,
+  UniversalTransition
+])
+
+// ECHARTS STUFF ABOVE
+
 const app = createApp(App)
 
 const pinia = createPinia()
