@@ -41,7 +41,7 @@
     <!-- content -->
     <template #content>
       <div class="mb-3 flex flex-wrap justify-content-between align-items-start">
-        <!-- Prices -->
+        <!-- Prices + Age -->
         <div class="flex gap-6 mb-4 md:mb-0 text-500">
           <div>
             <div class="text-base text-color-secondary mb-1">Current price</div>
@@ -50,6 +50,10 @@
           <div>
             <div class="text-base text-color-secondary mb-1">Lowest price</div>
             <div class="font-bold text-4xl">{{ formattedLowest }}</div>
+          </div>
+          <div>
+            <div class="text-base text-color-secondary mb-1">Listing Age (days)</div>
+            <div class="font-bold text-4xl">{{ formattedAge }}</div>
           </div>
         </div>
 
@@ -228,6 +232,9 @@ const formattedCurrent = computed(() =>
 )
 const formattedLowest = computed(() =>
   props.term.lowestPrice == null ? '--.--' : `€${props.term.lowestPrice.toFixed(2)}`,
+)
+const formattedAge = computed(() =>
+  props.term.ageInDays == null ? '--' : props.term.ageInDays.toString(),
 )
 
 const deal = computed(() =>

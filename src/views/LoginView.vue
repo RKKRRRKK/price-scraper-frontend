@@ -1,30 +1,40 @@
 <template>
     <div class="login-page">
       <div class="login-card">
-        <h2 class="login-title">Login</h2>
-        <p class="login-subtitle">
-          Closed beta, accounts provided on request
-        </p>
+        <h2>Login</h2>
+        <p class="login-subtitle">Closed beta, accounts by invite only</p>
+  
         <form @submit.prevent="onSubmit" class="login-form">
           <div class="form-group">
-            <label for="name">Name</label>
+            <label for="email">Email</label>
             <InputText
-              id="name"
-              v-model="name"
-              placeholder=""
+              id="email"
+              v-model="email"
+              placeholder="username@email.com"
               class="login-input"
             />
           </div>
-          <div class="form-group">
+  
+          <div class="form-group mt-4">
             <label for="password">Password</label>
             <Password
               id="password"
               v-model="password"
               toggleMask
+                :feedback="false"
               class="login-input"
             />
           </div>
-          <Button type="submit" label="Sign in" class="login-button" />
+  
+          <p v-if="auth.error" class="text-red-600 mt-2">
+            {{ auth.error }}
+          </p>
+  
+          <Button
+            type="submit"
+            label="Sign in"
+            class="login-button mt-6"
+          />
         </form>
       </div>
     </div>
@@ -32,18 +42,27 @@
   
   <script setup>
   import { ref } from 'vue'
+  import { useRouter } from 'vue-router'
   import InputText from 'primevue/inputtext'
   import Password from 'primevue/password'
   import Button from 'primevue/button'
+  import { useAuthStore } from '@/stores/auth'
   
-  const name = ref('')
+  const auth = useAuthStore()
+  const router = useRouter()
+  
+  const email = ref('')
   const password = ref('')
   
-  function onSubmit() {
-    // your login logic
-    console.log('login with', email.value, password.value)
+  async function onSubmit() {
+    auth.error = null
+    const ok = await auth.login(email.value, password.value)
+    if (ok) {
+      router.push({ name: 'home' })
+    }
   }
   </script>
+  
   
   <style scoped>
   /* Fullscreen centered flex container */

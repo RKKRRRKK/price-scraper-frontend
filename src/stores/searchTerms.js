@@ -37,11 +37,12 @@ export const useSearchTerms = defineStore('searchTerms', {
       }
 
       term.currentPrice = row.current_lowest_price
-      term.lastChanged = row.latest_date
-      term.link = row.link
-      term.offersTotal = row.offers_total
+      term.lastChanged   = row.latest_date
+      term.ageInDays     = row.age_in_days
+      term.link          = row.link
+      term.offersTotal   = row.offers_total
       term.offersCurrent = row.offers_current
-      term.condition = row.current_condition
+      term.condition     = row.current_condition
 
       if (term.lowestPrice == null || row.current_lowest_price < term.lowestPrice) {
         term.lowestPrice = row.current_lowest_price
@@ -71,7 +72,8 @@ export const useSearchTerms = defineStore('searchTerms', {
           lastChanged: null,
           offersTotal: null,
           offersCurrent: null,
-          condition: null, // ← new
+          condition: null,
+          ageInDays: null,
         }))
 
         const { data: prices, error: e2 } = await supabase.rpc('current_low_query')
@@ -122,7 +124,8 @@ export const useSearchTerms = defineStore('searchTerms', {
         lastChanged: null,
         offersTotal: null,
         offersCurrent: null,
-        condition: null, // ← new
+        condition: null,
+        ageInDays: null,
       })
     },
 
@@ -166,7 +169,8 @@ export const useSearchTerms = defineStore('searchTerms', {
                 lastChanged: null,
                 offersTotal: null,
                 offersCurrent: null,
-                condition: null, // ← new
+                condition: null,
+                ageInDays: null,
               })
             }
           },
