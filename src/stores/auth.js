@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { supabase } from '@/lib/supabase'
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
+ persist: false,
+    state: () => ({
     user: null,
     session: null,
     error: null,
