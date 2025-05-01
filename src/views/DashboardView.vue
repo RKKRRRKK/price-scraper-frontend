@@ -1,5 +1,6 @@
 <!-- src/components/PriceTimelineChart.vue -->
 <template>
+  
   <div class="dashboard-card">
     <!-- Controls Panel -->
     <div class="controls-toolbar">
@@ -48,7 +49,7 @@
 
     <!-- Line Chart -->
     <div class="chart-container">
-      <v-chart :option="lineOptions" autoresize />
+      <v-chart :option="lineOptions" autoresize  />
     </div>
 
     <!-- Bar Chart -->
@@ -120,7 +121,7 @@ const primaryColor = 'rgb(16, 185, 129)';
 
 // --- Tooltip Configuration (Minimal with Basic Styling) ---
 const sharedTooltipConfig = {
-    trigger: 'axis',
+    trigger: 'item',
     // Basic styling via config to ensure visibility if defaults are broken
     backgroundColor: 'rgba(50, 50, 50, 0.85)', // Slightly darker/more opaque
     borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -148,7 +149,7 @@ const lineOptions = computed(() => {
     const seriesName = 'Average Min Price';
     series.push({
       name: seriesName, type: 'line', data: avgMin, smooth: 0.3,
-      symbol: 'circle', symbolSize: 10, itemStyle: { color: primaryColor },
+      symbol: 'emptyCircle', symbolSize: 14, itemStyle: { color: primaryColor },
       lineStyle: { width: 5, color: primaryColor }
     });
     legendData.push(seriesName);
@@ -159,8 +160,8 @@ const lineOptions = computed(() => {
       const color = colorPalette[index % colorPalette.length];
       series.push({
         name: seriesName, type: 'line', data, smooth: 0.3,
-        symbol: 'circle', symbolSize: 8, itemStyle: { color: color },
-        lineStyle: { width: 2, color: color }
+        symbol: 'circle', symbolSize: 11, itemStyle: { color: color },
+        lineStyle: { width: 5, color: color }
       });
       legendData.push(seriesName);
     });
@@ -168,20 +169,20 @@ const lineOptions = computed(() => {
 
   return {
     title: {
-      text: 'Min Price Over Time', left: 'center', top: 10,
+      text: 'Min Price Over Time', left: 'center', top: 30,
       textStyle: { fontSize: 16, fontWeight: '600' }
     },
     color: colorPalette,
     tooltip: { ...sharedTooltipConfig }, // Use shared config
     legend: {
       data: legendData, show: !mergeData.value, type: 'scroll',
-      bottom: 5, textStyle: { fontSize: 11 }
+      top: 'auto', textStyle: { fontSize: 14 }, 
     },
     grid: {
-      top: 60, left: 50, right: 30, bottom: mergeData.value ? 40 : 60
+      top: 70, left: 50, right: 30,
     },
     xAxis: {
-      type: 'category', data: dates, boundaryGap: false,
+      type: 'category', data: dates, boundaryGap: true,
       axisLabel: { interval: 'auto', rotate: 0 }, axisTick: { alignWithLabel: true }
     },
     yAxis: {
@@ -219,7 +220,7 @@ const barOptions = computed(() => {
     series: [
       {
         name: 'Total Offers', type: 'bar', data: sumOff,
-        barMaxWidth: '30px',
+        barMaxWidth: '40px',
         itemStyle: { color: primaryColor, borderRadius: [3, 3, 0, 0] }
       }
     ]
@@ -245,10 +246,16 @@ const barOptions = computed(() => {
   justify-content: space-between;
   align-items: flex-end;
   gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 2rem;
   border-bottom: 1px solid #eef2f7;
 }
+
+
+
+
+
+
 
 .filters {
   display: flex;
@@ -284,8 +291,7 @@ const barOptions = computed(() => {
 }
 
 .chart-container {
-  height: 380px;
-  margin-top: 1.5rem;
+  height: 400px;
 }
 
 .chart-container :deep(.echarts-for-vue),
@@ -299,7 +305,7 @@ const barOptions = computed(() => {
 
 /* --- CORRECTED CSS Override for Tooltip Height --- */
 /* Target the tooltip using a unique inline style attribute */
-/* The z-index is a likely candidate, but check display or position if needed */
+
 :deep(div[style*="z-index: 9999999"]) {
   height: auto !important;
   min-height: auto !important; /* Reset min-height */
