@@ -12,6 +12,10 @@ import Chips from 'primevue/chips'
 const props = defineProps({
   marketplace: String,
   title: String,
+  fileId: {
+    type: Number,
+    required: true
+  }
 })
 
 const store = useSearchTerms()
@@ -23,7 +27,10 @@ onMounted(() => {
 })
 
 // Original list of terms
-const terms = computed(() => store.termsByMarketplace(props.marketplace))
+const termsForFileAndMarketplace = computed(() => {
+    // Pass the fileId and marketplace from props to the getter
+    return store.termsByMarketplace(props.fileId, props.marketplace);
+})
 
 // Tags used to filter
 const filterTags = ref([])
@@ -32,10 +39,12 @@ const filterTags = ref([])
 const filteredTerms = computed(() => {
   const list =
     filterTags.value.length === 0
-      ? [...terms.value]
-      : terms.value.filter((term) => {
+      ? [...termsForFileAndMarketplace.value] // Use the correctly filtered list
+      : termsForFileAndMarketplace.value.filter((term) => { // Filter *this* list
+          // Ensure getTags works correctly - it should be fine as it uses term.id
           const termTags = tagsStore.getTags(term.id)
-          return filterTags.value.every((tag) => termTags.includes(tag))
+          // Ensure termTags is always an array for safety
+          return filterTags.value.every((tag) => (termTags || []).includes(tag))
         })
 
   return list.sort((a, b) => {
@@ -156,6 +165,7 @@ async function syncFromOther() {
     <SearchTermModal
       :show="showModal"
       :marketplace="props.marketplace"
+      :fileId="props.fileId"
       @close="showModal = false"
     />
   </section>

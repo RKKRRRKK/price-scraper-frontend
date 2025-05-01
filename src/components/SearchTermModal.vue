@@ -72,7 +72,7 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
 
-const props = defineProps({ show: Boolean, marketplace: String })
+const props = defineProps({ show: Boolean, marketplace: String, fileId: { type: Number, required: true} })
 const emit = defineEmits(['close'])
 
 const visible = ref(props.show)
@@ -111,7 +111,9 @@ async function save() {
     excludeAcc: form.excludeAcc,
     include: form.include.filter((v) => v?.trim().length),
     exclude: form.exclude.filter((v) => v?.trim().length),
+    fileId: props.fileId
   }
+  console.log("clean:  ", clean)
   await store.addTerm(clean) // <- use the correct action
   emit('close')
 }

@@ -62,7 +62,8 @@
                 class="p-button-text"
                 @click="userMenu.toggle($event)"
               />
-              <TieredMenu ref="userMenu" :model="userItems" popup />
+              <!-- Ensure userItems uses the computed property -->
+              <TieredMenu ref="userMenu" :model="userMenuItems" popup />
             </div>
           </div>
         </template>
@@ -70,86 +71,174 @@
 
       <!-- main content -->
       <main class="flex-1 overflow-auto">
-        <RouterView />
+        <!-- Use KeepAlive if you want components to persist state across navigation -->
+        <!--
+        <RouterView v-slot="{ Component }">
+          <KeepAlive>
+            <component :is="Component" />
+          </KeepAlive>
+        </RouterView>
+        -->
+        <!-- Or standard RouterView if component state reset on navigate is okay -->
+         <RouterView />
       </main>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import Menubar from 'primevue/menubar'
 import Button from 'primevue/button'
 import TieredMenu from 'primevue/tieredmenu'
+import Ripple from 'primevue/ripple'; // Import Ripple if using v-ripple directive
 
 import { useAuthStore } from '@/stores/auth'
+import { useSidebarStore } from '@/stores/sidebar'
 import { useSearchTags } from '@/stores/searchTags'
 import { useSearchTerms } from '@/stores/searchTerms'
+// Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
+// import { supabase } from '@/lib/supabase';
 
-// -- 1) Setup and await auth.init()
 const auth = useAuthStore()
+const sidebarStore = useSidebarStore()
+const tagsStore = useSearchTags()
+const termsStore = useSearchTerms()
+
 const ready = ref(false)
 const router = useRouter()
 const route = useRoute()
+const userMenu = ref(null) // Define ref for the TieredMenu
 
 onMounted(async () => {
+  // Initialize auth FIRST
   await auth.init()
 
-  // if no user and not already on login page, bounce to login
-  if (!auth.user && route.name !== 'login') {
+  // Initial check: if already logged in (e.g., session restored), fetch data now.
+  if (auth.user) {
+    console.log('App.vue onMounted: User already logged in, fetching initial data...');
+    await fetchDataForUser();
+  } else if (route.name !== 'login' && route.meta.requiresAuth) { // Added requiresAuth check
+     // if no user, not on login page, AND the page requires auth, bounce to login
+    console.log('App.vue onMounted: No user, redirecting to login.');
     router.replace({ name: 'login' })
   }
 
   ready.value = true
 })
 
-// -- 2) When auth.user appears, fetch your data and redirect off /login
+// Watch for auth state changes (login/logout)
 watch(
   () => auth.user,
-  async (user) => {
-    if (user) {
-      // redirect to home if we came from login
+  async (newUser, oldUser) => {
+    if (newUser && !oldUser) { // User just logged IN
+      console.log('App.vue watch(auth.user): User logged in, fetching initial data...');
+      await fetchDataForUser();
+
+      // Redirect away from login page if currently on it
       if (route.name === 'login') {
-        router.replace({ name: 'home' })
+        router.replace({ name: 'home' }) // Or wherever your main authenticated view is
       }
-      // fetch your stores
-      const tagsStore = useSearchTags()
-      const termsStore = useSearchTerms()
-      await tagsStore.fetchTags()
-      await termsStore.fetchAll()
-      termsStore.initRealtime()
+    } else if (!newUser && oldUser) { // User just logged OUT
+       console.log('App.vue watch(auth.user): User logged out, resetting stores...');
+       resetStores(); // Reset data stores on logout
+       // Optional: Redirect to login after logout is complete if not handled by userMenu command
+       // if (route.meta.requiresAuth) { // Only redirect if current route needs auth
+       //    router.replace({ name: 'login' });
+       // }
     }
-  }
+  },
+  { immediate: false } // Don't run immediately, onMounted handles initial state
 )
 
-// -- 3) Navigation items
-const navItems = [
+// Function to fetch essential data after login
+async function fetchDataForUser() {
+  console.log('[App.vue] Fetching data for user...');
+  // Use Promise.all for concurrent fetching
+  try {
+      await Promise.all([
+          sidebarStore.fetchFolders(), // Fetch folders/files for sidebar
+          tagsStore.fetchTags(),       // Fetch all available tags
+          termsStore.fetchAll()        // Fetch all search terms and their initial prices
+      ]);
+      // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
+      // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
+      termsStore.initRealtime();
+      console.log('[App.vue] Initial data fetch complete.');
+  } catch(error) {
+      console.error("[App.vue] Error fetching initial data:", error);
+      // Consider showing an error message to the user (e.g., using PrimeVue Toast)
+  }
+}
+
+// Function to clear store data on logout
+function resetStores() {
+    console.log('[App.vue] Resetting stores...');
+    sidebarStore.reset();
+    tagsStore.reset();
+    termsStore.reset();
+    // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
+    // This prevents potential errors or duplicate listeners if the user logs back in.
+    // try {
+    //   console.log('[App.vue] Removing Supabase channels...');
+    //   await supabase.removeAllChannels();
+    // } catch (error) {
+    //   console.error('[App.vue] Error removing Supabase channels:', error);
+    // }
+}
+
+// --- Top Navigation Bar Items ---
+const navItems = ref([ // Use ref if items might change dynamically, otherwise const is fine
   { label: 'Home',      icon: 'pi pi-home',      to: { name: 'home' } },
   { label: 'Dashboard', icon: 'pi pi-chart-bar', to: { name: 'dashboard' } }
-]
+  // Add other main navigation links here
+]);
 
-// -- 4) User dropdown + helpers
-const userMenu = ref(null)
-const userItems = [
+// --- User Menu Items (Dropdown) ---
+// Use computed so it reacts to changes in auth.user and router availability
+const userMenuItems = computed(() => [
   {
     label: 'Settings',
     icon: 'pi pi-cog',
-    command: () => router.push({ name: 'settings' })
+    // Ensure you have a route named 'settings' or change this command
+    command: () => router.push({ name: 'settings' }).catch(err => { if(err.name !== 'NavigationDuplicated') console.error(err) })
+  },
+  {
+    separator: true // Optional separator
   },
   {
     label: 'Log out',
     icon: 'pi pi-sign-out',
-    async command() {
-      await auth.logout()
-      router.replace({ name: 'login' })
-    }
+    command: onLogout // Use the dedicated logout handler
   }
-]
-function goLogin() {
-  router.replace({ name: 'login' })
+]);
+
+// --- Helper Functions ---
+async function onLogout() {
+  console.log('[App.vue] Logging out...');
+  await auth.logout(); // Auth store handles Supabase sign out & clearing its own state
+  // The watch(auth.user) detects the change to null and calls resetStores()
+  // Redirect to login after logout process is complete
+  router.replace({ name: 'login' }).catch(err => console.error("Logout redirect error:", err));
 }
+
+function goLogin() {
+  // Navigate to the login page
+  router.replace({ name: 'login' }).catch(err => { if(err.name !== 'NavigationDuplicated') console.error(err) });
+}
+
+// Register Ripple directive if used
+// Directives might need global registration or local import depending on setup
+// If using <script setup>, PrimeVue components often handle directives internally.
+// If not, ensure Ripple is registered correctly in main.js or locally:
+// directives: {
+//   ripple: Ripple
+// }
+
 </script>
+
+
 <style scoped>
 #app {
   width: 100ww;

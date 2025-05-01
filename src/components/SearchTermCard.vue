@@ -196,11 +196,11 @@ const props = defineProps({
 const store = useSearchTerms()
 const tagsStore = useSearchTags()
 
-onMounted(async () => {
-  if (!tagsStore.tagsByJob[props.term.id]) {
-    await tagsStore.fetchTags(props.term.id)
-  }
-})
+// onMounted(async () => {
+//   if (!tagsStore.tagsByJob[props.term.id]) {
+//     await tagsStore.fetchTags(props.term.id)
+//   }
+// })
 
 const confirmVisible = ref(false)
 const tagsVisible = ref(false)

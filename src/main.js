@@ -4,7 +4,12 @@ import 'primeflex/primeflex.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
+import ConfirmationService from 'primevue/confirmationservice'; // Import service
+import Tooltip from 'primevue/tooltip'; // Import directive
 import Lara from '@primevue/themes/lara'
+
+
+
 import piniaPersist from 'pinia-plugin-persistedstate'
 
 import App from './App.vue'
@@ -50,5 +55,7 @@ app.use(PrimeVue, {
     preset: Lara,
   },
 })
+app.use(ConfirmationService); // Register service
+app.directive('tooltip', Tooltip); // Register directive
 
 app.mount('#app')
