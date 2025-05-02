@@ -1,5 +1,5 @@
 <template>
-  <Card :class="['surface-card border-round-xl shadow-2', { 'footer-expanded': footerVisible }]">
+  <Card :class="['surface-card border-round-xl shadow-2', { 'footer-expanded': footerVisible } ]"   style="min-width: 54rem;">
     <!-- title -->
     <template #title>
       <div class="flex justify-content-between align-items-start gap-2 -ml-2">
