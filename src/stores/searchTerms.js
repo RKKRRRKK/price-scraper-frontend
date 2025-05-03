@@ -40,6 +40,7 @@ export const useSearchTerms = defineStore('searchTerms', {
             excludeDamaged: dbRow.exclude_damaged, // Added based on schema
             include: dbRow.include_terms || [], // Correct column name
             exclude: dbRow.exclude_terms || [], // Correct column name
+            smart_filter: dbRow.smart_filter,
             // Dynamic fields - initialized/updated separately
             link: null,
             currentPrice: null,
@@ -150,7 +151,7 @@ export const useSearchTerms = defineStore('searchTerms', {
       console.log('[SearchTerms] addTerm action RECEIVED:', JSON.stringify(termData));
 
       // *** Destructure AFTER logging ***
-      const { marketplace, term, primeOnly, lensOnly, excludeAcc, excludeDamaged, include, exclude, fileId } = termData;
+      const { marketplace, term, primeOnly, lensOnly, excludeAcc, excludeDamaged, include, exclude, fileId, smart_filter } = termData;
 
       // *** Log the DESTRUCTURED fileId specifically ***
       console.log('[SearchTerms] addTerm action DESTRUCTURED fileId:', fileId, 'Type:', typeof fileId);
@@ -183,7 +184,8 @@ export const useSearchTerms = defineStore('searchTerms', {
             exclude_bodies: lensOnly || false,
             exclude_acc: excludeAcc || false,
             exclude_damaged: excludeDamaged || false,
-            file_id: fileId // Use the validated, destructured fileId
+            file_id: fileId, // Use the validated, destructured fileId
+            smart_filter: smart_filter
         };
 
         // *** Log the object JUST BEFORE sending to Supabase ***
