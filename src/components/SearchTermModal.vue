@@ -1,6 +1,6 @@
 <template>
   <Dialog v-model:visible="visible" header="Add new scrape job" modal>
-    <div class="flex flex-column gap-3">
+    <div class="flex flex-column gap-3" style="max-width: 15rem;">
       <!-- main search term -->
       <InputText v-model="form.term" placeholder="Search term" />
 
@@ -25,7 +25,7 @@
 
       <!-- one input row per keyword -->
       <div v-for="(word, i) in form.include" :key="'inc' + i" class="flex align-items-center gap-2">
-        <InputText v-model="form.include[i]" class="flex-1" />
+        <InputText v-model="form.include[i]"   class="keyword-input" />
         <Button icon="pi pi-trash" severity="danger" text @click="form.include.splice(i, 1)" />
       </div>
 
@@ -43,7 +43,7 @@
       <label class="font-medium text-sm mt-3">Excluded keywords</label>
 
       <div v-for="(word, i) in form.exclude" :key="'exc' + i" class="flex align-items-center gap-2">
-        <InputText v-model="form.exclude[i]" class="flex-1" />
+        <InputText v-model="form.exclude[i]"   class="keyword-input"  />
         <Button icon="pi pi-trash" severity="danger" text @click="form.exclude.splice(i, 1)" />
       </div>
 
@@ -123,5 +123,13 @@ async function save() {
 .checkboxes {
   display: flex;
   gap: 1rem;
+}
+
+:deep(.keyword-input) {
+  /* let it grow but also allow it to shrink */
+  flex: 1 1 0 !important;   /* occupy free space in the row        */
+  min-width: 0 !important;  /* may shrink below its content width  */
+  max-width: 100%;          /* never exceed the row                */
+  box-sizing: border-box;   /* include padding/border in the width */
 }
 </style>

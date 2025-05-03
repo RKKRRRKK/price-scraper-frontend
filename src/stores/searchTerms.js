@@ -88,7 +88,7 @@ export const useSearchTerms = defineStore('searchTerms', {
          // console.warn(`[SearchTerms] _mergePrice: No matching term for "${priceRow.search_term}" in ${priceRow.source}`);
         return;
       }
-      // Assuming RPC 'current_low_query' returns these exact names
+ 
       term.currentPrice = priceRow.current_lowest_price;
       term.lastChanged   = priceRow.latest_date;
       term.ageInDays     = priceRow.age_in_days;

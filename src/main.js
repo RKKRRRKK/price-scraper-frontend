@@ -1,6 +1,7 @@
 import '@/assets/main.css'
 import 'primeicons/primeicons.css'
-import 'primeflex/primeflex.css'
+ 
+import '@/assets/primeflex‑custom.scss'  
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'

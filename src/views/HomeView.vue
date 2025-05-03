@@ -61,21 +61,19 @@ function onFileSelected(fileId) {
 <style scoped>
 .layout { display: flex; }
 .sidebar { 
-  min-width: 11vw;
+  min-width: 15vw;
   margin-left: 1.25rem;
   margin-top: 1.25rem;
 
-
-
-
 }
+
+
 .sections {
   display: grid;
   gap: 1rem; /* space between cards */
   justify-content: center; /* this does the horizontal centring */
-  grid-template-columns: 1fr; /* mobile default */
+  transform: scale(0.9);
   transform-origin: top center;
-  transform: scale(0.8);
   grid-template-columns: repeat(auto-fill, minmax(300px,1fr));
   gap: 1rem;
 }
@@ -94,5 +92,13 @@ function onFileSelected(fileId) {
     margin: 5rem;
     margin-top: 1rem;
   }
+ 
+}
+
+@media (min-width: 2000px) {
+  .sidebar {
+    min-width: 11vw;
+  }
+ 
 }
 </style>

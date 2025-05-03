@@ -171,9 +171,7 @@ async function syncFromOther() {
   </section>
 </template>
 <style scoped>
-.w-full {
-  scale: 0.95;
-}
+ 
 .surface-section {
   background-color: var(--surface-b);
 }
