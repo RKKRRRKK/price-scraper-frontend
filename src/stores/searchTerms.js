@@ -45,6 +45,7 @@ export const useSearchTerms = defineStore('searchTerms', {
             link: null,
             currentPrice: null,
             lowestPrice: null,
+            alltime_lowest: null,
             lastChanged: null,
             offersTotal: null,
             offersCurrent: null,
@@ -64,7 +65,7 @@ export const useSearchTerms = defineStore('searchTerms', {
         // Add: ensure all fields exist, merge with defaults/empty values
         const newFullTerm = {
             // Defaults for dynamic fields
-            link: null, currentPrice: null, lowestPrice: null, lastChanged: null,
+            link: null, currentPrice: null, lowestPrice: null, alltime_lowest: null, lastChanged: null,
             offersTotal: null, offersCurrent: null, condition: null, ageInDays: null,
              // Base fields from input
             ...termStateObject,
@@ -91,6 +92,7 @@ export const useSearchTerms = defineStore('searchTerms', {
       }
  
       term.currentPrice = priceRow.current_lowest_price;
+      term.alltime_lowest = priceRow.alltime_lowest;
       term.lastChanged   = priceRow.latest_date;
       term.ageInDays     = priceRow.age_in_days;
       term.link          = priceRow.link;
@@ -185,7 +187,7 @@ export const useSearchTerms = defineStore('searchTerms', {
             exclude_acc: excludeAcc || false,
             exclude_damaged: excludeDamaged || false,
             file_id: fileId, // Use the validated, destructured fileId
-            smart_filter: smart_filter
+            smart_filter: Boolean(smart_filter),
         };
 
         // *** Log the object JUST BEFORE sending to Supabase ***
@@ -355,8 +357,6 @@ export const useSearchTerms = defineStore('searchTerms', {
           return;
       }
       try {
-        // Assuming the RPC function implicitly uses the logged-in user's ID
-        // or you might need to pass it: .rpc('current_low_query', { p_user_id: auth.user.id })
         const { data: prices, error } = await supabase.rpc('current_low_query');
         if (error) throw error;
         if (prices && prices.length > 0) {

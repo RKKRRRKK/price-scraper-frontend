@@ -40,16 +40,8 @@
         </AccordionTab>
       </Accordion>
 
-      <!-- SMART FILTERING toggle -->
-      <div class="flex align-items-center gap-2 m-1 mt-3 mb-3">
-        <InputSwitch v-model="form.smart_filter" />
-        <span>Smart Filtering</span>
-        <i
-          class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Uses AI to filter out any listings for accessories to a given search term, or different versions etc. Costs $$ and slows down the scraping process a lot, so only use when needed.'"
-          style="cursor: help;"
-        />
-      </div>
+  
+     
 
       <!-- INCLUDE section -->
        <div class="gap-2 flex">
@@ -100,6 +92,15 @@
         class="align-self-start"
         @click="addExclude"
       />
+      <div class="flex align-items-center gap-2 m-1 mt-3 mb-3">
+        <InputSwitch v-model="form.smart_filter" />
+        <span>Smart Filtering</span>
+        <i
+          class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
+          v-tooltip.top="'Uses AI to filter out any listings for accessories to a given search term, or different versions etc. Costs $$ and slows down the scraping process a lot, so only use when needed.'"
+          style="cursor: help;"
+        />
+      </div>
 
       <!-- footer buttons -->
       <div class="flex justify-content-end gap-2 mt-3">
