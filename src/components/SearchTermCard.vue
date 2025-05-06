@@ -1,7 +1,7 @@
 <template>
   <Card
     :class="[
-      {'surface-card border-round-xl shadow-2': !isDeal},
+      'surface-card border-round-xl', {'shadow-2': !isDeal},
       { 'footer-expanded': footerVisible, 'rotating-border': isDeal }
     ]"
   >
@@ -281,49 +281,41 @@ const isDeal = computed(() =>
   syntax: "<angle>";
 }
 
+/* spin the angle from 0 to 360 */
 @keyframes spin {
-  to {
-    --bg-angle: 360deg;
-  }
+  to { --bg-angle: 360deg; }
 }
 
+/* float up/down + tweak shadow */
 @keyframes float {
   0%, 100% {
-    transform: translate3d(0, 0, 0);
-    box-shadow: 0 0px 0px rgba(0, 0, 0, 0.08), 0 0px 0px rgba(0, 0, 0, 0.04) ;
+    transform: translate3d(0,0,0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
   }
-  // 33% {
-  //   transform: translate3d(2px, -2px, 0px);
-  //   scale: 1.002;
-  //   box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15), 0 4px 6px rgba(0, 0, 0, 0.08) ;
-  // }
-
-  67% {
-    transform: translate3d(0px, -8px, 0px);
-    scale: 1.05;
-    box-shadow: 0 10px 14px rgba(0, 0, 0, 0.1), 0 5px 7px rgba(0, 0, 0, 0.06) ;
+  50% {
+    transform: translate3d(0,-8px,0);
+    scale: 1.01;
+    box-shadow: 0 12px 16px rgba(0,0,0,0.2), 0 6px 8px rgba(0,0,0,0.1);
   }
 }
 
+/* this is the only scoped-looking rule—PrimeVue will scope it for you */
 .rotating-border {
-  animation-play-state: running;
-  border: 3px solid transparent;
-  border-radius: 1rem;  
-  animation: spin 2s infinite linear, float 2s ease-in-out infinite;
+  border: 4px solid transparent;
+  border-radius: 2rem;         /* match border-round-xl */
   will-change: transform, box-shadow;
+  animation: spin 2s linear infinite,
+             float 3s ease-in-out infinite;
 
-  /* two-layer background: first layer preserves your Card’s own bg,
-     second layer is the rotating conic gradient */
+  /* two-layer bg: white padding-box + spinning rainbow border-box */
   background:
-    /* match your PrimeVue “surface-card” bg: */
-    linear-gradient(
-      to bottom,
-      rgba(255,255,255,1),
-      rgba(255,255,255,1),
-    ) padding-box,
+    linear-gradient(to bottom, rgba(255,255,255,1), rgba(255,255,255,1)) padding-box,
     conic-gradient(
       from var(--bg-angle) in oklch longer hue,
-      oklch(0.85 0.37 0 / 0.5) 0 0
+      oklch(0.85 0.37 0 / 0.25)   0deg,
+      oklch(0.85 0.37 120deg / 0.25) 120deg,
+      oklch(0.85 0.37 240deg / 0.25) 240deg,
+      oklch(0.85 0.37 360deg / 0.25) 360deg
     ) border-box;
 }
 </style>
