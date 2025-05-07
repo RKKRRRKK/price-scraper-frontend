@@ -1,35 +1,21 @@
-# scrape_fe
+bugs/todo
 
-This template should help get you started developing with Vue 3 in Vite.
+1. last changed date wrong 
 
-## Recommended IDE Setup
+2. change copy to be card specific
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+3. telegram alert broken + add email alert
 
-## Customize configuration
+4. add alert toggle
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+5. settings area (alert config, email, telegram account setup)
 
-## Project Setup
+6. double check continous increase of offer count on bar graph
 
-```sh
-npm install
-```
+7. Add tag, file and folder filter for dashboard
 
-### Compile and Hot-Reload for Development
+8. Make cards moveable (and add hover and active styling)
 
-```sh
-npm run dev
-```
+9. Add sidebar into hamburger on mobile
 
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
-```
+10. DB management section to delete wrong rows 
