@@ -94,14 +94,10 @@
               (No item link available)
             </span>
 
-            <div class="flex flex-col gap-2 text-xs xxl:text-sm">
-              <span>Exclusions/Inclusions: </span>
+            <div class="flex flex-col gap-5 text-xs xxl:text-sm">
               <span :class="includeClass">{{ includeText }}</span>
               <span :class="excludeClass">{{ excludeText }}</span>
             </div>
-
-            <span class="text-xs xxl:text-sm condi">Filters:</span>
-
             <div class="flex justify-content-between align-items-center w-full">
               <!-- tags display -->
               <div>
