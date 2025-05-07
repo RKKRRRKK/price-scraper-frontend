@@ -19,3 +19,5 @@ bugs/todo
 9. Add sidebar into hamburger on mobile
 
 10. DB management section to delete wrong rows 
+
+11. Days since job added
