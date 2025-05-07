@@ -145,7 +145,7 @@ const form = reactive({
   term: '',
   primeOnly: false,
   lensOnly: false,
-  excludeAcc: true,
+  excludeAcc: false,
   smart_filter: false,
   include: [],
   exclude: [],

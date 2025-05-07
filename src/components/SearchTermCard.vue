@@ -304,8 +304,8 @@ const isDeal = computed(() =>
   border: 4px solid transparent;
   border-radius: 2rem;         /* match border-round-xl */
   will-change: transform, box-shadow;
-  animation: spin 2s linear infinite,
-             float 3s ease-in-out infinite;
+  animation: spin 3s linear infinite,
+             float 3.5s ease-in-out infinite;
 
   /* two-layer bg: white padding-box + spinning rainbow border-box */
   background:
