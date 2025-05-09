@@ -8,7 +8,7 @@ bugs/todo
 
 4. add alert toggle
 
-5. settings area (alert config, email, telegram account setup)
+5. settings area (alert config, email, telegram account setup, custom mim amounts)
 
 6. double check continous increase of offer count on bar graph
 
