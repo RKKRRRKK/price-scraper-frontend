@@ -23,3 +23,5 @@ bugs/todo
 11. Days since job added
 
 12. Sorting for cards
+
+13. Free form vague term exploration llm powered
