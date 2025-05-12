@@ -27,3 +27,5 @@ bugs/todo
 13. Free form vague term exploration llm powered
 
 14. Custom instructions for smart filter
+
+15. Manual run trigger for specific card. 
