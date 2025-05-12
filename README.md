@@ -25,3 +25,5 @@ bugs/todo
 12. Sorting for cards
 
 13. Free form vague term exploration llm powered
+
+14. Custom instructions for smart filter
