@@ -29,3 +29,6 @@ bugs/todo
 14. Custom instructions for smart filter
 
 15. Manual run trigger for specific card. 
+
+
+16. "SmartFilter → https://www.kleinanzeigen.de/s-anzeige/nikon-d850-30-tsd-ausloesungen-top-241481-/2001774800-245-4304 Fit=false, Reason="Includes usage and condition details.""
