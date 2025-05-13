@@ -1,6 +1,9 @@
 bugs/todo
 
-1. last changed date wrong 
+1. last changed date wrong // On second look this doesn't really make much sense, the age is more important / equivalent to last changed. Except in the edge case of a good deal becoming unavailable
+        //and defaulting back to an older deal, but in that case, that is actually the more important information that we cannot currently derive.
+        // Currently the last change is always the same as the date of the last scrape so long there is actually an active offer. Need to explore other options.
+
 
 2. change copy to be card specific
 
@@ -32,3 +35,6 @@ bugs/todo
 
 
 16. "SmartFilter → https://www.kleinanzeigen.de/s-anzeige/nikon-d850-30-tsd-ausloesungen-top-241481-/2001774800-245-4304 Fit=false, Reason="Includes usage and condition details.""
+
+
+
