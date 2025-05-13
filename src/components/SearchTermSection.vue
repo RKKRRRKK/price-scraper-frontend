@@ -48,11 +48,17 @@ const filteredTerms = computed(() => {
           return filterTags.value.every((tag) => (termTags || []).includes(tag))
         })
 
-  return list.sort((a, b) => {
-    const dateA = a.ageInDays ? new Date(a.ageInDays) : 999
-    const dateB = b.ageInDays ? new Date(b.ageInDays) : 999
-    return dateA - dateB
-  })
+return list.sort((a, b) => {
+  if (a.ageInDays === 0 && b.ageInDays !== 0) return -1;
+  if (b.ageInDays === 0 && a.ageInDays !== 0) return 1;
+ 
+  const dateA = a.ageInDays ? new Date(a.ageInDays) : 999;
+  const dateB = b.ageInDays ? new Date(b.ageInDays) : 999;
+  return dateA - dateB;
+})
+
+
+  
 })
 
 const showModal = ref(false)
