@@ -81,6 +81,8 @@ function onFileSelected(fileId) {
 
 .welcome {
   font-size: 1.5rem;
+  width: 65vw;
+  height: 65vh;
 }
 
  
