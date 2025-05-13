@@ -20,7 +20,7 @@ bugs/todo
 
 10. DB management section to delete wrong rows
 
-11. Days since job added
+//11. Days since job added
 
 12. Sorting for cards
 

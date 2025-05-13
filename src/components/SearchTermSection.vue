@@ -14,8 +14,8 @@ const props = defineProps({
   title: String,
   fileId: {
     type: Number,
-    required: true
-  }
+    required: true,
+  },
 })
 
 const store = useSearchTerms()
@@ -28,8 +28,8 @@ onMounted(() => {
 
 // Original list of terms
 const termsForFileAndMarketplace = computed(() => {
-    // Pass the fileId and marketplace from props to the getter
-    return store.termsByMarketplace(props.fileId, props.marketplace);
+  // Pass the fileId and marketplace from props to the getter
+  return store.termsByMarketplace(props.fileId, props.marketplace)
 })
 
 // Tags used to filter
@@ -40,7 +40,8 @@ const filteredTerms = computed(() => {
   const list =
     filterTags.value.length === 0
       ? [...termsForFileAndMarketplace.value] // Use the correctly filtered list
-      : termsForFileAndMarketplace.value.filter((term) => { // Filter *this* list
+      : termsForFileAndMarketplace.value.filter((term) => {
+          // Filter *this* list
           // Ensure getTags works correctly - it should be fine as it uses term.id
           const termTags = tagsStore.getTags(term.id)
           // Ensure termTags is always an array for safety
@@ -48,9 +49,9 @@ const filteredTerms = computed(() => {
         })
 
   return list.sort((a, b) => {
-    const dateA = a.lastChanged ? new Date(a.lastChanged) : 0
-    const dateB = b.lastChanged ? new Date(b.lastChanged) : 0
-    return dateB - dateA
+    const dateA = a.ageInDays ? new Date(a.ageInDays) : 999
+    const dateB = b.ageInDays ? new Date(b.ageInDays) : 999
+    return dateA - dateB
   })
 })
 
@@ -171,7 +172,6 @@ async function syncFromOther() {
   </section>
 </template>
 <style scoped>
- 
 .surface-section {
   background-color: var(--surface-b);
 }
