@@ -100,6 +100,7 @@ export const useSearchTerms = defineStore('searchTerms', {
       }
 
       term.currentPrice = priceRow.current_lowest_price
+      term.alltime_lowest = priceRow.alltime_lowest
       term.lastChanged = priceRow.latest_date
       term.created_at = priceRow.created_at
       term.ageInDays = priceRow.age_in_days
