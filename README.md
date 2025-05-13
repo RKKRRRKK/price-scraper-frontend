@@ -18,7 +18,7 @@ bugs/todo
 
 9. Add sidebar into hamburger on mobile
 
-10. DB management section to delete wrong rows
+10. DB management section to delete wrong rows and reset lowest price
 
 //11. Days since job added
 
