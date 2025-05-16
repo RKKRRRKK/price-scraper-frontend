@@ -31,3 +31,5 @@ bugs/todo
 15. Manual run trigger for specific card.
 
 16. "SmartFilter → https://www.kleinanzeigen.de/s-anzeige/nikon-d850-30-tsd-ausloesungen-top-241481-/2001774800-245-4304 Fit=false, Reason="Includes usage and condition details.""
+
+17. Scraper fails at price > 1000  due to .  (e.g.  1.234) registered as comma separator. 
