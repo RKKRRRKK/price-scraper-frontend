@@ -1,6 +1,6 @@
-<!-- File: src/components/SidebarNavigation.vue -->
 <template>
-  <div class="sidebar-nav">
+  <!-- card on desktop, plain in mobile overlay -->
+  <div :class="['sidebar-nav', { plain: variant === 'plain' }]">
     <h3 class="sidebar-title">Folders</h3>
 
     <div class="tree-wrapper">
@@ -14,11 +14,9 @@
       >
         <template #default="{ node }">
           <div class="node-content">
-            <!-- Only show one icon based on whether it's a folder or file -->
-            <i :class="[node.leaf ? 'pi pi-file' : 'pi pi-folder', 'node-icon']"></i>
+            <i :class="[node.leaf ? 'pi pi-file' : 'pi pi-folder', 'node-icon']" />
             <span class="node-label">{{ node.label }}</span>
 
-            <!-- Show action buttons only when hovering -->
             <div class="action-buttons">
               <template v-if="!node.leaf">
                 <Button
@@ -58,6 +56,7 @@
           </div>
         </template>
       </Tree>
+
       <div class="add-folder-container">
         <Button
           icon="pi pi-plus"
@@ -69,7 +68,7 @@
       </div>
     </div>
 
-    <!-- Modal dialogs for CRUD operations -->
+    <!-- dialogs (unchanged) -->
     <Dialog
       v-model:visible="dialogState.addFolder.visible"
       :header="dialogState.addFolder.title"
@@ -178,7 +177,6 @@
       </template>
     </Dialog>
 
-    <!-- Confirmation dialog -->
     <ConfirmDialog />
   </div>
 </template>
@@ -193,38 +191,27 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
 import { useSidebarStore } from '@/stores/sidebar'
 
+/* NEW ───────────────────────────────────────────── */
+defineProps({
+  /** 'card' keeps the background & shadow (desktop).
+   *  'plain' removes them (mobile overlay).
+   */
+  variant: { type: String, default: 'card' },
+})
+/* ──────────────────────────────────────────────── */
+
 const store = useSidebarStore()
 const confirm = useConfirm()
 const emit = defineEmits(['file-selected'])
 
-// Dialog state management
+/* -------- state & helpers (unchanged) -------- */
 const dialogState = reactive({
-  addFolder: {
-    visible: false,
-    title: 'Add New Folder',
-    name: '',
-  },
-  addFile: {
-    visible: false,
-    title: 'Add New File',
-    folderId: null,
-    name: '',
-  },
-  renameFolder: {
-    visible: false,
-    title: 'Rename Folder',
-    id: null,
-    name: '',
-  },
-  renameFile: {
-    visible: false,
-    title: 'Rename File',
-    id: null,
-    name: '',
-  },
+  addFolder: { visible: false, title: 'Add New Folder', name: '' },
+  addFile: { visible: false, title: 'Add New File', folderId: null, name: '' },
+  renameFolder: { visible: false, title: 'Rename Folder', id: null, name: '' },
+  renameFile: { visible: false, title: 'Rename File', id: null, name: '' },
 })
 
-// Tree nodes
 const nodes = computed(() =>
   store.folders.map((folder) => ({
     key: String(folder.id),
@@ -237,7 +224,6 @@ const nodes = computed(() =>
   })),
 )
 
-// Selection handling
 const selectionKeys = computed({
   get() {
     if (!store.selectedFile) return null
@@ -255,34 +241,25 @@ const selectionKeys = computed({
     } else {
       key = String(val)
     }
-
-    // only react to actual file keys
     if (!key || !key.includes('__')) return
-
     const [folderId, fileId] = key.split('__').map(Number)
-    console.log('📁 clicked file:', { folderId, fileId })
     store.selectFile(folderId, fileId)
     emit('file-selected', fileId)
   },
 })
 
-// Dialog management functions
+/* dialog helpers … unchanged (add / rename / delete) */
+/* … */
 function closeDialog(type) {
   dialogState[type].visible = false
   dialogState[type].name = ''
-  if (type === 'addFile') {
-    dialogState[type].folderId = null
-  }
-  if (type === 'renameFolder' || type === 'renameFile') {
-    dialogState[type].id = null
-  }
+  if (type === 'addFile') dialogState[type].folderId = null
+  if (type === 'renameFolder' || type === 'renameFile') dialogState[type].id = null
 }
-
-// Add folder
+/* (rest of helper functions unchanged) */
 function openAddFolderDialog() {
   dialogState.addFolder.visible = true
 }
-
 function confirmAddFolder() {
   const name = dialogState.addFolder.name.trim()
   if (name) {
@@ -290,13 +267,10 @@ function confirmAddFolder() {
     closeDialog('addFolder')
   }
 }
-
-// Add file
 function openAddFileDialog(folderKey) {
   dialogState.addFile.folderId = Number(folderKey)
   dialogState.addFile.visible = true
 }
-
 function confirmAddFile() {
   const name = dialogState.addFile.name.trim()
   if (name && dialogState.addFile.folderId) {
@@ -304,19 +278,15 @@ function confirmAddFile() {
     closeDialog('addFile')
   }
 }
-
-// Rename folder
 function openRenameFolderDialog(key) {
   const id = Number(key)
-  const folder = store.folders.find((x) => x.id === id)
-
+  const folder = store.folders.find((f) => f.id === id)
   if (folder) {
     dialogState.renameFolder.id = id
     dialogState.renameFolder.name = folder.name
     dialogState.renameFolder.visible = true
   }
 }
-
 function confirmRenameFolder() {
   const name = dialogState.renameFolder.name.trim()
   if (name && dialogState.renameFolder.id) {
@@ -324,26 +294,21 @@ function confirmRenameFolder() {
     closeDialog('renameFolder')
   }
 }
-
-// Rename file
 function openRenameFileDialog(compositeKey) {
   const [, fileIdStr] = compositeKey.split('__')
   const fileId = Number(fileIdStr)
-
   let fileName = ''
   for (const folder of store.folders) {
-    const file = folder.files.find((x) => x.id === fileId)
+    const file = folder.files.find((f) => f.id === fileId)
     if (file) {
       fileName = file.name
       break
     }
   }
-
   dialogState.renameFile.id = fileId
   dialogState.renameFile.name = fileName
   dialogState.renameFile.visible = true
 }
-
 function confirmRenameFile() {
   const name = dialogState.renameFile.name.trim()
   if (name && dialogState.renameFile.id) {
@@ -351,96 +316,69 @@ function confirmRenameFile() {
     closeDialog('renameFile')
   }
 }
-
-// Delete folder
 function openDeleteFolderDialog(key) {
   const id = Number(key)
-  const folder = store.folders.find((x) => x.id === id)
-
+  const folder = store.folders.find((f) => f.id === id)
   if (folder) {
     confirm.require({
       message: `Are you sure you want to delete the folder "${folder.name}" and all its files?`,
       header: 'Delete Folder',
       icon: 'pi pi-exclamation-triangle',
       acceptClass: 'p-button-danger',
-      accept: () => {
-        store.deleteFolder(id)
-      },
+      accept: () => store.deleteFolder(id),
     })
   }
 }
-
-// Delete file
 function openDeleteFileDialog(compositeKey) {
   const [, fileIdStr] = compositeKey.split('__')
   const fileId = Number(fileIdStr)
-
-  let fileName = ''
-  let file = null
-
+  let fileName = '',
+    file = null
   for (const folder of store.folders) {
-    file = folder.files.find((x) => x.id === fileId)
+    file = folder.files.find((f) => f.id === fileId)
     if (file) {
       fileName = file.name
       break
     }
   }
-
   if (file) {
     confirm.require({
       message: `Are you sure you want to delete the file "${fileName}"?`,
       header: 'Delete File',
       icon: 'pi pi-exclamation-triangle',
       acceptClass: 'p-button-danger',
-      accept: () => {
-        store.deleteFile(fileId)
-      },
+      accept: () => store.deleteFile(fileId),
     })
   }
 }
 </script>
 
 <style scoped>
+/* ───────── original “card” styling ───────── */
 .sidebar-nav {
   width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--primary-color); /* PrimeVue primary */
-  border-radius: 0.5rem; /* soften edges */
+  background-color: var(--primary-color);
+  border-radius: 0.5rem;
   padding: 0.5rem;
   box-shadow:
-    /* main drop shadow */
     0 4px 8px rgba(0, 0, 0, 0.2),
-    /* subtle uplight for 3D feel */ 0 -2px 6px rgba(255, 255, 255, 0.2);
-  transform: translateZ(0); /* create a new stacking context */
+    0 -2px 6px rgba(255, 255, 255, 0.2);
+  transform: translateZ(0);
   transition:
     box-shadow 0.3s ease,
     transform 0.3s ease,
     background-color 0.3s ease,
     scale 1.5s ease;
 }
-
-/* On hover, “lift” it up and deepen the shadow */
 .sidebar-nav:hover {
   transform: translateY(-4px);
+  scale: 1.1;
   box-shadow:
     0 16px 32px rgba(0, 0, 0, 0.15),
     0 -8px 16px rgba(255, 255, 255, 0.1);
-  background-color: var(--primary-dark); /* darker shade on hover */
-  scale: 1.1;
-  transform: translateZ(50);
-}
-
-/* If you want each nav item to pop out slightly on hover */
-.sidebar-nav .p-menuitem {
-  transition:
-    transform 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.sidebar-nav .p-menuitem:hover {
-  transform: translateX(4px);
-  background-color: var(--primary-light); /* lighter shade on item hover */
+  background-color: var(--primary-dark);
 }
 
 .sidebar-title {
@@ -449,104 +387,99 @@ function openDeleteFileDialog(compositeKey) {
   padding: 0.75rem 1rem;
   margin: 0;
 }
-
 .tree-wrapper {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
-
 .folder-tree {
   border: none;
   background: transparent;
   padding: 0;
 }
-
-/* Remove default PrimeVue tree styling */
 .folder-tree :deep(.p-tree) {
   padding: 0;
   border: none;
 }
-
 .folder-tree :deep(.p-treenode) {
   padding: 0;
 }
-
 .folder-tree :deep(.p-treenode-content) {
   padding: 0.35rem 0.5rem;
   border-radius: 0;
   transition: background-color 0.2s;
 }
-
 .folder-tree :deep(.p-treenode-content:hover) {
   background-color: var(--surface-b);
 }
-
 .folder-tree :deep(.p-treenode-content.p-highlight) {
   background-color: var(--surface-b);
 }
-
 .folder-tree :deep(.p-tree-toggler) {
   margin-right: 0.25rem;
 }
-
 .node-content {
   display: flex;
   align-items: center;
   width: 100%;
   margin-right: 0.75rem;
 }
-
 .node-icon {
   margin-right: 0.5rem;
-
   color: #6c757d;
 }
-
 .node-label {
   flex: 1;
-
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .action-buttons {
   display: none;
   align-items: center;
 }
-
 .node-content:hover .action-buttons {
   display: flex;
 }
-
 .action-buttons .p-button {
   padding: 0.25rem;
   width: 1.5rem;
   height: 1.5rem;
   margin-left: 0.2rem;
 }
-
 .add-folder-container {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
 }
-
 .add-folder-btn {
   width: 100%;
-
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
 .field {
   margin-bottom: 1rem;
 }
-
 .field label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
+}
+
+/* ───────── plain variant overrides (mobile) ───────── */
+.sidebar-nav.plain {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.5rem 0 1rem;
+}
+.sidebar-nav.plain:hover {
+  transform: none;
+  box-shadow: none;
+  background: transparent;
+}
+.sidebar-nav.plain .p-menuitem:hover {
+  transform: none;
+  background: var(--surface-b);
 }
 </style>

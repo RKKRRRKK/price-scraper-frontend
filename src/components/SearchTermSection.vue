@@ -48,17 +48,14 @@ const filteredTerms = computed(() => {
           return filterTags.value.every((tag) => (termTags || []).includes(tag))
         })
 
-return list.sort((a, b) => {
-  if (a.ageInDays === 0 && b.ageInDays !== 0) return -1;
-  if (b.ageInDays === 0 && a.ageInDays !== 0) return 1;
- 
-  const dateA = a.ageInDays ? new Date(a.ageInDays) : 999;
-  const dateB = b.ageInDays ? new Date(b.ageInDays) : 999;
-  return dateA - dateB;
-})
+  return list.sort((a, b) => {
+    if (a.ageInDays === 0 && b.ageInDays !== 0) return -1
+    if (b.ageInDays === 0 && a.ageInDays !== 0) return 1
 
-
-  
+    const dateA = a.ageInDays ? new Date(a.ageInDays) : 999
+    const dateB = b.ageInDays ? new Date(b.ageInDays) : 999
+    return dateA - dateB
+  })
 })
 
 const showModal = ref(false)
@@ -134,27 +131,32 @@ async function syncFromOther() {
 <template>
   <section class="min-w-section mb-5 p-3 md:p-6 surface-section shadow-1 round">
     <div class="flex justify-content-between align-items-center mb-4 gap-5">
-      <h2 class="text-xxl font-bold m-0">{{ title }}</h2>
-      <Chips v-model="filterTags" placeholder="Filter by tags" class="flex-1" />
-
+      <div class="flex flex-column md:flex-row gap-2">
+        <h2 class="text-xxl font-bold m-0 mr-3">{{ title }}</h2>
+        <Chips v-model="filterTags" placeholder="Filter by tags" class="flex-1" />
+      </div>
       <!-- Sync button -->
-      <Button
-        icon="pi pi-copy"
-        rounded
-        raised
-        aria-label="Sync Terms"
-        :title="`Import missing terms from ${otherMarketplace || '…'}`"
-        @click="syncFromOther"
-      />
+      <div class="flex flex-column md:flex-row gap-2">
+        <Button
+          icon="pi pi-copy"
+          rounded
+          raised
+          class="flex-shrink-0"
+          aria-label="Sync Terms"
+          :title="`Import missing terms from ${otherMarketplace || '…'}`"
+          @click="syncFromOther"
+        />
 
-      <!-- Add new term -->
-      <Button
-        icon="pi pi-plus"
-        rounded
-        raised
-        aria-label="Add Search Term"
-        @click="showModal = true"
-      />
+        <!-- Add new term -->
+        <Button
+          icon="pi pi-plus"
+          rounded
+          class="flex-shrink-0"
+          raised
+          aria-label="Add Search Term"
+          @click="showModal = true"
+        />
+      </div>
     </div>
 
     <div class="flex flex-column gap-3">
