@@ -1,12 +1,14 @@
+<!-- File: src/components/SearchTermSection.vue -->
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import SearchTermModal from './SearchTermModal.vue'
 import SearchTermCard from './SearchTermCard.vue'
+import ConfigureAlerts from './section_buttons/ConfigureAlerts.vue'
 import { useSearchTerms } from '@/stores/searchTerms'
 import { useSearchTags } from '@/stores/searchTags'
 import { supabase } from '@/lib/supabase'
 import Button from 'primevue/button'
-import Message from 'primevue/message' // Optional: For empty state
+import Message from 'primevue/message'
 import Chips from 'primevue/chips'
 
 const props = defineProps({
@@ -21,30 +23,22 @@ const props = defineProps({
 const store = useSearchTerms()
 const tagsStore = useSearchTags()
 
-// Load all tags once so tagsStore.getTags(id) will work
 onMounted(() => {
   tagsStore.fetchTags()
 })
 
-// Original list of terms
 const termsForFileAndMarketplace = computed(() => {
-  // Pass the fileId and marketplace from props to the getter
   return store.termsByMarketplace(props.fileId, props.marketplace)
 })
 
-// Tags used to filter
 const filterTags = ref([])
 
-// Computed list of terms matching all selected filter tags
 const filteredTerms = computed(() => {
   const list =
     filterTags.value.length === 0
-      ? [...termsForFileAndMarketplace.value] // Use the correctly filtered list
+      ? [...termsForFileAndMarketplace.value]
       : termsForFileAndMarketplace.value.filter((term) => {
-          // Filter *this* list
-          // Ensure getTags works correctly - it should be fine as it uses term.id
           const termTags = tagsStore.getTags(term.id)
-          // Ensure termTags is always an array for safety
           return filterTags.value.every((tag) => (termTags || []).includes(tag))
         })
 
@@ -59,14 +53,13 @@ const filteredTerms = computed(() => {
 })
 
 const showModal = ref(false)
+const showAlerts = ref(false)
 
-// Figure out the “other” marketplace
 const otherMarketplace = computed(() => {
   const all = [...new Set(store.terms.map((t) => t.marketplace))]
   return all.find((m) => m !== props.marketplace)
 })
 
-// Sync missing terms + tags from the other marketplace into this one
 async function syncFromOther() {
   if (!otherMarketplace.value) {
     console.warn('No other marketplace to sync from')
@@ -78,12 +71,10 @@ async function syncFromOther() {
   const fromTerms = store.termsByMarketplace(from)
   const toTerms = store.termsByMarketplace(to)
 
-  // find terms that exist in `from` but not in `to`
   const missing = fromTerms.filter((o) => !toTerms.some((t) => t.term === o.term))
 
   for (const o of missing) {
     try {
-      // insert the scrape_job under this section’s source
       const { data: inserted, error } = await supabase
         .from('scrape_jobs')
         .insert({
@@ -100,7 +91,6 @@ async function syncFromOther() {
 
       if (error) throw error
 
-      // mirror it into the local Pinia store
       store._upsertLocal({
         id: inserted.id,
         marketplace: inserted.source,
@@ -118,7 +108,6 @@ async function syncFromOther() {
         offersCurrent: null,
       })
 
-      // copy over all tags
       const tags = tagsStore.getTags(o.id)
       await tagsStore.setTags(inserted.id, tags)
     } catch (err) {
@@ -135,34 +124,33 @@ async function syncFromOther() {
         <h2 class="text-xxl font-bold m-0 mr-3">{{ title }}</h2>
         <Chips v-model="filterTags" placeholder="Filter by tags" class="flex-1" />
       </div>
-      <!-- Sync button -->
-      <div class="flex flex-column md:flex-row gap-2">
+      <div class="flex gap-2 mb-6 md:mb-0">
         <Button
           icon="pi pi-copy"
           rounded
           raised
           class="flex-shrink-0"
           aria-label="Sync Terms"
-          :title="`Import missing terms from ${otherMarketplace || '…'}`"
+          :title="`Import missing terms from ${otherMarketplace || 'ΓÇª'}`"
           @click="syncFromOther"
         />
-
-        <!-- Add new term -->
+                <Button
+          icon="pi pi-bell"
+          rounded
+          class="flex-shrink-0"
+          raised
+          aria-label="Configure Alerts"
+          title="Configure Telegram/Email Alerts"
+          @click="showAlerts = true"
+        />
         <Button
           icon="pi pi-plus"
           rounded
           class="flex-shrink-0"
           raised
           aria-label="Add Search Term"
+          title="Add a new search term"
           @click="showModal = true"
-        />
-        <Button
-          icon="pi pi-bell"
-          rounded
-          class="flex-shrink-0"
-          raised
-          aria-label="Configure Alerts"
-          @click=""
         />
       </div>
     </div>
@@ -185,8 +173,15 @@ async function syncFromOther() {
       :fileId="props.fileId"
       @close="showModal = false"
     />
+    <ConfigureAlerts
+      :show="showAlerts"
+      :marketplace="props.marketplace"
+      :fileId="props.fileId"
+      @update:show="val => showAlerts = val"
+    />
   </section>
 </template>
+
 <style scoped>
 .surface-section {
   background-color: var(--surface-b);
@@ -198,7 +193,6 @@ async function syncFromOther() {
     0 1px 2px rgba(0, 0, 0, 0.24);
 }
 
-/* Define the minimum width for the section */
 @media (min-width: 1024px) {
   .min-w-section {
     min-width: 460px;

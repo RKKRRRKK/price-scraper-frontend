@@ -1,15 +1,17 @@
 <template>
   <!-- ───── top bar / header ───── -->
-  <header class="app-header">
+  <header class="header">
     <Button
       v-if="isMobile"
-      icon="pi pi-bars"
+      icon="pi pi-folder text-2xl"
       class="p-button-text p-button-lg hamburger-btn"
       aria-label="Open navigation"
+      label='Open Folders'
       @click="mobileVisible = true"
     />
     <slot name="header" />
   </header>
+  
 
   <div class="app-shell">
     <!-- ───── desktop fixed sidebar (card style) ───── -->
@@ -76,14 +78,12 @@ const mobileVisible = ref(false)
 }
 
 /* header line */
-.app-header {
-  height: 3rem;
+.header {
   display: flex;
   align-items: center;
-  padding: 0 1rem;
-  gap: 0.5rem;
+  margin-bottom: 1rem;
+  
   background: var(--surface-0);
-  border-bottom: 1px solid var(--surface-border);
 }
 
 /* hide / show depending on breakpoint */
