@@ -3,10 +3,9 @@ bugs/todo
 
 
  
-3. add email alert
+ 
 4. add alert toggle
-5. settings area (alert config, email, telegram account setup, custom mim amounts)
-
+5. add alert config, telegram account setup, custom mim amounts to settings area
 9. Add sidebar into hamburger on mobile
 
 6. double check continous increase of offer count on bar graph
@@ -16,12 +15,11 @@ bugs/todo
 14. Custom instructions for smart filter
 
 10. DB management section to delete wrong rows and reset lowest price
-
-15. Manual run trigger for specific card.
+ 
 
 ----------MVP--------------------
 
-
+15. Manual run trigger for specific card.
 12. Sorting for cards
 
 13. Free form vague term exploration llm powered
