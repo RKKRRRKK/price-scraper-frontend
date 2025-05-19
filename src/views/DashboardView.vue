@@ -1,11 +1,10 @@
-<!-- src/components/PriceTimelineChart.vue -->
 <template>
-  
   <div class="dashboard-card">
     <!-- Controls Panel -->
     <div class="controls-toolbar">
       <!-- Filters (left) -->
       <div class="filters">
+        <!-- Search Terms -->
         <div class="filter-item">
           <label for="termSelect">Search Terms</label>
           <MultiSelect
@@ -22,6 +21,7 @@
             style="min-width: 180px;"
           />
         </div>
+        <!-- Sources -->
         <div class="filter-item">
           <label for="sourceSelect">Sources</label>
           <MultiSelect
@@ -38,6 +38,23 @@
             style="min-width: 180px;"
           />
         </div>
+        <!-- File IDs -->
+        <div class="filter-item">
+          <label for="fileSelect">File IDs</label>
+          <MultiSelect
+            id="fileSelect"
+            v-model="store.selectedFileIds"
+            :options="fileOptions"
+            optionLabel="label"
+            optionValue="value"
+            filter
+            placeholder="Select files"
+            :maxSelectedLabels="1"
+            selectedItemsLabel="{0} files selected"
+            class="p-multiselect-sm"
+            style="min-width: 180px;"
+          />
+        </div>
       </div>
 
       <!-- Display Options (right) -->
@@ -49,7 +66,7 @@
 
     <!-- Line Chart -->
     <div class="chart-container">
-      <v-chart :option="lineOptions" autoresize  />
+      <v-chart :option="lineOptions" autoresize />
     </div>
 
     <!-- Bar Chart -->
@@ -75,7 +92,7 @@ import {
 } from 'echarts/components'
 import { useDashboardStore } from '@/stores/timelineDashboard'
 
-// Register necessary eCharts components
+// Register eCharts components
 use([
   CanvasRenderer,
   LineChart,
@@ -95,13 +112,20 @@ const mergeData = ref(true)
 // Dropdown options
 const termOptions   = computed(() => store.allTerms  .map(t => ({ label: t, value: t })))
 const sourceOptions = computed(() => store.allSources.map(s => ({ label: s, value: s })))
+const fileOptions   = computed(() => store.allFileIds.map(f => ({ label: f, value: f })))
 
 // Helpers
-const safeGet = (arr, idx) => Array.isArray(arr) && idx < arr.length ? arr[idx] : undefined
-const sumDefined = arr => arr.map(v => (typeof v === 'number' ? v : 0)).reduce((a, b) => a + b, 0)
+const safeGet = (arr, idx) =>
+  Array.isArray(arr) && idx < arr.length ? arr[idx] : undefined
+
+const sumDefined = arr =>
+  arr.map(v => (typeof v === 'number' ? v : 0)).reduce((a, b) => a + b, 0)
+
 const avgDefined = arr => {
   const nums = arr.filter(v => typeof v === 'number')
-  return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : undefined
+  return nums.length > 0
+    ? nums.reduce((a, b) => a + b, 0) / nums.length
+    : undefined
 }
 
 // Base computed for dates and raw series
@@ -111,46 +135,38 @@ const base = computed(() => {
   return { dates, raw, keys }
 })
 
-// Define a color palette for consistency
+// Color palette
 const colorPalette = [
-  '#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE',
-  '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC'
-];
+  '#5470C6', '#91CC75', '#FAC858',
+  '#EE6666', '#73C0DE', '#3BA272',
+  '#FC8452', '#9A60B4', '#EA7CCC'
+]
+const primaryColor = 'rgb(16, 185, 129)'
 
-const primaryColor = 'rgb(16, 185, 129)';
-
-// --- Tooltip Configuration (Minimal with Basic Styling) ---
+// Shared tooltip styling
 const sharedTooltipConfig = {
-    trigger: 'item',
-    // Basic styling via config to ensure visibility if defaults are broken
-    backgroundColor: 'rgba(50, 50, 50, 0.85)', // Slightly darker/more opaque
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: [6, 10], // Reasonable padding
-    textStyle: {
-        color: '#eee',
-        fontSize: 12
-    },
-    // Format numbers nicely
-    valueFormatter: value => (typeof value === 'number' ? value.toFixed(2) : 'N/A'),
-    // Keep inside chart bounds
-    confine: true
-};
+  trigger: 'item',
+  backgroundColor: 'rgba(50, 50, 50, 0.85)',
+  borderColor: 'rgba(255, 255, 255, 0.2)',
+  padding: [6, 10],
+  textStyle: { color: '#eee', fontSize: 12 },
+  valueFormatter: v => (typeof v === 'number' ? v.toFixed(2) : 'N/A'),
+  confine: true
+}
 
 // Line chart options
 const lineOptions = computed(() => {
-  // 1. grab our dates and filtered data
   const dates    = base.value.dates
   const filtered = store.filtered
 
-  // 2. build a map: { [date]: { [key]: minPrice } }
+  // Build date→(key→min_price) map
   const byDateMin = filtered.reduce((acc, { the_date, search_term, source, min_price }) => {
     acc[the_date] = acc[the_date] || {}
-    const key = `${search_term}__${source}`
-    acc[the_date][key] = Number(min_price)
+    acc[the_date][`${search_term}__${source}`] = Number(min_price)
     return acc
   }, {})
 
-  // 3. collect every series key
+  // All series keys
   const allKeys = Array.from(
     new Set(filtered.map(r => `${r.search_term}__${r.source}`))
   )
@@ -159,24 +175,21 @@ const lineOptions = computed(() => {
   const legendData = []
 
   if (mergeData.value) {
-    // 4a. averaged line across all keys
+    // Average line
     const avgMin = dates.map(date =>
       avgDefined(allKeys.map(key => byDateMin[date]?.[key]))
     )
     const name = 'Average Min Price'
     series.push({
-      name,
-      type: 'line',
-      data: avgMin,
-      smooth: 0.3,
-      symbol: 'emptyCircle',
-      symbolSize: 14,
+      name, type: 'line', data: avgMin, smooth: 0.3,
+      symbol: 'emptyCircle', symbolSize: 14,
       itemStyle: { color: primaryColor },
       lineStyle: { width: 5, color: primaryColor }
     })
     legendData.push(name)
+
   } else {
-    // 4b. one line per key
+    // One line per key
     allKeys.forEach((key, i) => {
       const data = dates.map(date =>
         typeof byDateMin[date]?.[key] === 'number'
@@ -185,25 +198,18 @@ const lineOptions = computed(() => {
       )
       const color = colorPalette[i % colorPalette.length]
       series.push({
-        name: key,
-        type: 'line',
-        data,
-        smooth: 0.3,
-        symbol: 'circle',
-        symbolSize: 11,
-        itemStyle: { color },
-        lineStyle: { width: 5, color }
+        name: key, type: 'line', data, smooth: 0.3,
+        symbol: 'circle', symbolSize: 11,
+        itemStyle: { color }, lineStyle: { width: 5, color }
       })
       legendData.push(key)
     })
   }
 
-  // 5. return the same chart layout, just with our new series[]
   return {
     title: {
       text: 'Min Price Over Time',
-      left: 'center',
-      top: 30,
+      left: 'center', top: 30,
       textStyle: { fontSize: 16, fontWeight: '600' }
     },
     color: colorPalette,
@@ -235,24 +241,20 @@ const lineOptions = computed(() => {
 
 // Bar chart options
 const barOptions = computed(() => {
-  // 1. Grab the sorted list of dates from your existing base
-  const { dates } = base.value
+  const dates = base.value.dates
 
-  // 2. Build a map of total offers per date directly from the filtered rawTimeline
+  // Sum offers per date
   const offersByDate = store.filtered.reduce((acc, { the_date, offers }) => {
     acc[the_date] = (acc[the_date] || 0) + Number(offers)
     return acc
   }, {})
 
-  // 3. Turn that map back into an array aligned with `dates`
   const sumOff = dates.map(date => offersByDate[date] || 0)
 
-  // 4. Return exactly the same ECharts options, swapping in our new sumOff
   return {
     title: {
       text: 'Total Offers Over Time',
-      left: 'center',
-      top: 10,
+      left: 'center', top: 10,
       textStyle: { fontSize: 16, fontWeight: '600' }
     },
     tooltip: {
@@ -269,7 +271,7 @@ const barOptions = computed(() => {
     yAxis: {
       type: 'value',
       name: 'Offers',
-      nameTextStyle: { padding: [0, 0, 0, 30] },
+      nameTextStyle: { padding: [0, 0, 0, 30] }
     },
     series: [
       {
@@ -285,11 +287,10 @@ const barOptions = computed(() => {
 </script>
 
 <style scoped>
-/* General layout styles remain the same */
 .dashboard-card {
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   margin: 2rem auto;
   max-width: 900px;
   padding: 1.5rem;
@@ -306,12 +307,6 @@ const barOptions = computed(() => {
   padding-bottom: 2rem;
   border-bottom: 1px solid #eef2f7;
 }
-
-
-
-
-
-
 
 .filters {
   display: flex;
@@ -351,25 +346,15 @@ const barOptions = computed(() => {
 }
 
 .chart-container :deep(.echarts-for-vue),
-.chart-container :deep(canvas)
-{
-  /* Ensure canvas size is correct */
+.chart-container :deep(canvas) {
   width: 100% !important;
   height: 100% !important;
 }
 
-
-/* --- CORRECTED CSS Override for Tooltip Height --- */
-/* Target the tooltip using a unique inline style attribute */
-
+/* Tooltip height fix */
 :deep(div[style*="z-index: 9999999"]) {
   height: auto !important;
-  min-height: auto !important; /* Reset min-height */
-  max-height: none !important; /* Reset max-height */
-
-  /* Optional: Limit width if text gets too long horizontally */
-  /* max-width: 400px !important;  */
+  min-height: auto !important;
+  max-height: none !important;
 }
-/* --- End of CSS Override --- */
-
 </style>

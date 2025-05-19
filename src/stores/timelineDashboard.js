@@ -6,17 +6,20 @@ export const useDashboardStore = defineStore('dashboard', {
     rawTimeline: [],       // full data from Supabase
     selectedTerms: [],     // array of selected search_terms
     selectedSources: [],   // array of selected sources
+    selectedFileIds: [],
   }),
   getters: {
     // unique lists for the dropdown filters
     allTerms: (state) => [...new Set(state.rawTimeline.map(r => r.search_term))],
     allSources: (state) => [...new Set(state.rawTimeline.map(r => r.source))],
+     allFileIds:   (state) => [...new Set(state.rawTimeline.map(r => r.file_id))],
 
     // filtered timeline based on selections
     filtered: (state) => {
       return state.rawTimeline.filter(r =>
         (state.selectedTerms.length === 0 || state.selectedTerms.includes(r.search_term)) &&
-        (state.selectedSources.length === 0 || state.selectedSources.includes(r.source))
+        (state.selectedSources.length === 0 || state.selectedSources.includes(r.source)) &&
+        (state.selectedFileIds.length  === 0 || state.selectedFileIds.includes(r.file_id))
       )
     },
 
@@ -56,12 +59,14 @@ export const useDashboardStore = defineStore('dashboard', {
       // initialize filters to all options
       this.selectedTerms = this.allTerms
       this.selectedSources = this.allSources
+        this.selectedFileIds  = this.allFileIds
     },
     setTerms(terms) {
       this.selectedTerms = terms
     },
     setSources(sources) {
       this.selectedSources = sources
-    }
+    },
+     setFileIds(ids)    { this.selectedFileIds = ids },
   }
 })
