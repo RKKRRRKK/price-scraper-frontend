@@ -84,7 +84,18 @@ function askDelete(row) {
         <Column field="date_inserted" header="Date Inserted" sortable filter />
         <Column field="price" header="Price" sortable filter />
         <Column field="condition" header="Condition" sortable filter />
-        <Column field="link" header="URL" sortable filter />
+        <Column header="URL" sortable filter>
+          <template #body="{ data }">
+            <a
+              :href="data.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-green-600 hover:underline break-all font-bold"
+            >
+              {{ data.source }}
+            </a>
+          </template>
+        </Column>
 
         <Column headerStyle="width:4rem">
           <template #body="{ data }">

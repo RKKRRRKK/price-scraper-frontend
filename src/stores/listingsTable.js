@@ -27,6 +27,7 @@ export const useListingsTable = defineStore('listingsTable', {
         condition: row.condition,
         url: row.url,
         date_inserted: row.date_inserted,
+        source: row.source,
       }
     },
 
