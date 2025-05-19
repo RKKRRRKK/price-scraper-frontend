@@ -156,6 +156,14 @@ async function syncFromOther() {
           aria-label="Add Search Term"
           @click="showModal = true"
         />
+        <Button
+          icon="pi pi-bell"
+          rounded
+          class="flex-shrink-0"
+          raised
+          aria-label="Configure Alerts"
+          @click=""
+        />
       </div>
     </div>
 
