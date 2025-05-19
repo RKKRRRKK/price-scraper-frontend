@@ -38,7 +38,7 @@ function askDelete(row) {
 
 <template>
   <section class="wrap">
-    <div class="card max-w-screen-xl mx-auto shadow-md rounded-lg overflow-hidden border">
+    <div class="card max-w-screen-xl  shadow-md rounded-lg overflow-hidden border">
       <DataTable
         :value="listingsStore.rows"
         :filters="filters"
@@ -60,6 +60,7 @@ function askDelete(row) {
         responsiveLayout="scroll"
         removableSort
         class="p-datatable-sm"
+        style="border-radius: 1.5rem; overflow: hidden;"
         :loading="listingsStore.loading"
       >
         <!-- coloured header bar -->
@@ -122,4 +123,9 @@ function askDelete(row) {
   margin: auto;
   margin-top: 5rem;
 }
+
+:deep(.p-datatable-sm) {
+  --p-datatable-header-sm-padding: 0rem;
+}
+ 
 </style>
