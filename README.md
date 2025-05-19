@@ -6,7 +6,6 @@ bugs/todo
  
 4. add alert toggle
 5. add alert config, telegram account setup, custom mim amounts to settings area
-9. Add sidebar into hamburger on mobile
 
 6. double check continous increase of offer count on bar graph
 
@@ -16,6 +15,7 @@ bugs/todo
 
 10. DB management section to delete wrong rows and reset lowest price
  
+11. Scatterplot for specific item prices
 
 ----------MVP--------------------
 
