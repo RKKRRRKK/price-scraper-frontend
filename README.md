@@ -1,8 +1,4 @@
 bugs/todo
-
- 
-6. double check continous increase of offer count on bar graph
-7. Add tag, file and folder filter for dashboard
 14. Custom instructions for smart filter
 11. Scatterplot for specific item prices
 12. Option to reset lowest price
