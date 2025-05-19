@@ -4,30 +4,36 @@ import { useAuthStore } from '@/stores/auth'
 import HomeView from '@/views/HomeView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 
 const routes = [
   {
     path: '/',
     name: 'home',
     component: HomeView,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/dashboard',
     name: 'dashboard',
     component: DashboardView,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/login',
     name: 'login',
-    component: LoginView
-  }
+    component: LoginView,
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: SettingsView,
+  },
 ]
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  routes,
 })
 
 // Global guard: redirect to /login if not authed, or to / if already logged in
