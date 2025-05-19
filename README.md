@@ -1,22 +1,12 @@
 bugs/todo
 
-
-
- 
- 
 4. add alert toggle
-5. add alert config, telegram account setup, custom mim amounts to settings area
-
 6. double check continous increase of offer count on bar graph
-
 7. Add tag, file and folder filter for dashboard
-
 14. Custom instructions for smart filter
-
-10. DB management section to delete wrong rows and reset lowest price
- 
 11. Scatterplot for specific item prices
-
+12. Option to reset lowest price
+13. Add alert config, telegram account setup, custom mim amounts to settings area
 ----------MVP--------------------
 
 15. Manual run trigger for specific card.
