@@ -138,56 +138,96 @@ const sharedTooltipConfig = {
 
 // Line chart options
 const lineOptions = computed(() => {
-  const { dates, raw, keys } = base.value
-  const series = []
+  // 1. grab our dates and filtered data
+  const dates    = base.value.dates
+  const filtered = store.filtered
+
+  // 2. build a map: { [date]: { [key]: minPrice } }
+  const byDateMin = filtered.reduce((acc, { the_date, search_term, source, min_price }) => {
+    acc[the_date] = acc[the_date] || {}
+    const key = `${search_term}__${source}`
+    acc[the_date][key] = Number(min_price)
+    return acc
+  }, {})
+
+  // 3. collect every series key
+  const allKeys = Array.from(
+    new Set(filtered.map(r => `${r.search_term}__${r.source}`))
+  )
+
+  const series    = []
   const legendData = []
 
   if (mergeData.value) {
-    const avgMin = dates.map((_, i) =>
-      avgDefined(keys.map(k => safeGet(raw[k].minPrices, i)))
-    );
-    const seriesName = 'Average Min Price';
+    // 4a. averaged line across all keys
+    const avgMin = dates.map(date =>
+      avgDefined(allKeys.map(key => byDateMin[date]?.[key]))
+    )
+    const name = 'Average Min Price'
     series.push({
-      name: seriesName, type: 'line', data: avgMin, smooth: 0.3,
-      symbol: 'emptyCircle', symbolSize: 14, itemStyle: { color: primaryColor },
+      name,
+      type: 'line',
+      data: avgMin,
+      smooth: 0.3,
+      symbol: 'emptyCircle',
+      symbolSize: 14,
+      itemStyle: { color: primaryColor },
       lineStyle: { width: 5, color: primaryColor }
-    });
-    legendData.push(seriesName);
+    })
+    legendData.push(name)
   } else {
-    keys.forEach((k, index) => {
-      const data = raw[k].minPrices.map(v => (typeof v === 'number' ? v : null));
-      const seriesName = `${k}`;
-      const color = colorPalette[index % colorPalette.length];
+    // 4b. one line per key
+    allKeys.forEach((key, i) => {
+      const data = dates.map(date =>
+        typeof byDateMin[date]?.[key] === 'number'
+          ? byDateMin[date][key]
+          : null
+      )
+      const color = colorPalette[i % colorPalette.length]
       series.push({
-        name: seriesName, type: 'line', data, smooth: 0.3,
-        symbol: 'circle', symbolSize: 11, itemStyle: { color: color },
-        lineStyle: { width: 5, color: color }
-      });
-      legendData.push(seriesName);
-    });
+        name: key,
+        type: 'line',
+        data,
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 11,
+        itemStyle: { color },
+        lineStyle: { width: 5, color }
+      })
+      legendData.push(key)
+    })
   }
 
+  // 5. return the same chart layout, just with our new series[]
   return {
     title: {
-      text: 'Min Price Over Time', left: 'center', top: 30,
+      text: 'Min Price Over Time',
+      left: 'center',
+      top: 30,
       textStyle: { fontSize: 16, fontWeight: '600' }
     },
     color: colorPalette,
-    tooltip: { ...sharedTooltipConfig }, // Use shared config
+    tooltip: { ...sharedTooltipConfig },
     legend: {
-      data: legendData, show: !mergeData.value, type: 'scroll',
-      top: 'auto', textStyle: { fontSize: 14 }, 
+      data: legendData,
+      show: !mergeData.value,
+      type: 'scroll',
+      top: 'auto',
+      textStyle: { fontSize: 14 }
     },
-    grid: {
-      top: 70, left: 50, right: 30,
-    },
+    grid: { top: 70, left: 50, right: 30 },
     xAxis: {
-      type: 'category', data: dates, boundaryGap: true,
-      axisLabel: { interval: 'auto', rotate: 0 }, axisTick: { alignWithLabel: true }
+      type: 'category',
+      data: dates,
+      boundaryGap: true,
+      axisLabel: { interval: 'auto', rotate: 0 },
+      axisTick: { alignWithLabel: true }
     },
     yAxis: {
-      type: 'value', name: 'Min Price',
-      nameTextStyle: { padding: [0, 0, 0, 40] }, axisLabel: { formatter: '{value}' }
+      type: 'value',
+      name: 'Min Price',
+      nameTextStyle: { padding: [0, 0, 0, 40] },
+      axisLabel: { formatter: '{value}' }
     },
     series
   }
@@ -195,31 +235,47 @@ const lineOptions = computed(() => {
 
 // Bar chart options
 const barOptions = computed(() => {
-  const { dates, raw, keys } = base.value
-  const sumOff = dates.map((_, i) =>
-    sumDefined(keys.map(k => safeGet(raw[k].offers, i)))
-  )
+  // 1. Grab the sorted list of dates from your existing base
+  const { dates } = base.value
 
+  // 2. Build a map of total offers per date directly from the filtered rawTimeline
+  const offersByDate = store.filtered.reduce((acc, { the_date, offers }) => {
+    acc[the_date] = (acc[the_date] || 0) + Number(offers)
+    return acc
+  }, {})
+
+  // 3. Turn that map back into an array aligned with `dates`
+  const sumOff = dates.map(date => offersByDate[date] || 0)
+
+  // 4. Return exactly the same ECharts options, swapping in our new sumOff
   return {
     title: {
-      text: 'Total Offers Over Time', left: 'center', top: 10,
+      text: 'Total Offers Over Time',
+      left: 'center',
+      top: 10,
       textStyle: { fontSize: 16, fontWeight: '600' }
     },
-    tooltip: { // Use shared config + axis pointer specific to bar
-        ...sharedTooltipConfig,
-        axisPointer: { type: 'shadow' }
+    tooltip: {
+      ...sharedTooltipConfig,
+      axisPointer: { type: 'shadow' }
     },
     grid: { top: 60, left: 50, right: 30, bottom: 40 },
     xAxis: {
-      type: 'category', data: dates,
-      axisLabel: { interval: 'auto', rotate: 0 }, axisTick: { alignWithLabel: true }
+      type: 'category',
+      data: dates,
+      axisLabel: { interval: 'auto', rotate: 0 },
+      axisTick: { alignWithLabel: true }
     },
     yAxis: {
-      type: 'value', name: 'Offers', nameTextStyle: { padding: [0, 0, 0, 30] },
+      type: 'value',
+      name: 'Offers',
+      nameTextStyle: { padding: [0, 0, 0, 30] },
     },
     series: [
       {
-        name: 'Total Offers', type: 'bar', data: sumOff,
+        name: 'Total Offers',
+        type: 'bar',
+        data: sumOff,
         barMaxWidth: '40px',
         itemStyle: { color: primaryColor, borderRadius: [3, 3, 0, 0] }
       }
