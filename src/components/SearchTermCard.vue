@@ -191,7 +191,7 @@ function toggleFooter() {
 
 //rewriting logic to job added
 const lastChangedHuman = computed(() =>
-  props.term.created_at ? dayjs(props.term.created_at).fromNow() : 'to be implemented lol',
+  props.term.created_at ? dayjs(props.term.created_at).fromNow() : 'idk lol',
 )
 
 const includeText = computed(() => props.term.include?.join(', ') || '')
