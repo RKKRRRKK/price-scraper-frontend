@@ -5,6 +5,7 @@ import HomeView from '@/views/HomeView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import DataView from '@/views/DataView.vue'
 
 const routes = [
   {
@@ -28,6 +29,11 @@ const routes = [
     path: '/settings',
     name: 'settings',
     component: SettingsView,
+  },
+  {
+    path: '/database',
+    name: 'database',
+    component: DataView,
   },
 ]
 

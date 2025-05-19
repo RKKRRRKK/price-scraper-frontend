@@ -1,9 +1,6 @@
 <template>
   <!-- Spinner while we're waiting for auth.init() -->
-  <div
-    v-if="!ready"
-    class="flex items-center justify-center h-screen bg-gray-100"
-  >
+  <div v-if="!ready" class="flex items-center justify-center h-screen bg-gray-100">
     <i class="pi pi-spin pi-spinner text-4xl"></i>
   </div>
 
@@ -18,10 +15,7 @@
     </div>
 
     <!-- Protected area with Menubar -->
-    <div
-      v-else
-      class="surface-ground min-h-screen flex flex-column"
-    >
+    <div v-else class="surface-ground min-h-screen flex flex-column">
       <Menubar
         :model="navItems"
         class="border-none shadow-2 surface-card mb-3"
@@ -29,18 +23,8 @@
       >
         <!-- main links -->
         <template #item="{ item, props }">
-          <router-link
-            v-if="item.to"
-            v-slot="{ href, navigate }"
-            :to="item.to"
-            custom
-          >
-            <a
-              v-ripple
-              :href="href"
-              v-bind="props.action"
-              @click="navigate"
-            >
+          <router-link v-if="item.to" v-slot="{ href, navigate }" :to="item.to" custom>
+            <a v-ripple :href="href" v-bind="props.action" @click="navigate">
               <i :class="item.icon" class="mr-2" />
               {{ item.label }}
             </a>
@@ -50,18 +34,9 @@
         <!-- login / user dropdown -->
         <template #end>
           <div class="flex align-items-center">
-            <Button
-              v-if="!auth.user"
-              icon="pi pi-user"
-              class="p-button-text"
-              @click="goLogin"
-            />
+            <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
             <div v-else class="relative">
-              <Button
-                icon="pi pi-user"
-                class="p-button-text"
-                @click="userMenu.toggle($event)"
-              />
+              <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
               <!-- Ensure userItems uses the computed property -->
               <TieredMenu ref="userMenu" :model="userMenuItems" popup />
             </div>
@@ -80,7 +55,7 @@
         </RouterView>
         -->
         <!-- Or standard RouterView if component state reset on navigate is okay -->
-         <RouterView />
+        <RouterView />
       </main>
     </div>
   </div>
@@ -92,7 +67,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import Menubar from 'primevue/menubar'
 import Button from 'primevue/button'
 import TieredMenu from 'primevue/tieredmenu'
-import Ripple from 'primevue/ripple'; // Import Ripple if using v-ripple directive
+import Ripple from 'primevue/ripple' // Import Ripple if using v-ripple directive
 
 import { useAuthStore } from '@/stores/auth'
 import { useSidebarStore } from '@/stores/sidebar'
@@ -117,11 +92,12 @@ onMounted(async () => {
 
   // Initial check: if already logged in (e.g., session restored), fetch data now.
   if (auth.user) {
-    console.log('App.vue onMounted: User already logged in, fetching initial data...');
-    await fetchDataForUser();
-  } else if (route.name !== 'login' && route.meta.requiresAuth) { // Added requiresAuth check
-     // if no user, not on login page, AND the page requires auth, bounce to login
-    console.log('App.vue onMounted: No user, redirecting to login.');
+    console.log('App.vue onMounted: User already logged in, fetching initial data...')
+    await fetchDataForUser()
+  } else if (route.name !== 'login' && route.meta.requiresAuth) {
+    // Added requiresAuth check
+    // if no user, not on login page, AND the page requires auth, bounce to login
+    console.log('App.vue onMounted: No user, redirecting to login.')
     router.replace({ name: 'login' })
   }
 
@@ -132,68 +108,72 @@ onMounted(async () => {
 watch(
   () => auth.user,
   async (newUser, oldUser) => {
-    if (newUser && !oldUser) { // User just logged IN
-      console.log('App.vue watch(auth.user): User logged in, fetching initial data...');
-      await fetchDataForUser();
+    if (newUser && !oldUser) {
+      // User just logged IN
+      console.log('App.vue watch(auth.user): User logged in, fetching initial data...')
+      await fetchDataForUser()
 
       // Redirect away from login page if currently on it
       if (route.name === 'login') {
         router.replace({ name: 'home' }) // Or wherever your main authenticated view is
       }
-    } else if (!newUser && oldUser) { // User just logged OUT
-       console.log('App.vue watch(auth.user): User logged out, resetting stores...');
-       resetStores(); // Reset data stores on logout
-       // Optional: Redirect to login after logout is complete if not handled by userMenu command
-       // if (route.meta.requiresAuth) { // Only redirect if current route needs auth
-       //    router.replace({ name: 'login' });
-       // }
+    } else if (!newUser && oldUser) {
+      // User just logged OUT
+      console.log('App.vue watch(auth.user): User logged out, resetting stores...')
+      resetStores() // Reset data stores on logout
+      // Optional: Redirect to login after logout is complete if not handled by userMenu command
+      // if (route.meta.requiresAuth) { // Only redirect if current route needs auth
+      //    router.replace({ name: 'login' });
+      // }
     }
   },
-  { immediate: false } // Don't run immediately, onMounted handles initial state
+  { immediate: false }, // Don't run immediately, onMounted handles initial state
 )
 
 // Function to fetch essential data after login
 async function fetchDataForUser() {
-  console.log('[App.vue] Fetching data for user...');
+  console.log('[App.vue] Fetching data for user...')
   // Use Promise.all for concurrent fetching
   try {
-      await Promise.all([
-          sidebarStore.fetchFolders(), // Fetch folders/files for sidebar
-          tagsStore.fetchTags(),       // Fetch all available tags
-          termsStore.fetchAll()        // Fetch all search terms and their initial prices
-      ]);
-      // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
-      // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
-      termsStore.initRealtime();
-      console.log('[App.vue] Initial data fetch complete.');
-  } catch(error) {
-      console.error("[App.vue] Error fetching initial data:", error);
-      // Consider showing an error message to the user (e.g., using PrimeVue Toast)
+    await Promise.all([
+      sidebarStore.fetchFolders(), // Fetch folders/files for sidebar
+      tagsStore.fetchTags(), // Fetch all available tags
+      termsStore.fetchAll(), // Fetch all search terms and their initial prices
+    ])
+    // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
+    // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
+    termsStore.initRealtime()
+    console.log('[App.vue] Initial data fetch complete.')
+  } catch (error) {
+    console.error('[App.vue] Error fetching initial data:', error)
+    // Consider showing an error message to the user (e.g., using PrimeVue Toast)
   }
 }
 
 // Function to clear store data on logout
 function resetStores() {
-    console.log('[App.vue] Resetting stores...');
-    sidebarStore.reset();
-    tagsStore.reset();
-    termsStore.reset();
-    // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
-    // This prevents potential errors or duplicate listeners if the user logs back in.
-    // try {
-    //   console.log('[App.vue] Removing Supabase channels...');
-    //   await supabase.removeAllChannels();
-    // } catch (error) {
-    //   console.error('[App.vue] Error removing Supabase channels:', error);
-    // }
+  console.log('[App.vue] Resetting stores...')
+  sidebarStore.reset()
+  tagsStore.reset()
+  termsStore.reset()
+  // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
+  // This prevents potential errors or duplicate listeners if the user logs back in.
+  // try {
+  //   console.log('[App.vue] Removing Supabase channels...');
+  //   await supabase.removeAllChannels();
+  // } catch (error) {
+  //   console.error('[App.vue] Error removing Supabase channels:', error);
+  // }
 }
 
 // --- Top Navigation Bar Items ---
-const navItems = ref([ // Use ref if items might change dynamically, otherwise const is fine
-  { label: 'Home',      icon: 'pi pi-home',      to: { name: 'home' } },
-  { label: 'Dashboard', icon: 'pi pi-chart-bar', to: { name: 'dashboard' } }
+const navItems = ref([
+  // Use ref if items might change dynamically, otherwise const is fine
+  { label: 'Home', icon: 'pi pi-home', to: { name: 'home' } },
+  { label: 'Dashboard', icon: 'pi pi-chart-bar', to: { name: 'dashboard' } },
+  { label: 'Database', icon: 'pi pi-database', to: { name: 'database' } },
   // Add other main navigation links here
-]);
+])
 
 // --- User Menu Items (Dropdown) ---
 // Use computed so it reacts to changes in auth.user and router availability
@@ -202,30 +182,35 @@ const userMenuItems = computed(() => [
     label: 'Settings',
     icon: 'pi pi-cog',
     // Ensure you have a route named 'settings' or change this command
-    command: () => router.push({ name: 'settings' }).catch(err => { if(err.name !== 'NavigationDuplicated') console.error(err) })
+    command: () =>
+      router.push({ name: 'settings' }).catch((err) => {
+        if (err.name !== 'NavigationDuplicated') console.error(err)
+      }),
   },
   {
-    separator: true // Optional separator
+    separator: true, // Optional separator
   },
   {
     label: 'Log out',
     icon: 'pi pi-sign-out',
-    command: onLogout // Use the dedicated logout handler
-  }
-]);
+    command: onLogout, // Use the dedicated logout handler
+  },
+])
 
 // --- Helper Functions ---
 async function onLogout() {
-  console.log('[App.vue] Logging out...');
-  await auth.logout(); // Auth store handles Supabase sign out & clearing its own state
+  console.log('[App.vue] Logging out...')
+  await auth.logout() // Auth store handles Supabase sign out & clearing its own state
   // The watch(auth.user) detects the change to null and calls resetStores()
   // Redirect to login after logout process is complete
-  router.replace({ name: 'login' }).catch(err => console.error("Logout redirect error:", err));
+  router.replace({ name: 'login' }).catch((err) => console.error('Logout redirect error:', err))
 }
 
 function goLogin() {
   // Navigate to the login page
-  router.replace({ name: 'login' }).catch(err => { if(err.name !== 'NavigationDuplicated') console.error(err) });
+  router.replace({ name: 'login' }).catch((err) => {
+    if (err.name !== 'NavigationDuplicated') console.error(err)
+  })
 }
 
 // Register Ripple directive if used
@@ -235,9 +220,7 @@ function goLogin() {
 // directives: {
 //   ripple: Ripple
 // }
-
 </script>
-
 
 <style scoped>
 #app {
