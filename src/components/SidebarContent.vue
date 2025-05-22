@@ -515,7 +515,12 @@ function openDeleteFileDialog(compositeKey) {
 
 
 .folder-tree :deep(.p-tree-node-content[data-p-selected="true"]) {
-  background-color: var(orange-500) !important;
+  background-color: var(--p-orange-200) !important;
+  font-weight: bold !important;
+  text-shadow: 
+  0 0 0.5px currentColor,
+  0 0 1px currentColor;
+
 }
 
  
