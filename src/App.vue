@@ -16,33 +16,42 @@
 
     <!-- Protected area with Menubar -->
     <div v-else class="surface-ground min-h-screen flex flex-column">
-      <Menubar
-        :model="navItems"
-        class="border-none shadow-2 surface-card mb-3"
-        style="padding-inline: 1rem"
-      >
-        <!-- main links -->
-        <template #item="{ item, props }">
-          <router-link v-if="item.to" v-slot="{ href, navigate }" :to="item.to" custom>
-            <a v-ripple :href="href" v-bind="props.action" @click="navigate">
-              <i :class="item.icon" class="mr-2" />
-              {{ item.label }}
-            </a>
-          </router-link>
-        </template>
+<Menubar
+  :model="navItems"
+  class="border-none shadow-2 surface-card mb-3"
+  style="padding-inline: 1rem"
+>
+  <!-- main links -->
+  <template #item="{ item, props }">
+    <router-link v-if="item.to" v-slot="{ href, navigate }" :to="item.to" custom>
+      <a v-ripple :href="href" v-bind="props.action" @click="navigate">
+        <i :class="item.icon" class="mr-2" />
+        {{ item.label }}
+      </a>
+    </router-link>
+  </template>
 
-        <!-- login / user dropdown -->
-        <template #end>
-          <div class="flex align-items-center">
-            <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
-            <div v-else class="relative">
-              <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
-              <!-- Ensure userItems uses the computed property -->
-              <TieredMenu ref="userMenu" :model="userMenuItems" popup />
-            </div>
-          </div>
-        </template>
-      </Menubar>
+  <!-- centered logo between links and user icon -->
+<template #start>
+  <router-link to="/" style="display: flex; align-items: center">
+    <img
+      src="/title2.png"
+      alt="QuantiCart"
+      style="height: 2rem; margin-left: 1rem; margin-right: 1rem"
+    />
+  </router-link>
+</template>
+  <!-- login / user dropdown -->
+  <template #end>
+    <div class="flex align-items-center">
+      <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
+      <div v-else class="relative">
+        <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
+        <TieredMenu ref="userMenu" :model="userMenuItems" popup />
+      </div>
+    </div>
+  </template>
+</Menubar>
 
       <!-- main content -->
       <main class="flex-1 overflow-auto">
