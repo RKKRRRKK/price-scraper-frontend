@@ -95,7 +95,7 @@
               :href="term.link"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-sm xxl:text-base font-medium hover:underline"
+              class="text-sm xxl:text-base font-medium hover:underline  text-orange-500"
             >
               View item <i class="pi pi-external-link ml-1" style="font-size: 1rem" />
             </a>

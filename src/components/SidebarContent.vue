@@ -216,37 +216,66 @@ const nodes = computed(() =>
   store.folders.map((folder) => ({
     key: String(folder.id),
     label: folder.name,
+    selectable: false, // PREVENTS FOLDERS FROM BEING VISUALLY SELECTED
     children: folder.files.map((file) => ({
       key: `${folder.id}__${file.id}`,
       label: file.name,
       leaf: true,
+      selectable: true, // Files are selectable (this is often default for leaf nodes if Tree is selectable)
     })),
   })),
-)
+);
 
 const selectionKeys = computed({
   get() {
-    if (!store.selectedFile) return null
-    const { folderId, fileId } = store.selectedFile
-    return `${folderId}__${fileId}`
+    if (!store.selectedFile) {
+      return {}; // Return an empty object for no selection, consistently with PrimeVue
+    }
+    const { folderId, fileId } = store.selectedFile;
+    const key = `${folderId}__${fileId}`;
+    return { [key]: true }; // CORRECTED: Return object like { 'nodeKeyValue': true }
   },
   set(val) {
-    let key
-    if (val == null) {
-      key = null
-    } else if (typeof val === 'object') {
-      const keys = Object.keys(val)
-      if (!keys.length) return
-      key = keys[0]
-    } else {
-      key = String(val)
+    // val is an object from PrimeVue Tree, e.g., { 'actualNodeKeyClicked': true } or {} on deselect
+    let newSelectedNodeKey = null;
+
+    if (val && typeof val === 'object' && Object.keys(val).length > 0) {
+      newSelectedNodeKey = Object.keys(val)[0];
     }
-    if (!key || !key.includes('__')) return
-    const [folderId, fileId] = key.split('__').map(Number)
-    store.selectFile(folderId, fileId)
-    emit('file-selected', fileId)
+
+    if (newSelectedNodeKey && newSelectedNodeKey.includes('__')) { // A file node key
+      const [folderIdStr, fileIdStr] = newSelectedNodeKey.split('__');
+      const folderId = Number(folderIdStr);
+      const fileId = Number(fileIdStr);
+
+      // Update store only if selection actually changed to a new file
+      if (!store.selectedFile || store.selectedFile.folderId !== folderId || store.selectedFile.fileId !== fileId) {
+        store.selectFile(folderId, fileId);
+        emit('file-selected', fileId);
+      }
+    } else if (newSelectedNodeKey && !newSelectedNodeKey.includes('__')) {
+        // A folder was clicked.
+        // Current app logic seems to only want to "select" files in the store.
+        // If a folder is clicked, we might want to clear the file selection.
+        // Or, if you want folders to be visually selectable but not affect `store.selectedFile`,
+        // this logic would need to be more complex. For now, let's assume clicking a folder
+        // means "no file is selected."
+        // To ensure the tree updates and doesn't retain the folder selection if it's not
+        // reflected in `store.selectedFile`, we can reset the selection in the store.
+        if (store.selectedFile) { // If a file was selected
+            store.resetSelection(); // This will make the getter return {}
+                                    // and effectively deselect in the tree.
+        }
+        // If you want folders to appear selected without affecting store.selectedFile,
+        // then the 'nodes' definition should make folders "selectable: false" (see below).
+    } else {
+      // Selection was cleared (val is likely {} or null)
+      if (store.selectedFile) {
+        store.resetSelection(); // Ensure store reflects no selection
+      }
+    }
   },
-})
+});
 
 /* dialog helpers … unchanged (add / rename / delete) */
 /* … */
@@ -482,4 +511,12 @@ function openDeleteFileDialog(compositeKey) {
   transform: none;
   background: var(--surface-b);
 }
+
+
+
+.folder-tree :deep(.p-tree-node-content[data-p-selected="true"]) {
+  background-color: var(orange-500) !important;
+}
+
+ 
 </style>

@@ -153,7 +153,7 @@ const colorPalette = [
   '#9A60B4',
   '#EA7CCC',
 ]
-const primaryColor = 'rgb(16, 185, 129)'
+const primaryColor = 'rgb(249, 115, 22)'
 
 // Shared tooltip styling
 const sharedTooltipConfig = {

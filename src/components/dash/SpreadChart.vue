@@ -176,7 +176,7 @@ const option = computed(() => ({
       data: otherItems.value,
       symbolSize: 40,
       itemStyle: {
-        color: 'rgba(65, 134, 111, 0.15)',
+        color: 'rgba(177, 128, 93, 0.15)',
         borderWidth: 0,
       },
       symbol: 'circle',
@@ -188,10 +188,10 @@ const option = computed(() => ({
       data: minItems.value,
       symbolSize: 42,
       itemStyle: {
-        color: 'rgba(16, 185, 129, 0.3)',
+        color: 'rgba(249, 115, 22, 0.3)',
         borderWidth: 3,
         borderType: 'dotted',
-        borderColor: '#10b981',
+        borderColor: 'RGB(249, 115, 22)',
       },
     },
   ],

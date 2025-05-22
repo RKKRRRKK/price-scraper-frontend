@@ -91,7 +91,7 @@ function askDelete(row) {
               :href="data.url"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-green-600 hover:underline break-all font-bold"
+              class="text-orange-600 hover:underline break-all font-bold"
             >
               {{ data.source }}
             </a>
