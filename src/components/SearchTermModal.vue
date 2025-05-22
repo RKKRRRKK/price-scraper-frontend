@@ -1,55 +1,59 @@
 <template>
   <Dialog v-model:visible="visible" header="Add new scrape job" modal>
-    <div class="flex flex-column gap-3" style="max-width: 15rem;">
+    <div class="flex flex-column gap-3" style="max-width: 15rem">
       <!-- main search term -->
       <InputText v-model="form.term" placeholder="Search term" />
-      
 
       <!-- LENS SEARCH OPTIONS -->
-      <Accordion  >
+      <Accordion>
         <AccordionTab header="Lens Search Filters">
           <div class="flex flex-column gap-2">
             <label class="flex align-items-center gap-2">
               <Checkbox v-model="form.primeOnly" :binary="true" />
               <span>Exclude Zooms</span>
               <i
-   class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Will filter out Zoom lenses (when searching for 50mm, you will not get results for 18-50mm)'"
-          style="cursor: help;"
-        />
+                class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs pb-2"
+                v-tooltip.top="
+                  'Will filter out Zoom lenses (when searching for 50mm, you will not get results for 18-50mm)'
+                "
+                style="cursor: help"
+              />
             </label>
             <label class="flex align-items-center gap-2">
               <Checkbox v-model="form.lensOnly" :binary="true" />
               <span>Exclude Bodies</span>
               <i
-     class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Will filter out listings where the lens comes included with a camera body'"
-          style="cursor: help;"
-        />
+                class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs pb-2"
+                v-tooltip.top="
+                  'Will filter out listings where the lens comes included with a camera body'
+                "
+                style="cursor: help"
+              />
             </label>
             <label class="flex align-items-center gap-2">
               <Checkbox v-model="form.excludeAcc" :binary="true" />
               <span>Exclude Accessories</span>
               <i
-      class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Will filter out listings with common camera or lens accessories (hoods, covers)'"
-          style="cursor: help;"
-        />
+                class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs pb-2"
+                v-tooltip.top="
+                  'Will filter out listings with common camera or lens accessories (hoods, covers)'
+                "
+                style="cursor: help"
+              />
             </label>
           </div>
         </AccordionTab>
       </Accordion>
 
-  
-     
-
       <!-- INCLUDE section -->
-       <div class="gap-2 flex">
-      <label class="font-medium text-sm">Include keywords</label>
-      <i
-      class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Words from the Search Term which absolutely need to be included in the listing for it to be valid'"
-          style="cursor: help;"
+      <div class="gap-2 flex">
+        <label class="font-medium text-sm">Include keywords</label>
+        <i
+          class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs pb-2"
+          v-tooltip.top="
+            'Words from the Search Term which need to be included in the listing for it to be valid'
+          "
+          style="cursor: help"
         />
       </div>
 
@@ -71,11 +75,11 @@
 
       <!-- EXCLUDE section -->
       <div class="gap-2 flex">
-      <label class="font-medium text-sm mt-3">Exclude keywords</label>
-      <i
-           class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs"
+        <label class="font-medium text-sm mt-3">Exclude keywords</label>
+        <i
+          class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs"
           v-tooltip.top="'Words which when present in the title, will invalidate a listing.'"
-          style="cursor: help;"
+          style="cursor: help"
         />
       </div>
 
@@ -96,9 +100,11 @@
         <InputSwitch v-model="form.smart_filter" />
         <span>Smart Filtering</span>
         <i
-          class="pi pi-info-circle text-yellow-500  hover:text-yellow-800 opacity-50 text-xs pb-2"
-          v-tooltip.top="'Uses AI to filter out any listings for accessories to a given search term, or different versions etc. Costs $$ and slows down the scraping process a lot, so only use when needed.'"
-          style="cursor: help;"
+          class="pi pi-info-circle text-yellow-500 hover:text-yellow-800 opacity-50 text-xs pb-2"
+          v-tooltip.top="
+            'Uses AI to filter out any listings for accessories to a given search term, or different versions etc. Costs $$ and slows down the scraping process a lot, so only use when needed.'
+          "
+          style="cursor: help"
         />
       </div>
 

@@ -1,77 +1,85 @@
 <template>
-  <div class="dashboard-card">
-    <!-- Controls Panel -->
-    <div class="controls-toolbar">
-      <!-- Filters (left) -->
-      <div class="filters">
-        <!-- Search Terms -->
-        <div class="filter-item">
-          <label for="termSelect">Search Terms</label>
-          <MultiSelect
-            id="termSelect"
-            v-model="store.selectedTerms"
-            :options="termOptions"
-            optionLabel="label"
-            optionValue="value"
-            filter
-            placeholder="Select terms"
-            :maxSelectedLabels="1"
-            selectedItemsLabel="{0} items selected"
-            class="p-multiselect-sm"
-            style="min-width: 180px;"
-          />
+  <div class="dashboard-layout">
+    <!-- main dashboard card (left) -->
+    <div class="dashboard-card">
+      <!-- Controls Panel -->
+      <div class="controls-toolbar">
+        <!-- Filters (left) -->
+        <div class="filters">
+          <!-- Search Terms -->
+          <div class="filter-item">
+            <label for="termSelect">Search Terms</label>
+            <MultiSelect
+              id="termSelect"
+              v-model="store.selectedTerms"
+              :options="termOptions"
+              optionLabel="label"
+              optionValue="value"
+              filter
+              placeholder="Select terms"
+              :maxSelectedLabels="1"
+              selectedItemsLabel="{0} items selected"
+              class="p-multiselect-sm"
+              style="min-width: 180px"
+            />
+          </div>
+          <!-- Sources -->
+          <div class="filter-item">
+            <label for="sourceSelect">Sources</label>
+            <MultiSelect
+              id="sourceSelect"
+              v-model="store.selectedSources"
+              :options="sourceOptions"
+              optionLabel="label"
+              optionValue="value"
+              filter
+              placeholder="Select sources"
+              :maxSelectedLabels="1"
+              selectedItemsLabel="{0} sources selected"
+              class="p-multiselect-sm"
+              style="min-width: 180px"
+            />
+          </div>
+          <!-- File IDs -->
+          <div class="filter-item">
+            <label for="fileSelect">File IDs</label>
+            <MultiSelect
+              id="fileSelect"
+              v-model="store.selectedFileIds"
+              :options="fileOptions"
+              optionLabel="label"
+              optionValue="value"
+              filter
+              placeholder="Select files"
+              :maxSelectedLabels="1"
+              selectedItemsLabel="{0} files selected"
+              class="p-multiselect-sm"
+              style="min-width: 180px"
+            />
+          </div>
         </div>
-        <!-- Sources -->
-        <div class="filter-item">
-          <label for="sourceSelect">Sources</label>
-          <MultiSelect
-            id="sourceSelect"
-            v-model="store.selectedSources"
-            :options="sourceOptions"
-            optionLabel="label"
-            optionValue="value"
-            filter
-            placeholder="Select sources"
-            :maxSelectedLabels="1"
-            selectedItemsLabel="{0} sources selected"
-            class="p-multiselect-sm"
-            style="min-width: 180px;"
-          />
-        </div>
-        <!-- File IDs -->
-        <div class="filter-item">
-          <label for="fileSelect">File IDs</label>
-          <MultiSelect
-            id="fileSelect"
-            v-model="store.selectedFileIds"
-            :options="fileOptions"
-            optionLabel="label"
-            optionValue="value"
-            filter
-            placeholder="Select files"
-            :maxSelectedLabels="1"
-            selectedItemsLabel="{0} files selected"
-            class="p-multiselect-sm"
-            style="min-width: 180px;"
-          />
+
+        <!-- Display Options (right) -->
+        <div class="display-options">
+          <label for="mergeData">Merge Lines</label>
+          <ToggleSwitch id="mergeData" v-model="mergeData" />
         </div>
       </div>
 
-      <!-- Display Options (right) -->
-      <div class="display-options">
-        <label for="mergeData">Merge Lines</label>
-        <ToggleSwitch id="mergeData" v-model="mergeData" />
+      <!-- Line Chart -->
+      <div class="chart-container">
+        <v-chart :option="lineOptions" autoresize />
+      </div>
+
+      <!-- Bar Chart -->
+      <div class="chart-container">
+        <v-chart :option="barOptions" autoresize />
       </div>
     </div>
 
-    <!-- Line Chart -->
-    <div class="chart-container">
-      <v-chart :option="lineOptions" autoresize />
-    </div>
-
-    <!-- Bar Chart -->
-    <div class="chart-container">
-      <v-chart :option="barOptions" autoresize />
+    <!-- price-spread card (right) -->
+    <div class="spread-wrapper">
+      <SpreadChart />
     </div>
   </div>
 </template>
@@ -88,9 +96,10 @@ import {
   TitleComponent,
   TooltipComponent,
   GridComponent,
-  LegendComponent
+  LegendComponent,
 } from 'echarts/components'
 import { useDashboardStore } from '@/stores/timelineDashboard'
+import SpreadChart from '@/components/dash/SpreadChart.vue'
 
 // Register eCharts components
 use([
@@ -100,7 +109,7 @@ use([
   TitleComponent,
   TooltipComponent,
   GridComponent,
-  LegendComponent
+  LegendComponent,
 ])
 
 const store = useDashboardStore()
@@ -110,22 +119,19 @@ onMounted(() => store.fetchTimeline())
 const mergeData = ref(true)
 
 // Dropdown options
-const termOptions   = computed(() => store.allTerms  .map(t => ({ label: t, value: t })))
-const sourceOptions = computed(() => store.allSources.map(s => ({ label: s, value: s })))
-const fileOptions   = computed(() => store.allFileIds.map(f => ({ label: f, value: f })))
+const termOptions = computed(() => store.allTerms.map((t) => ({ label: t, value: t })))
+const sourceOptions = computed(() => store.allSources.map((s) => ({ label: s, value: s })))
+const fileOptions = computed(() => store.allFileIds.map((f) => ({ label: f, value: f })))
 
 // Helpers
-const safeGet = (arr, idx) =>
-  Array.isArray(arr) && idx < arr.length ? arr[idx] : undefined
+const safeGet = (arr, idx) => (Array.isArray(arr) && idx < arr.length ? arr[idx] : undefined)
 
-const sumDefined = arr =>
-  arr.map(v => (typeof v === 'number' ? v : 0)).reduce((a, b) => a + b, 0)
+const sumDefined = (arr) =>
+  arr.map((v) => (typeof v === 'number' ? v : 0)).reduce((a, b) => a + b, 0)
 
-const avgDefined = arr => {
-  const nums = arr.filter(v => typeof v === 'number')
-  return nums.length > 0
-    ? nums.reduce((a, b) => a + b, 0) / nums.length
-    : undefined
+const avgDefined = (arr) => {
+  const nums = arr.filter((v) => typeof v === 'number')
+  return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : undefined
 }
 
 // Base computed for dates and raw series
@@ -137,9 +143,15 @@ const base = computed(() => {
 
 // Color palette
 const colorPalette = [
-  '#5470C6', '#91CC75', '#FAC858',
-  '#EE6666', '#73C0DE', '#3BA272',
-  '#FC8452', '#9A60B4', '#EA7CCC'
+  '#5470C6',
+  '#91CC75',
+  '#FAC858',
+  '#EE6666',
+  '#73C0DE',
+  '#3BA272',
+  '#FC8452',
+  '#9A60B4',
+  '#EA7CCC',
 ]
 const primaryColor = 'rgb(16, 185, 129)'
 
@@ -150,13 +162,13 @@ const sharedTooltipConfig = {
   borderColor: 'rgba(255, 255, 255, 0.2)',
   padding: [6, 10],
   textStyle: { color: '#eee', fontSize: 12 },
-  valueFormatter: v => (typeof v === 'number' ? v.toFixed(2) : 'N/A'),
-  confine: true
+  valueFormatter: (v) => (typeof v === 'number' ? v.toFixed(2) : 'N/A'),
+  confine: true,
 }
 
 // Line chart options
 const lineOptions = computed(() => {
-  const dates    = base.value.dates
+  const dates = base.value.dates
   const filtered = store.filtered
 
   // Build date→(key→min_price) map
@@ -167,40 +179,42 @@ const lineOptions = computed(() => {
   }, {})
 
   // All series keys
-  const allKeys = Array.from(
-    new Set(filtered.map(r => `${r.search_term}__${r.source}`))
-  )
+  const allKeys = Array.from(new Set(filtered.map((r) => `${r.search_term}__${r.source}`)))
 
-  const series    = []
+  const series = []
   const legendData = []
 
   if (mergeData.value) {
     // Average line
-    const avgMin = dates.map(date =>
-      avgDefined(allKeys.map(key => byDateMin[date]?.[key]))
-    )
+    const avgMin = dates.map((date) => avgDefined(allKeys.map((key) => byDateMin[date]?.[key])))
     const name = 'Average Min Price'
     series.push({
-      name, type: 'line', data: avgMin, smooth: 0.3,
-      symbol: 'emptyCircle', symbolSize: 14,
+      name,
+      type: 'line',
+      data: avgMin,
+      smooth: 0.3,
+      symbol: 'emptyCircle',
+      symbolSize: 14,
       itemStyle: { color: primaryColor },
-      lineStyle: { width: 5, color: primaryColor }
+      lineStyle: { width: 5, color: primaryColor },
     })
     legendData.push(name)
-
   } else {
     // One line per key
     allKeys.forEach((key, i) => {
-      const data = dates.map(date =>
-        typeof byDateMin[date]?.[key] === 'number'
-          ? byDateMin[date][key]
-          : null
+      const data = dates.map((date) =>
+        typeof byDateMin[date]?.[key] === 'number' ? byDateMin[date][key] : null,
       )
       const color = colorPalette[i % colorPalette.length]
       series.push({
-        name: key, type: 'line', data, smooth: 0.3,
-        symbol: 'circle', symbolSize: 11,
-        itemStyle: { color }, lineStyle: { width: 5, color }
+        name: key,
+        type: 'line',
+        data,
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 11,
+        itemStyle: { color },
+        lineStyle: { width: 5, color },
       })
       legendData.push(key)
     })
@@ -209,8 +223,9 @@ const lineOptions = computed(() => {
   return {
     title: {
       text: 'Min Price Over Time',
-      left: 'center', top: 30,
-      textStyle: { fontSize: 16, fontWeight: '600' }
+      left: 'center',
+      top: 30,
+      textStyle: { fontSize: 16, fontWeight: '600' },
     },
     color: colorPalette,
     tooltip: { ...sharedTooltipConfig },
@@ -219,7 +234,7 @@ const lineOptions = computed(() => {
       show: !mergeData.value,
       type: 'scroll',
       top: 'auto',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14 },
     },
     grid: { top: 70, left: 50, right: 30 },
     xAxis: {
@@ -227,15 +242,15 @@ const lineOptions = computed(() => {
       data: dates,
       boundaryGap: true,
       axisLabel: { interval: 'auto', rotate: 0 },
-      axisTick: { alignWithLabel: true }
+      axisTick: { alignWithLabel: true },
     },
     yAxis: {
       type: 'value',
       name: 'Min Price',
       nameTextStyle: { padding: [0, 0, 0, 40] },
-      axisLabel: { formatter: '{value}' }
+      axisLabel: { formatter: '{value}' },
     },
-    series
+    series,
   }
 })
 
@@ -249,29 +264,30 @@ const barOptions = computed(() => {
     return acc
   }, {})
 
-  const sumOff = dates.map(date => offersByDate[date] || 0)
+  const sumOff = dates.map((date) => offersByDate[date] || 0)
 
   return {
     title: {
       text: 'Total Offers Over Time',
-      left: 'center', top: 10,
-      textStyle: { fontSize: 16, fontWeight: '600' }
+      left: 'center',
+      top: 10,
+      textStyle: { fontSize: 16, fontWeight: '600' },
     },
     tooltip: {
       ...sharedTooltipConfig,
-      axisPointer: { type: 'shadow' }
+      axisPointer: { type: 'shadow' },
     },
     grid: { top: 60, left: 50, right: 30, bottom: 40 },
     xAxis: {
       type: 'category',
       data: dates,
       axisLabel: { interval: 'auto', rotate: 0 },
-      axisTick: { alignWithLabel: true }
+      axisTick: { alignWithLabel: true },
     },
     yAxis: {
       type: 'value',
       name: 'Offers',
-      nameTextStyle: { padding: [0, 0, 0, 30] }
+      nameTextStyle: { padding: [0, 0, 0, 30] },
     },
     series: [
       {
@@ -279,9 +295,9 @@ const barOptions = computed(() => {
         type: 'bar',
         data: sumOff,
         barMaxWidth: '40px',
-        itemStyle: { color: primaryColor, borderRadius: [3, 3, 0, 0] }
-      }
-    ]
+        itemStyle: { color: primaryColor, borderRadius: [3, 3, 0, 0] },
+      },
+    ],
   }
 })
 </script>
@@ -290,7 +306,7 @@ const barOptions = computed(() => {
 .dashboard-card {
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   margin: 2rem auto;
   max-width: 900px;
   padding: 1.5rem;
@@ -352,9 +368,50 @@ const barOptions = computed(() => {
 }
 
 /* Tooltip height fix */
-:deep(div[style*="z-index: 9999999"]) {
+:deep(div[style*='z-index: 9999999']) {
   height: auto !important;
   min-height: auto !important;
   max-height: none !important;
+}
+
+/* side-by-side chart layout */
+.charts-wrapper {
+  display: flex;
+  align-items: flex-start; /* prevents overlap */
+  gap: 1.5rem;
+}
+
+.left-charts {
+  flex: 2 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.right-charts {
+  flex-shrink: 0; /* stop it from squeezing */
+  width: 320px; /* fixed column so it stays beside, not over */
+  display: flex;
+}
+
+.dashboard-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch; /* makes both cards equal height */
+  margin: 2rem auto;
+  max-width: 1400px;
+}
+
+/* let each card decide its own width */
+.dashboard-card {
+  flex: 2 1 0;
+  max-width: none; /* remove the 900px cap so it can expand */
+}
+
+.spread-wrapper {
+  padding: 2rem;
+
+  flex: 1 1 0;
+  display: flex; /* lets the inner SpreadChart stretch vertically */
 }
 </style>
