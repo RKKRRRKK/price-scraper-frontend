@@ -22,28 +22,41 @@
   style="padding-inline: 1rem"
 >
   <!-- main links -->
-  <template #item="{ item, props }">
-    <router-link v-if="item.to" v-slot="{ href, navigate }" :to="item.to" custom>
-      <a v-ripple :href="href" v-bind="props.action" @click="navigate">
-        <i :class="item.icon" class="mr-2" />
-        {{ item.label }}
-      </a>
-    </router-link>
-  </template>
+<template #item="{ item, props }">
+  <router-link
+    v-if="item.to"
+    :to="item.to"
+    custom
+    v-slot="{ href, navigate, isActive, isExactActive }"
+  >
+    <a  :href="href"
+    style="margin-top: 0.33rem;"
+        @click="navigate"
+        v-bind="props.action"
+        :class="[
+          { 'router-link-active': isActive,
+            'router-link-exact-active': isExactActive }
+        ]">
+      <i :class="item.icon" class="mr-2" />
+      {{ item.label }}
+    </a>
+  </router-link>
+</template>
 
   <!-- centered logo between links and user icon -->
 <template #start>
-  <router-link to="/" style="display: flex; align-items: center">
+  <router-link to="/" class='logo-link' style="display: flex; align-items: center;">
     <img
-      src="/title2.png"
+      src="/title6.png"
       alt="QuantiCart"
-      style="height: 2rem; margin-left: 1rem; margin-right: 1rem"
+      style="height: 1.66rem; margin-left: 2rem; margin-right: 2.5rem; transform: scale(2.2); margin-bottom: 0.33rem;"
+    
     />
   </router-link>
 </template>
   <!-- login / user dropdown -->
   <template #end>
-    <div class="flex align-items-center">
+    <div class="flex align-items-center"  style="margin-top: 0.33rem;">
       <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
       <div v-else class="relative">
         <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
@@ -253,4 +266,31 @@ function goLogin() {
     grid-template-columns: none !important;
   }
 }
+
+ 
+
+a:active {
+  background-color: var(--p-orange-200);
+    border-radius: 0.5rem;
+}
+
+a.router-link-active,       /* partial match */
+a.router-link-exact-active  /* exact match  */ {
+  background-color: var(--p-orange-100) !important;
+  /* optional – if PrimeVue theme gives undesirable text/icon colours */
+  color: var(--p-orange-600) !important;
+  border-radius: 0.5rem;
+    text-shadow: 0 0 0.25px currentColor,
+  0 0 0.5px currentColor;
+}
+
+.logo-link.router-link-active,
+.logo-link.router-link-exact-active {
+  background: transparent !important;
+
+
+
+}
+
+ 
 </style>
