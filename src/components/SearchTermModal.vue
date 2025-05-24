@@ -107,6 +107,7 @@
           style="cursor: help"
         />
       </div>
+      <Textarea v-show='form.smart_filter' v-model="form.instructions" rows="5" cols="30" />
 
       <!-- footer buttons -->
       <div class="flex justify-content-end gap-2 mt-3">
@@ -128,6 +129,7 @@ import InputSwitch from 'primevue/inputswitch'
 import Accordion from 'primevue/accordion'
 import AccordionTab from 'primevue/accordiontab'
 import Button from 'primevue/button'
+import Textarea from 'primevue/textarea';
 
 const props = defineProps({
   show: Boolean,
@@ -155,6 +157,7 @@ const form = reactive({
   smart_filter: false,
   include: [],
   exclude: [],
+  instructions: '',
 })
 
 function addInclude() {
@@ -172,6 +175,7 @@ async function save() {
     lensOnly: form.lensOnly,
     excludeAcc: form.excludeAcc,
     smart_filter: form.smart_filter,
+    instructions: form.instructions,
     include: form.include.filter((v) => v?.trim().length),
     exclude: form.exclude.filter((v) => v?.trim().length),
     fileId: props.fileId,

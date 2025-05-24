@@ -30,7 +30,7 @@
     v-slot="{ href, navigate, isActive, isExactActive }"
   >
     <a  :href="href"
-    style="margin-top: 0.33rem;"
+    style="margin-top: 0.0rem;"
         @click="navigate"
         v-bind="props.action"
         :class="[
@@ -47,16 +47,16 @@
 <template #start>
   <router-link to="/" class='logo-link' style="display: flex; align-items: center;">
     <img
-      src="/title6.png"
+      src="/title7.png"
       alt="QuantiCart"
-      style="height: 1.66rem; margin-left: 2rem; margin-right: 2.5rem; transform: scale(2.2); margin-bottom: 0.33rem;"
+      style="height: 1.5rem; margin-left: 2rem; margin-right: 2.5rem; transform: scale(2.3); margin-bottom: 0.33rem;"
     
     />
   </router-link>
 </template>
   <!-- login / user dropdown -->
   <template #end>
-    <div class="flex align-items-center"  style="margin-top: 0.33rem;">
+    <div class="flex align-items-center"  style="margin-top: 0rem;">
       <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
       <div v-else class="relative">
         <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />

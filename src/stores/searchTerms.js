@@ -41,6 +41,7 @@ export const useSearchTerms = defineStore('searchTerms', {
         include: dbRow.include_terms || [], // Correct column name
         exclude: dbRow.exclude_terms || [], // Correct column name
         smart_filter: dbRow.smart_filter,
+        instructions: dbRow.instructions,
 
         // Dynamic fields - initialized/updated separately
         link: null,
@@ -178,6 +179,7 @@ export const useSearchTerms = defineStore('searchTerms', {
         exclude,
         fileId,
         smart_filter,
+        instructions,
       } = termData
 
       // *** Log the DESTRUCTURED fileId specifically ***
@@ -223,6 +225,7 @@ export const useSearchTerms = defineStore('searchTerms', {
           exclude_damaged: excludeDamaged || false,
           file_id: fileId, // Use the validated, destructured fileId
           smart_filter: smart_filter,
+          instructions: instructions,
         }
 
         // *** Log the object JUST BEFORE sending to Supabase ***
