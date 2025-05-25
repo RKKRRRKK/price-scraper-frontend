@@ -7,7 +7,7 @@
     />
 
     <div class="welcome-text">
-<h1>Welcome to <span class="name">QuanHu!</span></h1>
+      <h1>Welcome to <span class="name">QuanHu!</span></h1>
       <p>Get started by creating a new folder.</p>
       <p>After doing this, you will be able to create scrape jobs and results will appear after first scheduled run is complete</p>
     </div>
@@ -39,7 +39,8 @@ const visible = ref(true);
   flex: 0 1 auto; /* allow shrinking */
   margin-top: 15rem;
   height: clamp(600px, 70vh, 100vh);
-  filter: grayscale(0%);
+  filter: grayscale(50%);
+  
 }
 
 .welcome-text {
@@ -60,10 +61,51 @@ const visible = ref(true);
   color: #555;
   margin-top: 1rem;
 }
+
 .name {
-  color: RGB(249, 115, 22);
-    font-weight: 800;
+  display: inline-block;
+  font-weight: 800;
+  /* base color + sheen layer */
+  background: 
+    linear-gradient(
+
+      120deg,
+      transparent 0%,
+        transparent 45%,
+      rgba(255, 255, 255, 1) 50%,
+             transparent 55%,
+      transparent 100%
+    ),
+    #F97316;
+  border-color: red;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-size: 200% 100%;
+  background-position: -100% 0;
+  animation: sheen 5s linear infinite;
 }
+
+@keyframes sheen {
+  0% {
+    background-position: 100% 0;
+    opacity: 0.5;
+    transform: scale(1.025);
+  }
+  15% {
+    background-position: -90% 0;
+    opacity: 1;
+      transform: scale(1);
+ 
+  }
+  100% {
+    background-position: -90% 0;
+    opacity: 1;
+          transform: scale(1);
+
+  }
+}
+
 /* Mobile: stack vertically, text below fox */
 @media (max-width: 600px) {
   .welcome {
@@ -74,17 +116,12 @@ const visible = ref(true);
   .fox {
     margin: 0;
     height: clamp(300px, 40vh, 60vh);
- 
- 
   }
   .welcome-text {
     margin-top: 1rem;
- 
   }
   .welcome-text h1 {
-    white-space: normal; 
+    white-space: normal;
   }
 }
-
-
 </style>
