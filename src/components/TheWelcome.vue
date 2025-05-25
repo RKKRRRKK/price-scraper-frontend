@@ -1,23 +1,16 @@
 <template>
   <div class="welcome">
-    <!-- oversized faint icon in the background -->
-<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="rgba(0,0,0,0.05)" class="size-6">
-  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
-</svg>
+    <img
+      src="/newfavicon2.png"
+      alt="QuantiCart"
+      class="fox"
+    />
 
-
-    <Dialog v-model:visible="visible" modal header="Welcome!" :style="{ width: '30rem' }">
-      <div class="dialog-text">
-        <p>First create a folder and a file to start with.</p>
-        <p>After doing this, you will be able to create scrape jobs.</p>
-        <p>Your results will be visible after the first scheduled run.</p>
-        <p>Ensure your search terms and conditions will yield correct results on the target site.</p>
-      </div>
-
-      <template #footer>
-        <Button label="OK" @click="visible = false" autofocus />
-      </template>
-    </Dialog>
+    <div class="welcome-text">
+<h1>Welcome to <span class="name">QuanHu!</span></h1>
+      <p>Get started by creating a new folder.</p>
+      <p>After doing this, you will be able to create scrape jobs and results will appear after first scheduled run is complete</p>
+    </div>
   </div>
 </template>
 
@@ -31,27 +24,67 @@ const visible = ref(true);
 
 <style scoped>
 .welcome {
-  position: absolute;
-  overflow: hidden;
   display: flex;
-  top: 15%;
-  left: 35%;
- 
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2rem;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
 }
 
-.background-icon {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 80%; /* scales with viewport */
-  height: 80%;
-  transform: translate(-50%, -50%);
-  opacity: 0.01; /* slight transparency */
-  stroke: var(--text-color-secondary);
-  pointer-events: none; /* ignore pointer events so it doesn’t block dialog */
+.fox {
+  margin-left: 15rem;
+  opacity: 0.25;
+  flex: 0 1 auto; /* allow shrinking */
+  margin-top: 15rem;
+  height: clamp(600px, 70vh, 100vh);
+  filter: grayscale(0%);
 }
 
-.dialog-text p + p {
+.welcome-text {
+  flex: 1 1 auto; /* allow shrinking */
+  min-width: 0;    /* enable proper flex-shrink */
+  color: #333;
+}
+
+.welcome-text h1 {
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  white-space: nowrap; /* keep on one line when there's room */
+}
+
+.welcome-text p {
+  font-size: clamp(1rem, 3vw, 2rem);
+  color: #555;
   margin-top: 1rem;
 }
+.name {
+  color: RGB(249, 115, 22);
+    font-weight: 800;
+}
+/* Mobile: stack vertically, text below fox */
+@media (max-width: 600px) {
+  .welcome {
+    flex-direction: column;
+    margin-left: 20vw;
+    padding: 0;
+  }
+  .fox {
+    margin: 0;
+    height: clamp(300px, 40vh, 60vh);
+ 
+ 
+  }
+  .welcome-text {
+    margin-top: 1rem;
+ 
+  }
+  .welcome-text h1 {
+    white-space: normal; 
+  }
+}
+
+
 </style>

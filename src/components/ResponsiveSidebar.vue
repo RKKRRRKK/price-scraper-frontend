@@ -70,7 +70,7 @@ const mobileVisible = ref(false)
 /* layout shell */
 .app-shell {
   display: flex;
-  height: calc(100vh - 3rem);
+ 
 }
 .sidebar-wrapper {
   width: 18rem;
