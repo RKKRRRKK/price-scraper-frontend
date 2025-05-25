@@ -71,9 +71,9 @@ const visible = ref(true);
 
       120deg,
       transparent 0%,
-        transparent 45%,
+        transparent 30%,
       rgba(255, 255, 255, 1) 50%,
-             transparent 55%,
+             transparent 51%,
       transparent 100%
     ),
     #F97316;
@@ -82,26 +82,35 @@ const visible = ref(true);
   -webkit-background-clip: text;
   color: transparent;
   background-size: 200% 100%;
-  background-position: -100% 0;
-  animation: sheen 5s linear infinite;
+  background-position: -200% 0;
+  animation: sheen 5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
 @keyframes sheen {
   0% {
     background-position: 100% 0;
-    opacity: 0.5;
-    transform: scale(1.025);
+    transform: scale(1);
+    text-shadow: 2px 10px 10px rgba(0,0,0,0);
+  }
+
+
+  7.5% {
+      transform: scale(1.033);
+      text-shadow: 1px 1px 350px rgba(253, 218, 171, 0.5);
   }
   15% {
     background-position: -90% 0;
     opacity: 1;
-      transform: scale(1);
+    transform: scale(1);
+    text-shadow: 0px 0px 0px transparent;
+    text-shadow: 2px 2px 10px rgba(0,0,0,0.0);
  
   }
   100% {
     background-position: -90% 0;
     opacity: 1;
           transform: scale(1);
+    text-shadow: 2px 2px 10px rgba(0,0,0,0.00);
 
   }
 }
