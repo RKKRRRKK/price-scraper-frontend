@@ -64,12 +64,18 @@ onMounted(() => {
 })
 
 /* ------------------------------------------------------ term selector --- */
-const termOptions = computed(() =>
-  [...new Set(listings.rows.map((r) => r.search_term))].map((t) => ({
-    label: t,
-    value: t,
-  })),
-)
+const termOptions = computed(() => {
+  const counts = listings.rows.reduce((acc, r) => {
+    acc[r.search_term] = (acc[r.search_term] || 0) + 1
+    return acc
+  }, {})
+  return Object.keys(counts)
+    .sort((a, b) => counts[b] - counts[a])
+    .map((t) => ({
+      label: t,
+      value: t,
+    }))
+})
 
 const selectedTerm = ref(null)
 watch(

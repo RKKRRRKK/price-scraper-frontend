@@ -71,7 +71,7 @@ const visible = ref(true);
 
       120deg,
       transparent 0%,
-        transparent 30%,
+        transparent 5%,
       rgba(255, 255, 255, 1) 50%,
              transparent 51%,
       transparent 100%
@@ -83,7 +83,7 @@ const visible = ref(true);
   color: transparent;
   background-size: 200% 100%;
   background-position: -200% 0;
-  animation: sheen 5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: sheen 4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
 @keyframes sheen {
@@ -95,8 +95,15 @@ const visible = ref(true);
 
 
   7.5% {
-      transform: scale(1.033);
+      transform: scale(1.15);
       text-shadow: 1px 1px 350px rgba(253, 218, 171, 0.5);
+  }
+    8% {
+    background-position: -90% 0;
+    opacity: 1;
+    text-shadow: 0px 0px 0px transparent;
+    text-shadow: 2px 2px 10px rgba(0,0,0,0.0);
+ 
   }
   15% {
     background-position: -90% 0;
