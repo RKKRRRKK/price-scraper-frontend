@@ -47,9 +47,9 @@
 <template #start>
   <router-link to="/" class='logo-link' style="display: flex; align-items: center;">
     <img
-      src="/title8.png"
+      src="/everything.webp"
       alt="QuantiCart"
-      style="height: 2rem; margin-left: 2rem; margin-right: 2.5rem; transform: scale(2); margin-top: 0.2rem;"
+      style="height: 1rem; margin-left: 2rem; margin-right: 3rem; transform: scale(3); margin-top: 0rem; opacity: 0.5;"
     
     />
   </router-link>

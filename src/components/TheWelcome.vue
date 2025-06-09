@@ -1,13 +1,13 @@
 <template>
   <div class="welcome">
     <img
-      src="/newfavicon2.png"
+      src="/everything.webp"
       alt="QuantiCart"
       class="fox"
     />
 
     <div class="welcome-text">
-      <h1>Welcome to <span class="name">QuanHu!</span></h1>
+      <h1>Welcome to <span class="name">Kumquant!</span></h1>
       <p>Get started by creating a new folder.</p>
       <p>After doing this, you will be able to create scrape jobs and results will appear after first scheduled run is complete</p>
     </div>
@@ -34,11 +34,12 @@ const visible = ref(true);
 }
 
 .fox {
-  margin-left: 15rem;
+  margin-left: 0rem;
   opacity: 0.25;
   flex: 0 1 auto; /* allow shrinking */
-  margin-top: 15rem;
-  height: clamp(600px, 70vh, 100vh);
+  margin-top: 2em;
+  margin-right: 2rem;
+  height: clamp(500px, 60vh, 100vh);
   filter: grayscale(50%);
   
 }
