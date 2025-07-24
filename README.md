@@ -1,7 +1,7 @@
 bugs/todo
 
-11. Scatterplot for specific item prices
-14. Custom instructions for smart filter
+11. Fix link on scatterplot 
+12. Fix double entires into list (based on marketplace filter)
 
 
 
@@ -15,9 +15,15 @@ bugs/todo
 14. 13. Telegram account setup to settings area
 15. Custom mim amounts to settings area
 2. change copy to be card specific
+3. Add a note section for each card 
 
-3. 8. Make cards moveable (and add hover and active styling)
+4. 8. Make cards moveable (and add hover and active styling)
 
 16. "SmartFilter → https://www.kleinanzeigen.de/s-anzeige/nikon-d850-30-tsd-ausloesungen-top-241481-/2001774800-245-4304 Fit=false, Reason="Includes usage and condition details.""
 
  
+
+
+_done_
+11. Scatterplot for specific item prices
+14. Custom instructions for smart filter
