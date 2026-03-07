@@ -6,6 +6,7 @@ import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import DataView from '@/views/DataView.vue'
+import TempsView from '@/views/TempsView.vue'
 
 const routes = [
   {
@@ -35,6 +36,12 @@ const routes = [
     name: 'database',
     component: DataView,
   },
+  {
+    path: '/temps',
+    name: 'temps',
+    component: TempsView,
+    meta: { requiresAuth: true },
+  },
 ]
 
 const router = createRouter({
@@ -42,9 +49,22 @@ const router = createRouter({
   routes,
 })
 
+// Wait for auth.init() to finish before evaluating guards
+function waitForAuth(auth) {
+  if (auth.initialized) return Promise.resolve()
+  return new Promise((resolve) => {
+    const stop = auth.$subscribe((_, state) => {
+      if (state.initialized) { stop(); resolve() }
+    })
+  })
+}
+
 // Global guard: redirect to /login if not authed, or to / if already logged in
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore()
+
+  // Wait for auth to finish initializing before making any decision
+  await waitForAuth(auth)
 
   // If the target page requires auth and the user is NOT logged in → send to login
   if (to.meta.requiresAuth && !auth.user) {

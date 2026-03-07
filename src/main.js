@@ -44,7 +44,8 @@ import {
   TitleComponent,
   TooltipComponent,
   GridComponent,
-  LegendComponent
+  LegendComponent,
+  DataZoomComponent
 } from 'echarts/components'                            
 import { UniversalTransition } from 'echarts/features'       
 use([
@@ -55,6 +56,7 @@ use([
   TooltipComponent,
   GridComponent,
   LegendComponent,
+  DataZoomComponent,
   UniversalTransition
 ])
 
