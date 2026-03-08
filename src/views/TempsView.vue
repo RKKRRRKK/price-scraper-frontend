@@ -148,9 +148,7 @@ const formatVal = (v, decimals = 1) =>
 
 const formatTime = (ts) => ts ? dayjs(ts).format('MMM D, HH:mm') : '–'
 
-const timestamps = computed(() =>
-  store.readings.map((r) => dayjs(r.timestamp).format('MMM D HH:mm'))
-)
+// No longer needed — time axis uses raw timestamps
 
 const sharedTooltip = {
   trigger: 'axis',
@@ -195,10 +193,13 @@ function buildChartOptions(title, data, color, unit, yAxisName) {
     grid: { top: 55, left: 55, right: 25, bottom: 55 },
     dataZoom: sharedDataZoom,
     xAxis: {
-      type: 'category',
-      data: timestamps.value,
+      type: 'time',
       boundaryGap: false,
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      axisLabel: {
+        fontSize: 11,
+        color: '#6b7280',
+        formatter: (val) => dayjs(val).format('MMM D HH:mm'),
+      },
       axisLine: { lineStyle: { color: '#e5e7eb' } },
       axisTick: { show: false },
     },
@@ -237,7 +238,7 @@ function buildChartOptions(title, data, color, unit, yAxisName) {
 const temperatureChartOptions = computed(() =>
   buildChartOptions(
     'Temperature',
-    store.readings.map((r) => r.temperature),
+    store.readings.map((r) => [r.timestamp, r.temperature]),
     '#ef4444',
     '°C',
     '°C'
@@ -247,7 +248,7 @@ const temperatureChartOptions = computed(() =>
 const humidityChartOptions = computed(() =>
   buildChartOptions(
     'Humidity',
-    store.readings.map((r) => r.humidity),
+    store.readings.map((r) => [r.timestamp, r.humidity]),
     '#3b82f6',
     '%',
     '%'
@@ -257,7 +258,7 @@ const humidityChartOptions = computed(() =>
 const pressureChartOptions = computed(() =>
   buildChartOptions(
     'Pressure',
-    store.readings.map((r) => r.pressure),
+    store.readings.map((r) => [r.timestamp, r.pressure]),
     '#8b5cf6',
     'hPa',
     'hPa'
