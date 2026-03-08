@@ -124,6 +124,7 @@ import {
   GridComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkLineComponent,
 } from 'echarts/components'
 import { useWeatherStore } from '@/stores/weatherReadings'
 import dayjs from 'dayjs'
@@ -136,6 +137,7 @@ use([
   GridComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkLineComponent,
 ])
 
 const store = useWeatherStore()
@@ -255,15 +257,28 @@ const humidityChartOptions = computed(() =>
   )
 )
 
-const pressureChartOptions = computed(() =>
-  buildChartOptions(
+const pressureChartOptions = computed(() => {
+  const opts = buildChartOptions(
     'Pressure',
     store.readings.map((r) => [r.timestamp, r.pressure]),
     '#8b5cf6',
     'hPa',
     'hPa'
   )
-)
+  opts.yAxis.min = 980
+  opts.yAxis.max = 1030
+  opts.series[0].markLine = {
+    silent: true,
+    symbol: 'none',
+    lineStyle: { type: 'dashed', width: 1.5 },
+    label: { fontSize: 11, position: 'insideEndTop' },
+    data: [
+      { yAxis: 1020, label: { formatter: 'High (1020)' }, lineStyle: { color: '#ef4444' } },
+      { yAxis: 985, label: { formatter: 'Low (985)' }, lineStyle: { color: '#3b82f6' } },
+    ],
+  }
+  return opts
+})
 </script>
 
 <style scoped>
