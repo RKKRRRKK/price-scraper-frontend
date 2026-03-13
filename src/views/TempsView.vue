@@ -57,7 +57,7 @@
         </div>
         <div class="stat-body">
           <span class="stat-label">Pressure</span>
-          <span class="stat-value">{{ formatVal(store.latest.pressure, 1) }} hPa</span>
+          <span class="stat-value">{{ formatVal(seaLevelPressure(store.latest.pressure, store.latest.temperature), 1) }} hPa</span>
           <span class="stat-range" v-if="store.stats">
             {{ formatVal(store.stats.pressure.min, 1) }} – {{ formatVal(store.stats.pressure.max, 1) }} hPa
           </span>
@@ -150,7 +150,9 @@ const formatVal = (v, decimals = 1) =>
 
 const formatTime = (ts) => ts ? dayjs(ts).format('MMM D, HH:mm') : '–'
 
-// No longer needed — time axis uses raw timestamps
+const STATION_ALTITUDE = 178 // meters
+const seaLevelPressure = (p, t) =>
+  p * Math.pow(1 - (0.0065 * STATION_ALTITUDE) / (t + 273.15 + 0.0065 * STATION_ALTITUDE), -5.257)
 
 const sharedTooltip = {
   trigger: 'axis',
@@ -260,7 +262,7 @@ const humidityChartOptions = computed(() =>
 const pressureChartOptions = computed(() => {
   const opts = buildChartOptions(
     'Pressure',
-    store.readings.map((r) => [r.timestamp, r.pressure]),
+    store.readings.map((r) => [r.timestamp, seaLevelPressure(r.pressure, r.temperature)]),
     '#8b5cf6',
     'hPa',
     'hPa'
@@ -274,7 +276,7 @@ const pressureChartOptions = computed(() => {
     label: { fontSize: 11, position: 'insideEndTop' },
     data: [
       { yAxis: 1020, label: { formatter: 'High (1020)' }, lineStyle: { color: '#ef4444' } },
-      { yAxis: 985, label: { formatter: 'Low (985)' }, lineStyle: { color: '#3b82f6' } },
+      { yAxis: 995, label: { formatter: 'Low (995)' }, lineStyle: { color: '#3b82f6' } },
     ],
   }
   return opts
