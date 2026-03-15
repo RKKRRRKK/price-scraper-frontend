@@ -20,8 +20,8 @@
   <router-link to="/" class="logo-link">
     <img
       src="/everything.webp"
-      alt="QuantiCart"
-      style="height: 1rem; transform: scale(3); opacity: 0.5;"
+      alt="Kumquant"
+      style="height: 1rem; transform: scale(4); opacity: 0.5;"
     />
   </router-link>
 
@@ -278,9 +278,11 @@ function goLogin() {
 }
 
 .nav-groups {
+  padding: 0.5rem;
+  padding-bottom: 0.25rem;
   display: flex;
   align-items: stretch;
-  gap: 3rem;
+  gap: 5rem;
   flex: 1;
 }
 
@@ -302,7 +304,7 @@ function goLogin() {
 }
 
 .nav-section-label {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -328,7 +330,7 @@ function goLogin() {
   align-items: center;
   padding: 0.4rem 0.85rem;
   border-radius: 0.375rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 500;
   color: #4b5563;
   text-decoration: none;
