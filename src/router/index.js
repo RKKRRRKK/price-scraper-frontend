@@ -7,6 +7,7 @@ import LoginView from '@/views/LoginView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import DataView from '@/views/DataView.vue'
 import TempsView from '@/views/TempsView.vue'
+import MonitorView from '@/views/MonitorView.vue'
 
 const routes = [
   {
@@ -40,6 +41,12 @@ const routes = [
     path: '/temps',
     name: 'temps',
     component: TempsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/monitor',
+    name: 'monitor',
+    component: MonitorView,
     meta: { requiresAuth: true },
   },
 ]

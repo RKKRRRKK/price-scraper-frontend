@@ -16,55 +16,62 @@
 
     <!-- Protected area with Menubar -->
     <div v-else class="surface-ground min-h-screen flex flex-column">
-<Menubar
-  :model="navItems"
-  class="border-none shadow-2 surface-card mb-3"
-  style="padding-inline: 1rem"
->
-  <!-- main links -->
-<template #item="{ item, props }">
-  <router-link
-    v-if="item.to"
-    :to="item.to"
-    custom
-    v-slot="{ href, navigate, isActive, isExactActive }"
-  >
-    <a  :href="href"
-    style="margin-top: 0.0rem;"
-        @click="navigate"
-        v-bind="props.action"
-        :class="[
-          { 'router-link-active': isActive,
-            'router-link-exact-active': isExactActive }
-        ]">
-      <i :class="item.icon" class="mr-2" />
-      {{ item.label }}
-    </a>
-  </router-link>
-</template>
-
-  <!-- centered logo between links and user icon -->
-<template #start>
-  <router-link to="/" class='logo-link' style="display: flex; align-items: center;">
+<nav class="app-navbar surface-card shadow-2 mb-3">
+  <router-link to="/" class="logo-link">
     <img
       src="/everything.webp"
       alt="QuantiCart"
-      style="height: 1rem; margin-left: 2rem; margin-right: 3rem; transform: scale(3); margin-top: 0rem; opacity: 0.5;"
-    
+      style="height: 1rem; transform: scale(3); opacity: 0.5;"
     />
   </router-link>
-</template>
-  <!-- login / user dropdown -->
-  <template #end>
-    <div class="flex align-items-center"  style="margin-top: 0rem;">
-      <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
-      <div v-else class="relative">
-        <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
-        <TieredMenu ref="userMenu" :model="userMenuItems" popup />
+
+  <div class="nav-groups">
+    <div class="nav-section scraper-section">
+      <span class="nav-section-label">Scraper</span>
+      <div class="nav-section-links">
+        <router-link :to="{ name: 'home' }" custom v-slot="{ href, navigate, isExactActive }">
+          <a :href="href" @click="navigate" :class="{ active: isExactActive }">
+            <i class="pi pi-home mr-2" />Home
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'dashboard' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-chart-bar mr-2" />Dashboard
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'database' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-database mr-2" />Database
+          </a>
+        </router-link>
       </div>
     </div>
-  </template>
-</Menubar>
+
+    <div class="nav-section sensors-section">
+      <span class="nav-section-label">Sensors</span>
+      <div class="nav-section-links">
+        <router-link :to="{ name: 'temps' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-sun mr-2" />Weather
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'monitor' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-server mr-2" />Monitor
+          </a>
+        </router-link>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-end">
+    <Button v-if="!auth.user" icon="pi pi-user" class="p-button-text" @click="goLogin" />
+    <div v-else class="relative">
+      <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
+      <TieredMenu ref="userMenu" :model="userMenuItems" popup />
+    </div>
+  </div>
+</nav>
 
       <!-- main content -->
       <main class="flex-1 overflow-auto">
@@ -86,7 +93,6 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import Menubar from 'primevue/menubar'
 import Button from 'primevue/button'
 import TieredMenu from 'primevue/tieredmenu'
 import Ripple from 'primevue/ripple' // Import Ripple if using v-ripple directive
@@ -188,15 +194,6 @@ function resetStores() {
   // }
 }
 
-// --- Top Navigation Bar Items ---
-const navItems = ref([
-  // Use ref if items might change dynamically, otherwise const is fine
-  { label: 'Home', icon: 'pi pi-home', to: { name: 'home' } },
-  { label: 'Dashboard', icon: 'pi pi-chart-bar', to: { name: 'dashboard' } },
-  { label: 'Database', icon: 'pi pi-database', to: { name: 'database' } },
-  // Add other main navigation links here
-])
-
 // --- User Menu Items (Dropdown) ---
 // Use computed so it reacts to changes in auth.user and router availability
 const userMenuItems = computed(() => [
@@ -246,7 +243,7 @@ function goLogin() {
 
 <style scoped>
 #app {
-  width: 100ww;
+  width: 100vw;
   height: 100vh;
   max-width: none;
   margin: 0;
@@ -258,39 +255,134 @@ function goLogin() {
     display: block !important;
     place-items: initial !important;
   }
-}
-
-@media (min-width: 1024px) {
   #app {
     display: block !important;
     grid-template-columns: none !important;
   }
 }
 
- 
+/* ── Navbar ── */
+.app-navbar {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 2rem;
+  border: none;
+  gap: 1.5rem;
+}
 
-a:active {
+.logo-link {
+  display: flex;
+  align-items: center;
+  margin-right: 1.5rem;
+  text-decoration: none;
+}
+
+.nav-groups {
+  display: flex;
+  align-items: stretch;
+  gap: 3rem;
+  flex: 1;
+}
+
+/* ── Section (Scraper / Sensors) ── */
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid transparent;
+}
+
+.scraper-section {
+  border-left-color: #f97316;
+}
+
+.sensors-section {
+  border-left-color: #22c55e;
+}
+
+.nav-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  user-select: none;
+  line-height: 1;
+}
+
+.scraper-section .nav-section-label {
+  color: #fb923c;
+}
+
+.sensors-section .nav-section-label {
+  color: #4ade80;
+}
+
+.nav-section-links {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.nav-section-links a {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.375rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #4b5563;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.nav-section-links a:hover {
+  background: #f3f4f6;
+}
+
+/* ── Active states ── */
+.scraper-section .nav-section-links a.active {
+  background-color: var(--p-orange-100);
+  color: var(--p-orange-600);
+  text-shadow: 0 0 0.25px currentColor, 0 0 0.5px currentColor;
+}
+
+.scraper-section .nav-section-links a:active {
   background-color: var(--p-orange-200);
-    border-radius: 0.5rem;
 }
 
-a.router-link-active,       /* partial match */
-a.router-link-exact-active  /* exact match  */ {
-  background-color: var(--p-orange-100) !important;
-  /* optional – if PrimeVue theme gives undesirable text/icon colours */
-  color: var(--p-orange-600) !important;
-  border-radius: 0.5rem;
-    text-shadow: 0 0 0.25px currentColor,
-  0 0 0.5px currentColor;
+.sensors-section .nav-section-links a.active {
+  background-color: #dcfce7;
+  color: #15803d;
+  text-shadow: 0 0 0.25px currentColor, 0 0 0.5px currentColor;
 }
 
-.logo-link.router-link-active,
-.logo-link.router-link-exact-active {
-  background: transparent !important;
-
-
-
+.sensors-section .nav-section-links a:active {
+  background-color: #bbf7d0;
 }
 
- 
+.nav-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .app-navbar {
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .nav-groups {
+    order: 3;
+    width: 100%;
+    gap: 1.5rem;
+    overflow-x: auto;
+  }
+
+  .nav-end {
+    order: 2;
+  }
+}
 </style>
