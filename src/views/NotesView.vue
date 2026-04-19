@@ -63,37 +63,28 @@
         </div>
 
         <div class="filters">
-          <!-- Context pills -->
+          <!-- Context dropdown -->
           <div class="filter-group" v-if="store.allContexts.length">
             <span class="filter-group-label">Context</span>
-            <div class="filter-group-pills">
-              <button
-                v-for="ctx in store.allContexts" :key="ctx"
-                class="filter-pill"
-                :class="[
-                  'ctx-' + ctx,
-                  { active: store.activeContexts.includes(ctx) }
-                ]"
-                @click="store.toggleContext(ctx)"
-              >{{ ctx }}</button>
-            </div>
+            <select class="context-select" v-model="contextDropdown" @change="onContextChange">
+              <option value="">All contexts</option>
+              <option v-for="ctx in store.allContexts" :key="ctx" :value="ctx">{{ ctx }}</option>
+            </select>
           </div>
 
-          <!-- Category pills -->
-          <div class="filter-group" v-if="store.allCategories.length">
-            <span class="filter-group-label">Category</span>
-            <div class="filter-group-pills">
+          <!-- Date range filter -->
+          <div class="filter-group date-filter-group">
+            <span class="filter-group-label">Date</span>
+            <div class="date-range-inputs">
+              <input type="date" class="date-input" v-model="store.dateFrom" placeholder="From" />
+              <span class="date-separator">–</span>
+              <input type="date" class="date-input" v-model="store.dateTo" placeholder="To" />
               <button
-                v-for="cat in store.allCategories" :key="cat"
-                class="filter-pill cat-filter"
-                :class="{ active: store.activeCategories.includes(cat) }"
-                :style="{ '--cat-hue': store.categoryHue(cat) }"
-                @click="store.toggleCategory(cat)"
-              >
-                <span class="catchip-dot"></span>
-                {{ cat }}
-                <span class="filter-count">{{ store.categoryCounts[cat] || 0 }}</span>
-              </button>
+                v-if="store.dateFrom || store.dateTo"
+                class="date-clear"
+                @click="store.dateFrom = null; store.dateTo = null"
+                title="Clear dates"
+              >&times;</button>
             </div>
           </div>
 
@@ -105,7 +96,7 @@
                 :class="{ active: store.deadlineFilter }"
                 @click="store.deadlineFilter = !store.deadlineFilter"
               >
-                <i class="pi pi-clock" style="font-size: 13px;"></i>
+                <i class="pi pi-clock" style="font-size: 14px;"></i>
                 Has deadline
               </button>
             </div>
@@ -116,6 +107,24 @@
           <i class="pi pi-plus" style="font-size: 14px;"></i>
           Add Note
         </button>
+      </div>
+
+      <!-- ── Category filter bar ── -->
+      <div class="category-bar" v-if="store.allCategories.length">
+        <span class="filter-group-label">Categories</span>
+        <div class="category-pills">
+          <button
+            v-for="cat in store.allCategories" :key="cat"
+            class="cat-pill"
+            :class="{ active: store.activeCategories.includes(cat) }"
+            :style="{ '--cat-hue': store.categoryHue(cat) }"
+            @click="store.toggleCategory(cat)"
+          >
+            <span class="catchip-dot"></span>
+            {{ cat }}
+            <span class="filter-count">{{ store.categoryCounts[cat] || 0 }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- ── Loading ── -->
@@ -229,7 +238,7 @@
                 >{{ kw }} <span class="kw-x">&times;</span></span>
                 <input
                   class="kw-input"
-                  placeholder="+ add tag"
+                  placeholder="+ tag ↵"
                   @keydown.enter.prevent="addKeywordToEdit"
                   v-model="newKeyword"
                 />
@@ -347,7 +356,7 @@
             >{{ kw }} <span class="kw-x">&times;</span></span>
             <input
               class="kw-input"
-              placeholder="+ keyword (Enter)"
+              placeholder="+ keyword ↵"
               @keydown.enter.prevent="addKeywordToModal"
               v-model="modalNewKeyword"
             />
@@ -394,6 +403,11 @@ const showTweaks = ref(false)
 const accentHue = ref(295)
 const accentHues = [295, 260, 210, 160, 120, 45, 10, 340]
 const selectedNote = ref(null)
+const contextDropdown = ref('')
+
+function onContextChange() {
+  store.activeContexts = contextDropdown.value ? [contextDropdown.value] : []
+}
 
 // ── Modal state ──
 const modalOpen = ref(false)
@@ -586,8 +600,8 @@ watch(() => store.filteredNotes, () => {
 
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   min-height: calc(100vh - 80px);
 }
@@ -598,6 +612,8 @@ watch(() => store.filteredNotes, () => {
 /* ── Main — full width for ultrawide ── */
 .notes-main {
   padding: 36px 48px 80px;
+  max-width: 1700px;
+  margin: 0 auto;
   width: 100%;
   position: relative;
 }
@@ -607,12 +623,12 @@ watch(() => store.filteredNotes, () => {
   gap: 32px; margin-bottom: 20px;
 }
 .eyebrow {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.12em;
   color: var(--accent-600);
   margin-bottom: 6px;
 }
 .notes-title {
-  font-size: 34px; font-weight: 700; margin: 0;
+  font-size: 36px; font-weight: 700; margin: 0;
   letter-spacing: -0.02em;
   color: var(--text);
 }
@@ -632,8 +648,8 @@ watch(() => store.filteredNotes, () => {
   min-width: 80px;
 }
 .stat + .stat { border-left: 1px solid var(--border-soft); }
-.stat-value { font-size: 24px; font-weight: 700; line-height: 1; color: var(--text); }
-.stat-label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; font-weight: 600; }
+.stat-value { font-size: 26px; font-weight: 700; line-height: 1; color: var(--text); }
+.stat-label { font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; font-weight: 600; }
 
 /* ── Upcoming ── */
 .upcoming {
@@ -687,7 +703,7 @@ watch(() => store.filteredNotes, () => {
 .searchwrap:focus-within { border-color: var(--accent-400); background: #fff; box-shadow: 0 0 0 3px var(--accent-100); }
 .search {
   flex: 1; border: none; outline: none; background: transparent;
-  font-size: 14px;
+  font-size: 15px;
 }
 .search::placeholder { color: var(--text-faint); }
 .search-clear {
@@ -697,56 +713,119 @@ watch(() => store.filteredNotes, () => {
 }
 .search-clear:hover { background: var(--border); color: var(--text); }
 
-.filters { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; flex: 1; }
-.filter-group { display: flex; align-items: center; gap: 8px; }
+.filters { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; flex: 1; }
+.filter-group { display: flex; align-items: center; gap: 10px; }
 .filter-group-label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--text-faint); font-weight: 600;
 }
-.filter-group-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-group-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* Context dropdown */
+.context-select {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 16px;
+  height: 42px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  min-width: 160px;
+  cursor: pointer;
+}
+.context-select:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+
+/* Date filter */
+.date-filter-group { gap: 10px; }
+.date-range-inputs {
+  display: flex; align-items: center; gap: 8px;
+}
+.date-input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  height: 42px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  min-width: 140px;
+}
+.date-input:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+.date-separator { color: var(--text-faint); font-size: 16px; }
+.date-clear {
+  width: 28px; height: 28px; border-radius: 50%;
+  color: var(--text-faint); display: flex; align-items: center; justify-content: center;
+  font-size: 20px; line-height: 1;
+}
+.date-clear:hover { background: var(--border); color: var(--text); }
+
+/* Deadline filter pill (stays as pill) */
 .filter-pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 16px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 20px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 120ms;
 }
 .filter-pill:hover { border-color: var(--text-faint); color: var(--text); background: var(--bg-sunken); }
-.filter-pill .catchip-dot { width: 8px; height: 8px; border-radius: 50%; background: oklch(0.6 0.16 var(--cat-hue)); }
-.filter-count {
-  font-size: 11px; color: var(--text-faint);
-  background: var(--bg-sunken);
-  padding: 2px 7px; border-radius: 999px;
-  margin-left: 2px; font-weight: 600;
+.filter-pill.deadline-filter.active {
+  background: oklch(0.95 0.06 35); color: oklch(0.45 0.14 35); border-color: oklch(0.78 0.1 35);
 }
 
-.filter-pill.ctx-work.active { background: oklch(0.96 0.04 var(--accent-hue)); color: var(--accent-600); border-color: var(--accent-400); }
-.filter-pill.ctx-personal.active { background: oklch(0.96 0.04 55); color: oklch(0.45 0.12 55); border-color: oklch(0.78 0.1 55); }
-
-.filter-pill.cat-filter.active {
+/* ── Category bar (separate row, big pills) ── */
+.category-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 8px 0;
+}
+.category-pills {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cat-pill {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 120ms;
+  cursor: pointer;
+}
+.cat-pill:hover { border-color: var(--text-faint); color: var(--text); background: var(--bg-sunken); }
+.cat-pill .catchip-dot { width: 10px; height: 10px; border-radius: 50%; background: oklch(0.6 0.16 var(--cat-hue)); }
+.cat-pill .filter-count {
+  font-size: 12px; color: var(--text-faint);
+  background: var(--bg-sunken);
+  padding: 3px 9px; border-radius: 999px;
+  margin-left: 2px; font-weight: 600;
+}
+.cat-pill.active {
   background: oklch(0.96 0.05 var(--cat-hue));
   color: oklch(0.4 0.14 var(--cat-hue));
   border-color: oklch(0.8 0.1 var(--cat-hue));
 }
-.filter-pill.cat-filter.active .filter-count { background: oklch(0.92 0.06 var(--cat-hue)); }
-
-.filter-pill.deadline-filter.active {
-  background: oklch(0.95 0.06 35); color: oklch(0.45 0.14 35); border-color: oklch(0.78 0.1 35);
-}
+.cat-pill.active .filter-count { background: oklch(0.92 0.06 var(--cat-hue)); }
 
 .add-btn {
   display: inline-flex; align-items: center; gap: 10px;
   background: var(--accent-500);
   color: #fff;
-  padding: 12px 28px;
-  height: 44px;
+  padding: 12px 36px;
+  height: 46px;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   box-shadow: 0 2px 8px oklch(0.5 0.18 var(--accent-hue) / 0.25);
   transition: background 120ms, transform 120ms, box-shadow 120ms;
@@ -755,24 +834,24 @@ watch(() => store.filteredNotes, () => {
 }
 .add-btn:hover { background: var(--accent-600); transform: translateY(-1px); box-shadow: 0 4px 14px oklch(0.5 0.18 var(--accent-hue) / 0.3); }
 .add-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-.add-btn-lg { height: 48px; padding: 14px 32px; font-size: 15px; }
+.add-btn-lg { height: 50px; padding: 14px 40px; font-size: 16px; }
 
 /* ── Shared atoms ── */
 .catchip {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 999px;
   background: oklch(0.97 0.04 var(--cat-hue));
   color: oklch(0.38 0.14 var(--cat-hue));
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
 .catchip-dot { width: 7px; height: 7px; border-radius: 50%; background: oklch(0.58 0.16 var(--cat-hue)); }
 
 .ctxpill {
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 13px;
+  padding: 5px 12px;
   border-radius: 6px;
   font-weight: 600;
   text-transform: lowercase;
@@ -797,8 +876,8 @@ watch(() => store.filteredNotes, () => {
 
 .deadline {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 13px;
+  padding: 5px 12px;
   border-radius: 6px;
   font-weight: 600;
 }
@@ -809,8 +888,8 @@ watch(() => store.filteredNotes, () => {
 
 .speaker {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 13px;
+  padding: 5px 12px;
   border-radius: 6px;
   background: oklch(0.96 0.02 320);
   color: oklch(0.45 0.11 320);
@@ -872,8 +951,13 @@ watch(() => store.filteredNotes, () => {
 }
 .split-card.selected {
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 2px var(--accent-100), var(--shadow);
+  border-width: 2px;
+  box-shadow:
+    0 0 0 3px var(--accent-100),
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 8px 24px oklch(0.5 0.18 var(--accent-hue) / 0.12);
   background: var(--accent-050);
+  transform: translateY(-2px);
 }
 
 /* Category color stripe on left */
@@ -898,18 +982,18 @@ watch(() => store.filteredNotes, () => {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
 }
 .split-card-title {
-  font-size: 15px; font-weight: 600; color: var(--text);
+  font-size: 16px; font-weight: 600; color: var(--text);
   line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .split-card-date {
-  font-size: 12px; color: var(--text-faint); white-space: nowrap;
+  font-size: 13px; color: var(--text-faint); white-space: nowrap;
   flex-shrink: 0; padding-top: 2px;
 }
 
 .split-card-preview {
-  font-size: 13px; color: var(--text-dim); line-height: 1.5;
+  font-size: 14px; color: var(--text-dim); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -953,7 +1037,7 @@ watch(() => store.filteredNotes, () => {
   min-height: 300px;
   border: none; outline: none;
   resize: none;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.7;
   color: var(--text);
   background: transparent;
@@ -967,7 +1051,7 @@ watch(() => store.filteredNotes, () => {
 }
 
 .foot-label {
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--text-faint); margin-right: 4px;
 }
 
@@ -986,9 +1070,9 @@ watch(() => store.filteredNotes, () => {
 .sel {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 14px;
-  height: 38px;
-  font-size: 13px;
+  padding: 9px 16px;
+  height: 40px;
+  font-size: 14px;
   background: #fff;
   color: var(--text);
   outline: none;
@@ -998,12 +1082,12 @@ watch(() => store.filteredNotes, () => {
 
 .kw-input {
   border: 1px solid var(--border-soft); outline: none; background: var(--bg-sunken);
-  padding: 5px 12px;
+  padding: 6px 14px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-family: 'SF Mono', ui-monospace, monospace;
-  width: 120px;
-  height: 30px;
+  width: 140px;
+  height: 32px;
 }
 .kw-input:focus { background: var(--accent-050); border-color: var(--accent-400); }
 
@@ -1041,7 +1125,7 @@ watch(() => store.filteredNotes, () => {
   padding: 20px 28px;
   border-bottom: 1px solid var(--border-soft);
 }
-.modal-title { font-size: 18px; font-weight: 700; }
+.modal-title { font-size: 20px; font-weight: 700; }
 .modal-close {
   width: 32px; height: 32px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
@@ -1062,7 +1146,7 @@ watch(() => store.filteredNotes, () => {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px 20px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.65;
   resize: vertical;
   outline: none;
@@ -1079,7 +1163,7 @@ watch(() => store.filteredNotes, () => {
   border-top: 1px solid var(--border-soft);
 }
 .btn-ghost {
-  padding: 10px 20px; height: 40px; border-radius: 10px;
+  padding: 10px 24px; height: 42px; border-radius: 10px;
   font-size: 14px; color: var(--text-dim);
   border: 1px solid var(--border);
   background: #fff;

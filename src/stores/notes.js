@@ -14,6 +14,8 @@ export const useNotesStore = defineStore('notes', () => {
   const activeContexts = ref([])      // ['work','personal']
   const activeCategories = ref([])    // ['meeting','idea',...]
   const deadlineFilter = ref(false)
+  const dateFrom = ref(null)       // 'YYYY-MM-DD' string or null
+  const dateTo = ref(null)         // 'YYYY-MM-DD' string or null
 
   // ── All unique categories from data ──
   const allCategories = computed(() => {
@@ -78,6 +80,18 @@ export const useNotesStore = defineStore('notes', () => {
     // Deadline filter
     if (deadlineFilter.value) {
       result = result.filter(n => n.deadline)
+    }
+
+    // Date range filter
+    if (dateFrom.value) {
+      const from = new Date(dateFrom.value)
+      from.setHours(0, 0, 0, 0)
+      result = result.filter(n => new Date(n.created_at) >= from)
+    }
+    if (dateTo.value) {
+      const to = new Date(dateTo.value)
+      to.setHours(23, 59, 59, 999)
+      result = result.filter(n => new Date(n.created_at) <= to)
     }
 
     // Search (content + keywords)
@@ -237,6 +251,8 @@ export const useNotesStore = defineStore('notes', () => {
     activeContexts.value = []
     activeCategories.value = []
     deadlineFilter.value = false
+    dateFrom.value = null
+    dateTo.value = null
   }
 
   // ── Toggle helpers ──
@@ -261,6 +277,8 @@ export const useNotesStore = defineStore('notes', () => {
     activeContexts,
     activeCategories,
     deadlineFilter,
+    dateFrom,
+    dateTo,
     allCategories,
     allContexts,
     filteredNotes,
