@@ -8,6 +8,7 @@ import SettingsView from '@/views/SettingsView.vue'
 import DataView from '@/views/DataView.vue'
 import TempsView from '@/views/TempsView.vue'
 import MonitorView from '@/views/MonitorView.vue'
+import NotesView from '@/views/NotesView.vue'
 
 const routes = [
   {
@@ -47,6 +48,12 @@ const routes = [
     path: '/monitor',
     name: 'monitor',
     component: MonitorView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/notes',
+    name: 'notes',
+    component: NotesView,
     meta: { requiresAuth: true },
   },
 ]

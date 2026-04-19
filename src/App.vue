@@ -62,6 +62,17 @@
         </router-link>
       </div>
     </div>
+
+    <div class="nav-section productivity-section">
+      <span class="nav-section-label">Productivity</span>
+      <div class="nav-section-links">
+        <router-link :to="{ name: 'notes' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-file-edit mr-2" />Notes
+          </a>
+        </router-link>
+      </div>
+    </div>
   </div>
 
   <div class="nav-end">
@@ -101,6 +112,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useSearchTags } from '@/stores/searchTags'
 import { useSearchTerms } from '@/stores/searchTerms'
+import { useNotesStore } from '@/stores/notes'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -108,6 +120,7 @@ const auth = useAuthStore()
 const sidebarStore = useSidebarStore()
 const tagsStore = useSearchTags()
 const termsStore = useSearchTerms()
+const notesStore = useNotesStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -167,6 +180,7 @@ async function fetchDataForUser() {
       sidebarStore.fetchFolders(), // Fetch folders/files for sidebar
       tagsStore.fetchTags(), // Fetch all available tags
       termsStore.fetchAll(), // Fetch all search terms and their initial prices
+      notesStore.fetchNotes(), // Fetch notes for productivity section
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -184,6 +198,7 @@ function resetStores() {
   sidebarStore.reset()
   tagsStore.reset()
   termsStore.reset()
+  notesStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {
@@ -303,6 +318,10 @@ function goLogin() {
   border-left-color: #22c55e;
 }
 
+.productivity-section {
+  border-left-color: #a855f7;
+}
+
 .nav-section-label {
   font-size: 0.8rem;
   font-weight: 700;
@@ -318,6 +337,10 @@ function goLogin() {
 
 .sensors-section .nav-section-label {
   color: #4ade80;
+}
+
+.productivity-section .nav-section-label {
+  color: #c084fc;
 }
 
 .nav-section-links {
@@ -361,6 +384,16 @@ function goLogin() {
 
 .sensors-section .nav-section-links a:active {
   background-color: #bbf7d0;
+}
+
+.productivity-section .nav-section-links a.active {
+  background-color: #f3e8ff;
+  color: #7e22ce;
+  text-shadow: 0 0 0.25px currentColor, 0 0 0.5px currentColor;
+}
+
+.productivity-section .nav-section-links a:active {
+  background-color: #e9d5ff;
 }
 
 .nav-end {
