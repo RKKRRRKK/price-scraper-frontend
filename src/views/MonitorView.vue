@@ -1,7 +1,6 @@
 <template>
   <div class="monitor-page">
     <div class="monitor-header">
-      <h1>Pi Monitor</h1>
       <div class="header-controls">
         <Select
           v-model="store.timeRange"
@@ -173,8 +172,8 @@ const sharedDataZoom = [
   {
     type: 'slider', start: 0, end: 100, height: 20, bottom: 8,
     borderColor: 'transparent', backgroundColor: '#f1f5f9',
-    fillerColor: 'rgba(249, 115, 22, 0.15)',
-    handleStyle: { color: '#f97316' },
+    fillerColor: 'rgba(34, 197, 94, 0.15)',
+    handleStyle: { color: '#16a34a' },
   },
 ]
 
@@ -278,8 +277,8 @@ const cpuMemChartOptions = computed(() =>
     yAxisName: '%',
     yAxisMin: 0, yAxisMax: 100,
     series: [
-      makeSeries('CPU', store.readings.map(r => [r.timestamp, r.cpu_percent]), '#f97316'),
-      makeSeries('Memory', store.readings.map(r => [r.timestamp, r.mem_percent]), '#3b82f6'),
+      makeSeries('CPU', store.readings.map(r => [r.timestamp, r.cpu_percent]), '#65a30d'),
+      makeSeries('Memory', store.readings.map(r => [r.timestamp, r.mem_percent]), '#0d9488'),
     ],
   })
 )
@@ -289,10 +288,10 @@ const cpuTempChartOptions = computed(() =>
     title: 'CPU Temperature',
     yAxisName: '°C',
     series: [
-      makeSeries('Temp', store.readings.map(r => [r.timestamp, r.cpu_temp_c]), '#ef4444'),
+      makeSeries('Temp', store.readings.map(r => [r.timestamp, r.cpu_temp_c]), '#047857'),
     ],
     markLines: [
-      { yAxis: 80, label: { formatter: 'Throttle (80°C)' }, lineStyle: { color: '#ef4444' } },
+      { yAxis: 80, label: { formatter: 'Throttle (80°C)' }, lineStyle: { color: '#047857' } },
     ],
   })
 )
@@ -302,8 +301,8 @@ const networkChartOptions = computed(() =>
     title: 'Network Throughput',
     yAxisName: 'KB/s',
     series: [
-      makeSeries('RX', networkRates.value.rx, '#06b6d4'),
-      makeSeries('TX', networkRates.value.tx, '#8b5cf6'),
+      makeSeries('RX', networkRates.value.rx, '#84cc16'),
+      makeSeries('TX', networkRates.value.tx, '#15803d'),
     ],
   })
 )
@@ -371,11 +370,11 @@ const networkChartOptions = computed(() =>
 }
 
 .ping-card .stat-icon { background: #f0fdf4; color: #22c55e; }
-.loss-card .stat-icon { background: #fffbeb; color: #f59e0b; }
-.dns-card .stat-icon { background: #ecfeff; color: #06b6d4; }
-.cpu-card .stat-icon { background: #fff7ed; color: #f97316; }
-.mem-card .stat-icon { background: #eff6ff; color: #3b82f6; }
-.temp-card .stat-icon { background: #fef2f2; color: #ef4444; }
+.loss-card .stat-icon { background: #f7fee7; color: #84cc16; }
+.dns-card .stat-icon { background: #ecfdf5; color: #10b981; }
+.cpu-card .stat-icon { background: #f7fee7; color: #65a30d; }
+.mem-card .stat-icon { background: #f0fdfa; color: #0d9488; }
+.temp-card .stat-icon { background: #ecfdf5; color: #047857; }
 
 .stat-body {
   display: flex;

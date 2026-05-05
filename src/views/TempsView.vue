@@ -1,7 +1,6 @@
 <template>
   <div class="temps-page">
     <div class="temps-header">
-      <h1>Weather Station</h1>
       <div class="header-controls">
         <Select
           v-model="store.timeRange"
@@ -177,8 +176,8 @@ const sharedDataZoom = [
     bottom: 8,
     borderColor: 'transparent',
     backgroundColor: '#f1f5f9',
-    fillerColor: 'rgba(249, 115, 22, 0.15)',
-    handleStyle: { color: '#f97316' },
+    fillerColor: 'rgba(34, 197, 94, 0.15)',
+    handleStyle: { color: '#16a34a' },
   },
 ]
 
@@ -243,7 +242,7 @@ const temperatureChartOptions = computed(() =>
   buildChartOptions(
     'Temperature',
     store.readings.map((r) => [r.timestamp, r.temperature]),
-    '#ef4444',
+    '#16a34a',
     '°C',
     '°C'
   )
@@ -253,7 +252,7 @@ const humidityChartOptions = computed(() =>
   buildChartOptions(
     'Humidity',
     store.readings.map((r) => [r.timestamp, r.humidity]),
-    '#3b82f6',
+    '#0d9488',
     '%',
     '%'
   )
@@ -263,7 +262,7 @@ const pressureChartOptions = computed(() => {
   const opts = buildChartOptions(
     'Pressure',
     store.readings.map((r) => [r.timestamp, seaLevelPressure(r.pressure, r.temperature)]),
-    '#8b5cf6',
+    '#65a30d',
     'hPa',
     'hPa'
   )
@@ -275,8 +274,8 @@ const pressureChartOptions = computed(() => {
     lineStyle: { type: 'dashed', width: 1.5 },
     label: { fontSize: 11, position: 'insideEndTop' },
     data: [
-      { yAxis: 1020, label: { formatter: 'High (1020)' }, lineStyle: { color: '#ef4444' } },
-      { yAxis: 995, label: { formatter: 'Low (995)' }, lineStyle: { color: '#3b82f6' } },
+      { yAxis: 1020, label: { formatter: 'High (1020)' }, lineStyle: { color: '#047857' } },
+      { yAxis: 995, label: { formatter: 'Low (995)' }, lineStyle: { color: '#84cc16' } },
     ],
   }
   return opts
@@ -345,23 +344,23 @@ const pressureChartOptions = computed(() => {
 }
 
 .temp-card .stat-icon {
-  background: #fef2f2;
-  color: #ef4444;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .humidity-card .stat-icon {
-  background: #eff6ff;
-  color: #3b82f6;
+  background: #f0fdfa;
+  color: #0d9488;
 }
 
 .pressure-card .stat-icon {
-  background: #f5f3ff;
-  color: #8b5cf6;
+  background: #f7fee7;
+  color: #65a30d;
 }
 
 .readings-card .stat-icon {
-  background: #f0fdf4;
-  color: #22c55e;
+  background: #ecfdf5;
+  color: #047857;
 }
 
 .stat-body {

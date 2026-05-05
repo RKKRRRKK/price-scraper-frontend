@@ -29,25 +29,33 @@ export const useNotesStore = defineStore('notes', () => {
     return [...set].sort()
   })
 
-  // ── Category hue map (deterministic) ──
-  const CATEGORY_HUES = {
-    meeting: 260,
-    idea: 45,
-    task: 160,
-    research: 210,
-    personal: 30,
-    followup: 330,
-    reference: 180,
-    decision: 290,
-  }
-  function categoryHue(cat) {
-    if (!cat) return 0
-    const key = cat.toLowerCase()
-    if (CATEGORY_HUES[key] !== undefined) return CATEGORY_HUES[key]
-    // Hash fallback
-    let h = 0
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360
-    return h
+  // ── Category color palette ──
+  // Each entry is a full HSL color. Edit h (0–360), s (0–100), l (0–100)
+  // directly to pick the exact color you want. Purple (h ~250–320) is
+  // reserved for the selection accent — avoid that band here.
+  const CATEGORY_PALETTE = [
+    { h: 215, s: 100, l: 50 }, // blue
+    { h: 39,  s: 100, l: 50 }, // orange
+    { h: 140, s: 100, l: 42 }, // green
+    { h: 0,   s: 0,   l: 20 }, // near-black
+    { h: 64,  s: 100, l: 45 }, // yellow-green
+    { h: 185, s: 100, l: 40 }, // cyan
+    { h: 0,   s: 100, l: 55 }, // red
+  ]
+
+  // Assign palette entries to categories in the order they appear in
+  // `allCategories` (alphabetical). Wraps if there are more categories
+  // than palette entries. Unknown categories fall back to a deterministic
+  // hash into the same palette.
+  function categoryColor(cat) {
+    if (!cat) return CATEGORY_PALETTE[0]
+    const idx = allCategories.value.indexOf(cat)
+    if (idx === -1) {
+      let h = 0
+      for (let i = 0; i < cat.length; i++) h = (h * 31 + cat.charCodeAt(i)) >>> 0
+      return CATEGORY_PALETTE[h % CATEGORY_PALETTE.length]
+    }
+    return CATEGORY_PALETTE[idx % CATEGORY_PALETTE.length]
   }
 
   // ── Deadline urgency helper ──
@@ -285,7 +293,7 @@ export const useNotesStore = defineStore('notes', () => {
     stats,
     upcomingDeadlines,
     categoryCounts,
-    categoryHue,
+    categoryColor,
     deadlineUrgency,
     fetchNotes,
     addNote,

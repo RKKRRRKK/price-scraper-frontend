@@ -4,10 +4,6 @@
       <!-- ── Header ── -->
       <div class="notes-header">
         <div class="notes-title-row">
-          <div>
-            <div class="eyebrow">PRODUCTIVITY</div>
-            <h1 class="notes-title">Notes</h1>
-          </div>
           <div class="notes-stats" v-if="store.stats.total > 0">
             <div class="stat">
               <div class="stat-value">{{ store.stats.total }}</div>
@@ -49,7 +45,7 @@
       <!-- ── Filter bar ── -->
       <div class="filterbar">
         <div class="searchwrap">
-          <i class="pi pi-search" style="color: var(--text-faint); font-size: 15px;"></i>
+          <i class="pi pi-search" style="color: var(--text-faint); font-size: 0.9375rem;"></i>
           <input
             class="search"
             placeholder="Search notes & keywords..."
@@ -96,7 +92,7 @@
                 :class="{ active: store.deadlineFilter }"
                 @click="store.deadlineFilter = !store.deadlineFilter"
               >
-                <i class="pi pi-clock" style="font-size: 14px;"></i>
+                <i class="pi pi-clock" style="font-size: 0.875rem;"></i>
                 Has deadline
               </button>
             </div>
@@ -104,7 +100,7 @@
         </div>
 
         <button class="add-btn" @click="openAddModal">
-          <i class="pi pi-plus" style="font-size: 14px;"></i>
+          <i class="pi pi-plus" style="font-size: 0.875rem;"></i>
           Add Note
         </button>
       </div>
@@ -117,7 +113,7 @@
             v-for="cat in store.allCategories" :key="cat"
             class="cat-pill"
             :class="{ active: store.activeCategories.includes(cat) }"
-            :style="{ '--cat-hue': store.categoryHue(cat) }"
+            :style="catStyle(cat)"
             @click="store.toggleCategory(cat)"
           >
             <span class="catchip-dot"></span>
@@ -142,7 +138,7 @@
         <div class="empty-sub">Create your first note to get started.</div>
         <div class="empty-actions">
           <button class="add-btn add-btn-lg" @click="openAddModal">
-            <i class="pi pi-plus" style="font-size: 14px;"></i> New Note
+            <i class="pi pi-plus" style="font-size: 0.875rem;"></i> New Note
           </button>
         </div>
       </div>
@@ -161,7 +157,7 @@
             v-for="note in store.filteredNotes" :key="note.id"
             class="split-card"
             :class="{ selected: selectedNote?.id === note.id }"
-            :style="{ '--cat-hue': store.categoryHue(note.category) }"
+            :style="catStyle(note.category)"
             @click="selectNote(note)"
           >
             <div class="split-card-stripe"></div>
@@ -174,16 +170,16 @@
               <div class="split-card-meta">
                 <span
                   class="catchip"
-                  :style="{ '--cat-hue': store.categoryHue(note.category) }"
+                  :style="catStyle(note.category)"
                 >
                   <span class="catchip-dot"></span> {{ note.category }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + note.context">{{ note.context }}</span>
                 <span v-if="note.speaker" class="speaker">
-                  <i class="pi pi-user" style="font-size: 11px;"></i> {{ note.speaker }}
+                  <i class="pi pi-user" style="font-size: 0.6875rem;"></i> {{ note.speaker }}
                 </span>
                 <span v-if="note.deadline && note.deadline_date" class="deadline" :class="'deadline-' + store.deadlineUrgency(note.deadline_date)">
-                  <i class="pi pi-clock" style="font-size: 11px;"></i>
+                  <i class="pi pi-clock" style="font-size: 0.6875rem;"></i>
                   {{ formatDeadlineDate(note.deadline_date) }}
                 </span>
                 <div class="split-card-kws" v-if="note.keywords?.length">
@@ -200,7 +196,7 @@
           <div class="inline-editor">
             <div class="inline-editor-head">
               <div class="inline-editor-meta">
-                <span class="catchip" :style="{ '--cat-hue': store.categoryHue(editForm.category) }">
+                <span class="catchip" :style="catStyle(editForm.category)">
                   <span class="catchip-dot"></span> {{ editForm.category }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + editForm.context">{{ editForm.context }}</span>
@@ -208,10 +204,10 @@
               </div>
               <div class="inline-editor-actions">
                 <button class="btn-ghost btn-save" @click="saveInlineEdit">
-                  <i class="pi pi-check" style="font-size: 13px; margin-right: 6px;"></i> Save
+                  <i class="pi pi-check" style="font-size: 0.8125rem; margin-right: 0.375rem;"></i> Save
                 </button>
                 <button class="btn-ghost btn-danger" @click="confirmDelete(selectedNote.id)">
-                  <i class="pi pi-trash" style="font-size: 13px; margin-right: 6px;"></i> Delete
+                  <i class="pi pi-trash" style="font-size: 0.8125rem; margin-right: 0.375rem;"></i> Delete
                 </button>
               </div>
             </div>
@@ -282,7 +278,7 @@
         </div>
         <div v-else class="split-editor">
           <div class="split-placeholder">
-            <i class="pi pi-file-edit" style="font-size: 3rem; color: var(--text-faint); margin-bottom: 16px;"></i>
+            <i class="pi pi-file-edit" style="font-size: 3rem; color: var(--text-faint); margin-bottom: 1rem;"></i>
             <div class="split-placeholder-title">Select a note</div>
             <div class="split-placeholder-sub">Choose a note from the list to view and edit its contents.</div>
           </div>
@@ -295,7 +291,7 @@
         @click="showTweaks = !showTweaks"
         title="Display settings"
       >
-        <i class="pi pi-palette" style="font-size: 16px;"></i>
+        <i class="pi pi-palette" style="font-size: 1rem;"></i>
       </button>
 
       <!-- ── Tweaks panel ── -->
@@ -319,7 +315,7 @@
         <div class="modal-head">
           <span class="modal-title">{{ modalMode === 'add' ? 'New Note' : 'Edit Note' }}</span>
           <button class="modal-close" @click="closeModal">
-            <i class="pi pi-times" style="font-size: 14px;"></i>
+            <i class="pi pi-times" style="font-size: 0.875rem;"></i>
           </button>
         </div>
         <div class="modal-body">
@@ -370,7 +366,7 @@
             </label>
             <template v-if="modalForm.deadline">
               <input type="date" class="sel" v-model="modalForm.deadline_date" />
-              <input class="sel" v-model="modalForm.deadline_stakeholder" placeholder="Stakeholder" style="min-width: 140px;" />
+              <input class="sel" v-model="modalForm.deadline_stakeholder" placeholder="Stakeholder" style="min-width: 8.75rem;" />
             </template>
           </div>
         </div>
@@ -557,6 +553,15 @@ function formatDeadlineDate(d) {
   return d ? dayjs(d).format('MMM D') : ''
 }
 
+function catStyle(cat) {
+  const c = store.categoryColor(cat)
+  return {
+    '--cat-h': c.h,
+    '--cat-s': c.s + '%',
+    '--cat-l': c.l + '%',
+  }
+}
+
 function setAccent(hue) {
   accentHue.value = hue
   document.documentElement.style.setProperty('--accent-hue', hue)
@@ -590,8 +595,8 @@ watch(() => store.filteredNotes, () => {
   --text-dim:    #5c5c5c;
   --text-faint:  #9a9a9a;
 
-  --radius:    12px;
-  --radius-lg: 16px;
+  --radius:    0.75rem;
+  --radius-lg: 1rem;
 
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
   --shadow:     0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
@@ -600,10 +605,10 @@ watch(() => store.filteredNotes, () => {
 
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;
   color: var(--text);
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - 5rem);
 }
 
 .notes-app button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; }
@@ -611,24 +616,24 @@ watch(() => store.filteredNotes, () => {
 
 /* ── Main — full width for ultrawide ── */
 .notes-main {
-  padding: 36px 48px 80px;
-  max-width: 1700px;
+  padding: 2.25rem 3rem 5rem;
+  max-width: 106.25rem;
   margin: 0 auto;
   width: 100%;
   position: relative;
 }
-.notes-header { margin-bottom: 28px; }
+.notes-header { margin-bottom: 1.75rem; }
 .notes-title-row {
   display: flex; justify-content: space-between; align-items: flex-end;
-  gap: 32px; margin-bottom: 20px;
+  gap: 2rem; margin-bottom: 1.25rem;
 }
 .eyebrow {
-  font-size: 13px; font-weight: 700; letter-spacing: 0.12em;
+  font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--accent-600);
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 .notes-title {
-  font-size: 36px; font-weight: 700; margin: 0;
+  font-size: 2.25rem; font-weight: 700; margin: 0;
   letter-spacing: -0.02em;
   color: var(--text);
 }
@@ -639,137 +644,137 @@ watch(() => store.filteredNotes, () => {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 6px;
+  padding: 0.375rem;
   box-shadow: var(--shadow-sm);
 }
 .stat {
-  padding: 12px 24px;
+  padding: 0.75rem 1.5rem;
   text-align: center;
-  min-width: 80px;
+  min-width: 5rem;
 }
 .stat + .stat { border-left: 1px solid var(--border-soft); }
-.stat-value { font-size: 26px; font-weight: 700; line-height: 1; color: var(--text); }
-.stat-label { font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; font-weight: 600; }
+.stat-value { font-size: 1.625rem; font-weight: 700; line-height: 1; color: var(--text); }
+.stat-label { font-size: 0.75rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.375rem; font-weight: 600; }
 
 /* ── Upcoming ── */
 .upcoming {
-  display: flex; align-items: center; gap: 20px;
+  display: flex; align-items: center; gap: 1.25rem;
   background: linear-gradient(90deg, var(--accent-050), transparent 60%);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  padding: 14px 20px;
-  margin-bottom: 8px;
+  padding: 0.875rem 1.25rem;
+  margin-bottom: 0.5rem;
 }
 .upcoming-label {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+  font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--accent-600); text-transform: uppercase;
   white-space: nowrap;
 }
-.upcoming-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.upcoming-row { display: flex; gap: 0.625rem; flex-wrap: wrap; }
 .upcoming-pill {
-  display: inline-flex; align-items: center; gap: 10px;
+  display: inline-flex; align-items: center; gap: 0.625rem;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 8px 16px 8px 8px;
+  padding: 0.5rem 1rem 0.5rem 0.5rem;
   transition: border-color 120ms, transform 120ms, box-shadow 120ms;
   box-shadow: var(--shadow-sm);
 }
 .upcoming-pill:hover { border-color: var(--accent-400); transform: translateY(-1px); box-shadow: var(--shadow); }
-.upcoming-title { font-size: 13px; color: var(--text-dim); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upcoming-title { font-size: 0.8125rem; color: var(--text-dim); max-width: 15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Filter bar ── */
 .filterbar {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 1.25rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 24px;
-  margin-bottom: 24px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
   box-shadow: var(--shadow-sm);
 }
 .searchwrap {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 0.75rem;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 16px;
-  height: 44px;
-  min-width: 280px;
+  border-radius: 0.625rem;
+  padding: 0.625rem 1rem;
+  height: 2.75rem;
+  min-width: 17.5rem;
   flex-shrink: 0;
 }
 .searchwrap:focus-within { border-color: var(--accent-400); background: #fff; box-shadow: 0 0 0 3px var(--accent-100); }
 .search {
   flex: 1; border: none; outline: none; background: transparent;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 .search::placeholder { color: var(--text-faint); }
 .search-clear {
-  width: 22px; height: 22px; border-radius: 50%;
+  width: 1.375rem; height: 1.375rem; border-radius: 50%;
   color: var(--text-faint); display: flex; align-items: center; justify-content: center;
-  font-size: 18px; line-height: 1;
+  font-size: 1.125rem; line-height: 1;
 }
 .search-clear:hover { background: var(--border); color: var(--text); }
 
-.filters { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; flex: 1; }
-.filter-group { display: flex; align-items: center; gap: 10px; }
+.filters { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: center; flex: 1; }
+.filter-group { display: flex; align-items: center; gap: 0.625rem; }
 .filter-group-label {
-  font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--text-faint); font-weight: 600;
 }
-.filter-group-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-group-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 /* Context dropdown */
 .context-select {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 9px 16px;
-  height: 42px;
-  font-size: 14px;
+  border-radius: 0.625rem;
+  padding: 0.5625rem 1rem;
+  height: 2.625rem;
+  font-size: 0.875rem;
   background: #fff;
   color: var(--text);
   outline: none;
-  min-width: 160px;
+  min-width: 10rem;
   cursor: pointer;
 }
 .context-select:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
 
 /* Date filter */
-.date-filter-group { gap: 10px; }
+.date-filter-group { gap: 0.625rem; }
 .date-range-inputs {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 0.5rem;
 }
 .date-input {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 9px 14px;
-  height: 42px;
-  font-size: 13px;
+  border-radius: 0.625rem;
+  padding: 0.5625rem 0.875rem;
+  height: 2.625rem;
+  font-size: 0.8125rem;
   background: #fff;
   color: var(--text);
   outline: none;
-  min-width: 140px;
+  min-width: 8.75rem;
 }
 .date-input:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-.date-separator { color: var(--text-faint); font-size: 16px; }
+.date-separator { color: var(--text-faint); font-size: 1rem; }
 .date-clear {
-  width: 28px; height: 28px; border-radius: 50%;
+  width: 1.75rem; height: 1.75rem; border-radius: 50%;
   color: var(--text-faint); display: flex; align-items: center; justify-content: center;
-  font-size: 20px; line-height: 1;
+  font-size: 1.25rem; line-height: 1;
 }
 .date-clear:hover { background: var(--border); color: var(--text); }
 
 /* Deadline filter pill (stays as pill) */
 .filter-pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 9px 20px;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.5625rem 1.25rem;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: all 120ms;
 }
@@ -782,77 +787,77 @@ watch(() => store.filteredNotes, () => {
 .category-bar {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 24px;
-  padding: 8px 0;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem 0;
 }
 .category-pills {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 .cat-pill {
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 11px 22px;
+  display: inline-flex; align-items: center; gap: 0.625rem;
+  padding: 0.6875rem 1.375rem;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text-dim);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 500;
   transition: all 120ms;
   cursor: pointer;
 }
 .cat-pill:hover { border-color: var(--text-faint); color: var(--text); background: var(--bg-sunken); }
-.cat-pill .catchip-dot { width: 10px; height: 10px; border-radius: 50%; background: oklch(0.6 0.16 var(--cat-hue)); }
+.cat-pill .catchip-dot { width: 0.625rem; height: 0.625rem; border-radius: 50%; background: hsl(var(--cat-h) var(--cat-s) var(--cat-l)); }
 .cat-pill .filter-count {
-  font-size: 12px; color: var(--text-faint);
+  font-size: 0.75rem; color: var(--text-faint);
   background: var(--bg-sunken);
-  padding: 3px 9px; border-radius: 999px;
-  margin-left: 2px; font-weight: 600;
+  padding: 0.1875rem 0.5625rem; border-radius: 999px;
+  margin-left: 0.125rem; font-weight: 600;
 }
 .cat-pill.active {
-  background: oklch(0.96 0.05 var(--cat-hue));
-  color: oklch(0.4 0.14 var(--cat-hue));
-  border-color: oklch(0.8 0.1 var(--cat-hue));
+  background: hsl(var(--cat-h) var(--cat-s) 94%);
+  color: hsl(var(--cat-h) var(--cat-s) 30%);
+  border-color: hsl(var(--cat-h) var(--cat-s) 70%);
 }
-.cat-pill.active .filter-count { background: oklch(0.92 0.06 var(--cat-hue)); }
+.cat-pill.active .filter-count { background: hsl(var(--cat-h) var(--cat-s) 88%); }
 
-.add-btn {
-  display: inline-flex; align-items: center; gap: 10px;
+.notes-app .add-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.625rem;
   background: var(--accent-500);
   color: #fff;
-  padding: 12px 36px;
-  height: 46px;
-  border-radius: 10px;
-  font-size: 15px;
+  padding: 0.75rem 3.5rem;
+  height: 2.875rem;
+  border-radius: 0.625rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  box-shadow: 0 2px 8px oklch(0.5 0.18 var(--accent-hue) / 0.25);
+  box-shadow: 0 0.125rem 0.5rem oklch(0.5 0.18 var(--accent-hue) / 0.25);
   transition: background 120ms, transform 120ms, box-shadow 120ms;
   white-space: nowrap;
   flex-shrink: 0;
 }
-.add-btn:hover { background: var(--accent-600); transform: translateY(-1px); box-shadow: 0 4px 14px oklch(0.5 0.18 var(--accent-hue) / 0.3); }
-.add-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-.add-btn-lg { height: 50px; padding: 14px 40px; font-size: 16px; }
+.notes-app .add-btn:hover { background: var(--accent-600); transform: translateY(-1px); box-shadow: 0 0.25rem 0.875rem oklch(0.5 0.18 var(--accent-hue) / 0.3); }
+.notes-app .add-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.notes-app .add-btn-lg { height: 3.125rem; padding: 0.875rem 4rem; font-size: 1rem; }
 
 /* ── Shared atoms ── */
 .catchip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 14px;
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.3125rem 0.875rem;
   border-radius: 999px;
-  background: oklch(0.97 0.04 var(--cat-hue));
-  color: oklch(0.38 0.14 var(--cat-hue));
-  font-size: 13px;
+  background: hsl(var(--cat-h) var(--cat-s) 95%);
+  color: hsl(var(--cat-h) var(--cat-s) 30%);
+  font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
 }
-.catchip-dot { width: 7px; height: 7px; border-radius: 50%; background: oklch(0.58 0.16 var(--cat-hue)); }
+.catchip-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: hsl(var(--cat-h) var(--cat-s) var(--cat-l)); }
 
 .ctxpill {
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 6px;
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
   font-weight: 600;
   text-transform: lowercase;
   letter-spacing: 0.02em;
@@ -861,24 +866,24 @@ watch(() => store.filteredNotes, () => {
 .ctxpill-personal { background: oklch(0.96 0.04 55); color: oklch(0.48 0.12 55); }
 
 .kwchip-static {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 12px;
+  display: inline-flex; align-items: center; gap: 0.1875rem;
+  font-size: 0.75rem;
   color: var(--text-dim);
   background: var(--bg-sunken);
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  padding: 3px 9px;
+  border-radius: 0.375rem;
+  padding: 0.1875rem 0.5625rem;
   font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 }
 .kwchip-static.removable { cursor: pointer; transition: all 120ms; }
 .kwchip-static.removable:hover { background: #fff0f0; color: #c33; border-color: #f5c5c5; }
-.kw-x { opacity: 0.5; margin-left: 3px; }
+.kw-x { opacity: 0.5; margin-left: 0.1875rem; }
 
 .deadline {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 0.3125rem;
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
   font-weight: 600;
 }
 .deadline-overdue { background: oklch(0.94 0.08 20); color: oklch(0.45 0.18 20); }
@@ -887,10 +892,10 @@ watch(() => store.filteredNotes, () => {
 .deadline-later   { background: var(--bg-sunken); color: var(--text-dim); }
 
 .speaker {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 0.3125rem;
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
   background: oklch(0.96 0.02 320);
   color: oklch(0.45 0.11 320);
   font-weight: 500;
@@ -899,33 +904,35 @@ watch(() => store.filteredNotes, () => {
 .processed-block {
   background: var(--accent-050);
   border-left: 3px solid var(--accent-400);
-  padding: 14px 20px;
-  border-radius: 0 10px 10px 0;
+  padding: 0.875rem 1.25rem;
+  border-radius: 0 0.625rem 0.625rem 0;
 }
 .processed-label {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--accent-600);
   text-transform: uppercase;
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
-.processed-text { font-size: 13.5px; color: var(--text-dim); line-height: 1.6; font-style: italic; }
+.processed-text { font-size: 0.84375rem; color: var(--text-dim); line-height: 1.6; font-style: italic; }
 
 /* ════════════════════════════════════════════
    SPLIT LAYOUT — the only layout
    ════════════════════════════════════════════ */
 .split-layout {
   display: grid;
-  grid-template-columns: minmax(400px, 520px) 1fr;
-  gap: 24px;
-  min-height: calc(100vh - 380px);
+  grid-template-columns: minmax(25rem, 32.5rem) 1fr;
+  gap: 1.5rem;
+  min-height: calc(100vh - 23.75rem);
 }
 
 /* ── Left panel: note list ── */
 .split-list {
-  display: flex; flex-direction: column; gap: 10px;
-  max-height: calc(100vh - 340px);
+  display: flex; flex-direction: column; gap: 1rem;
+  max-height: calc(100vh - 21.25rem);
   overflow-y: auto;
-  padding-right: 8px;
+  /* Extra padding so the selected card's glow rings + scale aren't clipped */
+  padding: 0.75rem 1rem;
+  margin: -0.75rem -1rem;
   /* Subtle scrollbar */
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -936,74 +943,84 @@ watch(() => store.filteredNotes, () => {
   position: relative;
   text-align: left;
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
-  transition: all 150ms ease;
-  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  /* Card definition is entirely outer (shadow-based), so selection can build on it cleanly */
+  box-shadow:
+    0 0 0 1px var(--border),
+    var(--shadow-card);
   cursor: pointer;
 }
 .split-card:hover {
-  border-color: var(--accent-400);
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 0 0 1px var(--accent-400),
+    var(--shadow);
   transform: translateY(-1px);
 }
-.split-card.selected {
-  border-color: var(--accent-500);
-  border-width: 2px;
+.split-card.selected,
+.split-card.selected:focus,
+.split-card.selected:focus-visible,
+.split-card.selected:active {
+  outline: none;
   box-shadow:
-    0 0 0 3px var(--accent-100),
-    0 4px 12px rgba(0, 0, 0, 0.08),
-    0 8px 24px oklch(0.5 0.18 var(--accent-hue) / 0.12);
-  background: var(--accent-050);
-  transform: translateY(-2px);
+    0 0 0 1px var(--border),
+    0 4px 8px rgba(0, 0, 0, 0.12),
+    0 4px 8px oklch(0.5 0.18 var(--accent-hue) / 0.22);
+  background: var(--accent-100);
+  transform: translateY(-2px) scale(1.03);
 }
+.split-card:focus, .split-card:focus-visible, .split-card:active { outline: none; }
+.split-card.selected .split-card-title { color: var(--accent-600); }
 
 /* Category color stripe on left */
 .split-card-stripe {
-  width: 5px;
+  width: 0.3125rem;
   flex-shrink: 0;
-  background: oklch(0.62 0.17 var(--cat-hue));
-  border-radius: 3px 0 0 3px;
+  background: hsl(var(--cat-h) var(--cat-s) var(--cat-l));
+  border-radius: 0.1875rem 0 0 0.1875rem;
 }
 .split-card.selected .split-card-stripe {
   background: var(--accent-500);
+  width: 0.3rem;
 }
 
 .split-card-body {
   flex: 1;
-  padding: 16px 20px;
-  display: flex; flex-direction: column; gap: 8px;
+  padding: 1rem 1.25rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
   min-width: 0;
 }
 
 .split-card-top {
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
 }
 .split-card-title {
-  font-size: 16px; font-weight: 600; color: var(--text);
+  font-size: 1rem; font-weight: 600; color: var(--text);
   line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .split-card-date {
-  font-size: 13px; color: var(--text-faint); white-space: nowrap;
-  flex-shrink: 0; padding-top: 2px;
+  font-size: 0.8125rem; color: var(--text-faint); white-space: nowrap;
+  flex-shrink: 0; padding-top: 0.125rem;
 }
 
 .split-card-preview {
-  font-size: 14px; color: var(--text-dim); line-height: 1.5;
+  font-size: 0.875rem; color: var(--text-dim); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .split-card-meta {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin-top: 4px;
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  margin-top: 0.25rem;
 }
 .split-card-kws {
-  display: inline-flex; gap: 4px; margin-left: auto;
+  display: inline-flex; gap: 0.25rem; margin-left: auto;
 }
 
 /* ── Right panel: editor ── */
@@ -1018,76 +1035,76 @@ watch(() => store.filteredNotes, () => {
 .inline-editor {
   display: flex; flex-direction: column;
   height: 100%;
-  padding: 28px 36px 24px;
-  gap: 16px;
+  padding: 1.75rem 2.25rem 1.5rem;
+  gap: 1rem;
 }
 
 .inline-editor-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding-bottom: 16px; border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft);
 }
-.inline-editor-meta { display: flex; gap: 12px; align-items: center; }
-.inline-editor-date { font-size: 13px; color: var(--text-faint); }
-.inline-editor-actions { display: flex; gap: 10px; }
+.inline-editor-meta { display: flex; gap: 0.75rem; align-items: center; }
+.inline-editor-date { font-size: 0.8125rem; color: var(--text-faint); }
+.inline-editor-actions { display: flex; gap: 0.625rem; }
 
-.inline-processed { margin: 4px 0 8px; }
+.inline-processed { margin: 0.25rem 0 0.5rem; }
 
 .inline-editor-text {
   flex: 1;
-  min-height: 300px;
+  min-height: 18.75rem;
   border: none; outline: none;
   resize: none;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.7;
   color: var(--text);
   background: transparent;
   font-family: inherit;
-  padding: 12px 0;
+  padding: 0.75rem 0;
 }
 
 .inline-editor-foot {
-  display: flex; flex-direction: column; gap: 14px;
-  padding-top: 16px; border-top: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; gap: 0.875rem;
+  padding-top: 1rem; border-top: 1px solid var(--border-soft);
 }
 
 .foot-label {
-  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-faint); margin-right: 4px;
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint); margin-right: 0.25rem;
 }
 
-.inline-editor-kws { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline-editor-kws { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 
 .inline-editor-fields {
-  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+  display: flex; flex-wrap: wrap; gap: 0.875rem; align-items: flex-end;
 }
 .inline-field {
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; flex-direction: column; gap: 0.25rem;
 }
 
-.deadline-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; font-weight: 500; }
-.deadline-toggle input { accent-color: var(--accent-500); width: 16px; height: 16px; }
+.deadline-toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer; font-weight: 500; }
+.deadline-toggle input { accent-color: var(--accent-500); width: 1rem; height: 1rem; }
 
 .sel {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 16px;
-  height: 40px;
-  font-size: 14px;
+  border-radius: 0.5rem;
+  padding: 0.5625rem 1rem;
+  height: 2.5rem;
+  font-size: 0.875rem;
   background: #fff;
   color: var(--text);
   outline: none;
-  min-width: 120px;
+  min-width: 7.5rem;
 }
 .sel:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
 
 .kw-input {
   border: 1px solid var(--border-soft); outline: none; background: var(--bg-sunken);
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
   font-family: 'SF Mono', ui-monospace, monospace;
-  width: 140px;
-  height: 32px;
+  width: 8.75rem;
+  height: 2rem;
 }
 .kw-input:focus { background: var(--accent-050); border-color: var(--accent-400); }
 
@@ -1095,11 +1112,11 @@ watch(() => store.filteredNotes, () => {
 .split-placeholder {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 60px;
+  padding: 3.75rem;
   text-align: center;
 }
-.split-placeholder-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-.split-placeholder-sub { font-size: 14px; color: var(--text-faint); max-width: 300px; line-height: 1.5; }
+.split-placeholder-title { font-size: 1.125rem; font-weight: 600; color: var(--text); margin-bottom: 0.5rem; }
+.split-placeholder-sub { font-size: 0.875rem; color: var(--text-faint); max-width: 18.75rem; line-height: 1.5; }
 
 /* ── Modal ── */
 .modal-backdrop {
@@ -1114,39 +1131,39 @@ watch(() => store.filteredNotes, () => {
   background: #fff;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  width: 680px;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
+  width: 42.5rem;
+  max-width: calc(100vw - 3rem);
+  max-height: calc(100vh - 3rem);
   display: flex; flex-direction: column;
   animation: pop-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 20px 28px;
+  padding: 1.25rem 1.75rem;
   border-bottom: 1px solid var(--border-soft);
 }
-.modal-title { font-size: 20px; font-weight: 700; }
+.modal-title { font-size: 1.25rem; font-weight: 700; }
 .modal-close {
-  width: 32px; height: 32px; border-radius: 8px;
+  width: 2rem; height: 2rem; border-radius: 0.5rem;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-faint);
   transition: all 120ms;
 }
 .modal-close:hover { background: var(--bg-sunken); color: var(--text); }
 
-.modal-body { padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+.modal-body { padding: 1.5rem 1.75rem; display: flex; flex-direction: column; gap: 1.125rem; overflow-y: auto; }
 
-.modal-meta { display: flex; gap: 16px; }
-.field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.field > label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); font-weight: 600; }
+.modal-meta { display: flex; gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: 0.375rem; flex: 1; }
+.field > label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); font-weight: 600; }
 
 .modal-textarea {
   width: 100%;
-  min-height: 220px;
+  min-height: 13.75rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px 20px;
-  font-size: 15px;
+  border-radius: 0.625rem;
+  padding: 1rem 1.25rem;
+  font-size: 0.9375rem;
   line-height: 1.65;
   resize: vertical;
   outline: none;
@@ -1155,16 +1172,16 @@ watch(() => store.filteredNotes, () => {
 }
 .modal-textarea:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
 
-.modal-deadline { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding-top: 4px; }
+.modal-deadline { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding-top: 0.25rem; }
 
 .modal-foot {
-  display: flex; gap: 12px; align-items: center;
-  padding: 18px 28px;
+  display: flex; gap: 0.75rem; align-items: center;
+  padding: 1.125rem 1.75rem;
   border-top: 1px solid var(--border-soft);
 }
 .btn-ghost {
-  padding: 10px 24px; height: 42px; border-radius: 10px;
-  font-size: 14px; color: var(--text-dim);
+  padding: 0.625rem 1.5rem; height: 2.625rem; border-radius: 0.625rem;
+  font-size: 0.875rem; color: var(--text-dim);
   border: 1px solid var(--border);
   background: #fff;
   transition: all 120ms;
@@ -1180,20 +1197,20 @@ watch(() => store.filteredNotes, () => {
   background: var(--bg-card);
   border: 2px dashed var(--border);
   border-radius: var(--radius-lg);
-  padding: 80px 40px;
+  padding: 5rem 2.5rem;
   text-align: center;
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
 }
-.empty-art { margin-bottom: 8px; }
-.empty-title { font-size: 20px; font-weight: 600; color: var(--text); }
-.empty-sub { font-size: 15px; color: var(--text-dim); }
-.empty-actions { display: flex; gap: 12px; margin-top: 16px; }
+.empty-art { margin-bottom: 0.5rem; }
+.empty-title { font-size: 1.25rem; font-weight: 600; color: var(--text); }
+.empty-sub { font-size: 0.9375rem; color: var(--text-dim); }
+.empty-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
 
 /* ── Tweaks ── */
 .tweaks-toggle {
   position: fixed;
-  bottom: 24px; right: 24px;
-  width: 44px; height: 44px;
+  bottom: 1.5rem; right: 1.5rem;
+  width: 2.75rem; height: 2.75rem;
   border-radius: 50%;
   background: var(--accent-500);
   color: #fff;
@@ -1206,20 +1223,20 @@ watch(() => store.filteredNotes, () => {
 
 .tweaks {
   position: fixed;
-  bottom: 80px; right: 24px;
+  bottom: 5rem; right: 1.5rem;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  padding: 16px 20px;
+  padding: 1rem 1.25rem;
   z-index: 50;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 0.75rem;
   animation: pop-in 200ms;
 }
-.tweaks-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-600); }
-.hue-row { display: flex; gap: 8px; }
+.tweaks-head { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-600); }
+.hue-row { display: flex; gap: 0.5rem; }
 .hue-swatch {
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 1.75rem; height: 1.75rem; border-radius: 0.5rem;
   border: 2px solid transparent;
   transition: transform 120ms;
 }
@@ -1228,10 +1245,10 @@ watch(() => store.filteredNotes, () => {
 
 /* ── Animations ── */
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes pop-in  { from { opacity: 0; transform: translateY(6px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes pop-in  { from { opacity: 0; transform: translateY(0.375rem) scale(0.97); } to { opacity: 1; transform: none; } }
 
 /* ── Responsive ── */
-@media (max-width: 1000px) {
+@media (max-width: 62.5em) {
   .filterbar { flex-wrap: wrap; }
   .notes-title-row { flex-direction: column; align-items: flex-start; }
   .split-layout { grid-template-columns: 1fr; }
