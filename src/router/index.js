@@ -10,6 +10,7 @@ import TempsView from '@/views/TempsView.vue'
 import MonitorView from '@/views/MonitorView.vue'
 import NotesView from '@/views/NotesView.vue'
 import RemindersView from '@/views/RemindersView.vue'
+import DocumentsView from '@/views/DocumentsView.vue'
 
 const routes = [
   {
@@ -61,6 +62,12 @@ const routes = [
     path: '/reminders',
     name: 'reminders',
     component: RemindersView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/documents',
+    name: 'documents',
+    component: DocumentsView,
     meta: { requiresAuth: true },
   },
 ]

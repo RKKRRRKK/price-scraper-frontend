@@ -76,6 +76,11 @@
             <i class="pi pi-bell mr-2" />Reminders
           </a>
         </router-link>
+        <router-link :to="{ name: 'documents' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-camera mr-2" />Documents
+          </a>
+        </router-link>
       </div>
     </div>
   </div>
@@ -119,6 +124,7 @@ import { useSearchTags } from '@/stores/searchTags'
 import { useSearchTerms } from '@/stores/searchTerms'
 import { useNotesStore } from '@/stores/notes'
 import { useRemindersStore } from '@/stores/reminders'
+import { useDocumentsStore } from '@/stores/documents'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -128,6 +134,7 @@ const tagsStore = useSearchTags()
 const termsStore = useSearchTerms()
 const notesStore = useNotesStore()
 const remindersStore = useRemindersStore()
+const documentsStore = useDocumentsStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -189,6 +196,7 @@ async function fetchDataForUser() {
       termsStore.fetchAll(), // Fetch all search terms and their initial prices
       notesStore.fetchNotes(), // Fetch notes for productivity section
       remindersStore.fetchReminders(), // Fetch reminders for productivity section
+      documentsStore.fetchAll(), // Fetch document folders + documents
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -208,6 +216,7 @@ function resetStores() {
   termsStore.reset()
   notesStore.reset()
   remindersStore.reset()
+  documentsStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {
