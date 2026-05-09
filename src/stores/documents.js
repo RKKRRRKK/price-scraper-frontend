@@ -268,6 +268,86 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
+  async function updateDocumentNote(id, note) {
+    error.value = null
+    try {
+      const { data, error: err } = await supabase
+        .from('documents')
+        .update({ note: note ?? null })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (err) throw err
+      const idx = documents.value.findIndex(d => d.id === id)
+      if (idx !== -1) documents.value[idx] = data
+      return data
+    } catch (e) {
+      console.error('[Documents] updateDocumentNote error:', e)
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function rotateDocument(id, deltaDeg) {
+    error.value = null
+    try {
+      const doc = documents.value.find(d => d.id === id)
+      if (!doc) throw new Error('Document not found')
+
+      const signedUrl = await getSignedUrl(doc.storage_path, 60)
+      const res = await fetch(signedUrl)
+      if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`)
+      const sourceBlob = await res.blob()
+      const bitmap = await createImageBitmap(sourceBlob)
+
+      const norm = ((deltaDeg % 360) + 360) % 360
+      const swap = norm === 90 || norm === 270
+      const w = swap ? bitmap.height : bitmap.width
+      const h = swap ? bitmap.width : bitmap.height
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.translate(w / 2, h / 2)
+      ctx.rotate((norm * Math.PI) / 180)
+      ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2)
+      bitmap.close?.()
+
+      const mime = doc.mime_type || 'image/jpeg'
+      const newBlob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          b => (b ? resolve(b) : reject(new Error('Failed to encode rotated image'))),
+          mime,
+          0.92,
+        )
+      })
+
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(doc.storage_path, newBlob, {
+          contentType: mime,
+          upsert: true,
+        })
+      if (upErr) throw upErr
+
+      const { data, error: err } = await supabase
+        .from('documents')
+        .update({ size_bytes: newBlob.size })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (err) throw err
+
+      const idx = documents.value.findIndex(d => d.id === id)
+      if (idx !== -1) documents.value[idx] = data
+      return data
+    } catch (e) {
+      console.error('[Documents] rotateDocument error:', e)
+      error.value = e.message
+      throw e
+    }
+  }
+
   async function getSignedUrl(storage_path, expiresIn = 60, download = false) {
     const opts = download ? { download: true } : undefined
     const { data, error: err } = await supabase.storage
@@ -306,6 +386,8 @@ export const useDocumentsStore = defineStore('documents', () => {
     deleteDocument,
     moveDocument,
     renameDocument,
+    rotateDocument,
+    updateDocumentNote,
     getSignedUrl,
     reset,
   }

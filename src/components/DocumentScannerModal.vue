@@ -72,6 +72,15 @@
             >{{ f.label }}</button>
           </div>
 
+          <div class="save-toolbar">
+            <button class="tool-btn" @click="rotate(-90)" :disabled="processing" title="Rotate left">
+              <i class="pi pi-undo" style="font-size: 0.875rem;"></i>
+            </button>
+            <button class="tool-btn" @click="rotate(90)" :disabled="processing" title="Rotate right">
+              <i class="pi pi-refresh" style="font-size: 0.875rem;"></i>
+            </button>
+          </div>
+
           <div class="save-preview">
             <canvas ref="finalCanvas" class="final-canvas"></canvas>
             <div v-if="processing" class="preview-overlay">
@@ -177,13 +186,17 @@ const saveError = ref('')
 const videoIntrinsic = ref({ w: 0, h: 0 })
 const detectedCorners = ref(null)
 const detectScale = ref(1)
+const detectFrameSize = ref({ w: 0, h: 0 })
 const capturedCorners = ref(null)
 
 let stream = null
 let detectTimer = null
 let detectInFlight = false
 let capturedImageData = null
+let processedImageData = null
 let cvReadyPromise = null
+
+const rotation = ref(0)
 
 const detectCanvas = document.createElement('canvas')
 const detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true })
@@ -308,8 +321,8 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
+        width: { ideal: 3840 },
+        height: { ideal: 2160 },
       },
       audio: false,
     })
@@ -380,6 +393,7 @@ async function tickDetect() {
     const { corners } = await postWithId('detect', { imageData }, [imageData.data.buffer])
     detectedCorners.value = corners
     detectScale.value = scale
+    detectFrameSize.value = { w: dw, h: dh }
   } catch {
     detectedCorners.value = null
   } finally {
@@ -390,20 +404,52 @@ async function tickDetect() {
 async function capture() {
   if (!videoEl.value || !cameraReady.value || processing.value) return
   stopDetectLoop()
-  const v = videoEl.value
-  fullCanvas.width = v.videoWidth
-  fullCanvas.height = v.videoHeight
-  fullCtx.drawImage(v, 0, 0)
-  capturedImageData = fullCtx.getImageData(0, 0, v.videoWidth, v.videoHeight)
 
-  if (detectedCorners.value && detectScale.value) {
-    const inv = 1 / detectScale.value
+  let drewStill = false
+  if (typeof ImageCapture !== 'undefined' && stream) {
+    try {
+      const track = stream.getVideoTracks()[0]
+      const ic = new ImageCapture(track)
+      let opts
+      try {
+        const caps = await ic.getPhotoCapabilities()
+        if (caps.imageWidth?.max && caps.imageHeight?.max) {
+          opts = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max }
+        }
+      } catch { /* photoCapabilities unsupported — fall through */ }
+      const blob = await ic.takePhoto(opts)
+      const bitmap = await createImageBitmap(blob)
+      fullCanvas.width = bitmap.width
+      fullCanvas.height = bitmap.height
+      fullCtx.drawImage(bitmap, 0, 0)
+      bitmap.close?.()
+      drewStill = true
+      console.log('[Scanner] captured via ImageCapture:', bitmap.width, 'x', bitmap.height)
+    } catch (e) {
+      console.warn('[Scanner] ImageCapture failed, falling back to video frame:', e)
+    }
+  }
+
+  if (!drewStill) {
+    const v = videoEl.value
+    fullCanvas.width = v.videoWidth
+    fullCanvas.height = v.videoHeight
+    fullCtx.drawImage(v, 0, 0)
+    console.log('[Scanner] captured via video frame:', v.videoWidth, 'x', v.videoHeight)
+  }
+
+  capturedImageData = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height)
+
+  const ds = detectFrameSize.value
+  if (detectedCorners.value && ds.w && ds.h) {
+    const xf = fullCanvas.width / ds.w
+    const yf = fullCanvas.height / ds.h
     const c = detectedCorners.value
     capturedCorners.value = {
-      tl: { x: c.tl.x * inv, y: c.tl.y * inv },
-      tr: { x: c.tr.x * inv, y: c.tr.y * inv },
-      br: { x: c.br.x * inv, y: c.br.y * inv },
-      bl: { x: c.bl.x * inv, y: c.bl.y * inv },
+      tl: { x: c.tl.x * xf, y: c.tl.y * yf },
+      tr: { x: c.tr.x * xf, y: c.tr.y * yf },
+      br: { x: c.br.x * xf, y: c.br.y * yf },
+      bl: { x: c.bl.x * xf, y: c.bl.y * yf },
     }
   } else {
     capturedCorners.value = null
@@ -498,17 +544,47 @@ async function processAndDraw() {
       { imageData: copy, corners: plainCorners, filter: filter.value },
       [copy.data.buffer],
     )
-    if (finalCanvas.value) {
-      finalCanvas.value.width = imageData.width
-      finalCanvas.value.height = imageData.height
-      finalCanvas.value.getContext('2d').putImageData(imageData, 0, 0)
-    }
+    processedImageData = imageData
+    drawProcessedToFinalCanvas()
   } catch (e) {
     console.warn('[Scanner] processing failed:', e)
     saveError.value = `Processing failed: ${e.message}`
   } finally {
     processing.value = false
   }
+}
+
+function drawProcessedToFinalCanvas() {
+  if (!processedImageData || !finalCanvas.value) return
+  const r = rotation.value
+  const swap = r === 90 || r === 270
+  const sw = processedImageData.width
+  const sh = processedImageData.height
+  const w = swap ? sh : sw
+  const h = swap ? sw : sh
+  const cnv = finalCanvas.value
+  cnv.width = w
+  cnv.height = h
+  const ctx = cnv.getContext('2d')
+  if (r === 0) {
+    ctx.putImageData(processedImageData, 0, 0)
+    return
+  }
+  const temp = document.createElement('canvas')
+  temp.width = sw
+  temp.height = sh
+  temp.getContext('2d').putImageData(processedImageData, 0, 0)
+  ctx.save()
+  ctx.translate(w / 2, h / 2)
+  ctx.rotate((r * Math.PI) / 180)
+  ctx.drawImage(temp, -sw / 2, -sh / 2)
+  ctx.restore()
+}
+
+function rotate(delta) {
+  if (processing.value) return
+  rotation.value = ((rotation.value + delta) % 360 + 360) % 360
+  drawProcessedToFinalCanvas()
 }
 
 async function setFilter(id) {
@@ -519,7 +595,9 @@ async function setFilter(id) {
 
 async function retake() {
   capturedImageData = null
+  processedImageData = null
   capturedCorners.value = null
+  rotation.value = 0
   filter.value = 'scan'
   phase.value = 'live'
   await startCamera()
@@ -712,6 +790,33 @@ function requestClose() {
   color: #fff;
 }
 .filter-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.save-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tool-btn {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border, #e5e4e1);
+  background: #fff;
+  color: var(--text-dim, #5c5c5c);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 120ms;
+}
+.tool-btn:hover:not(:disabled) {
+  border-color: var(--text-faint, #9a9a9a);
+  background: var(--bg-sunken, #f3f2f0);
+  color: var(--text, #1a1a1a);
+}
+.tool-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .save-preview {
   position: relative;

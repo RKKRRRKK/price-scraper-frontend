@@ -91,6 +91,9 @@
             <div class="doc-meta">{{ formatDate(d.captured_at) }} · {{ formatSize(d.size_bytes) }}</div>
           </div>
           <div class="card-actions">
+            <button class="icon-btn" @click.stop="openRenameDocument(d)" title="Rename">
+              <i class="pi pi-pencil" style="font-size: 0.8125rem;"></i>
+            </button>
             <button class="icon-btn" @click.stop="downloadDocument(d)" title="Download">
               <i class="pi pi-download" style="font-size: 0.8125rem;"></i>
             </button>
@@ -149,6 +152,36 @@
       </div>
     </div>
 
+    <div v-if="renameModal.open" class="modal-backdrop" @click.self="closeRenameModal">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="modal-title">Rename Document</span>
+          <button class="modal-close" @click="closeRenameModal">
+            <i class="pi pi-times" style="font-size: 0.875rem;"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label>Name</label>
+            <input
+              type="text"
+              class="sel"
+              v-model="renameModal.name"
+              placeholder="Document name"
+              @keydown.enter="submitRenameDocument"
+              ref="renameInput"
+            />
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="add-btn" @click="submitRenameDocument" :disabled="!renameModal.name.trim() || renameModal.saving">
+            Save
+          </button>
+          <button class="btn-ghost" @click="closeRenameModal">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="moveModal.open" class="modal-backdrop" @click.self="closeMoveModal">
       <div class="modal">
         <div class="modal-head">
@@ -178,19 +211,68 @@
         <div class="modal-head">
           <span class="modal-title">{{ preview.doc.name }}</span>
           <div class="preview-head-actions">
-            <button class="icon-btn" @click="downloadDocument(preview.doc)" title="Download">
+            <button
+              class="icon-btn"
+              @click="rotatePreview(-90)"
+              :disabled="preview.rotating || preview.loading"
+              title="Rotate left"
+            >
+              <i class="pi pi-undo" style="font-size: 0.875rem;"></i>
+            </button>
+            <button
+              class="icon-btn"
+              @click="rotatePreview(90)"
+              :disabled="preview.rotating || preview.loading"
+              title="Rotate right"
+            >
+              <i class="pi pi-refresh" style="font-size: 0.875rem;"></i>
+            </button>
+            <button class="icon-btn" @click="downloadDocument(preview.doc)" :disabled="preview.rotating" title="Download">
               <i class="pi pi-download" style="font-size: 0.875rem;"></i>
             </button>
-            <button class="modal-close" @click="closePreview">
+            <button class="modal-close" @click="closePreview" :disabled="preview.rotating">
               <i class="pi pi-times" style="font-size: 0.875rem;"></i>
             </button>
           </div>
         </div>
         <div class="modal-body preview-body">
-          <div v-if="preview.loading" class="preview-loading">
+          <div v-if="preview.loading || preview.rotating" class="preview-loading">
             <i class="pi pi-spin pi-spinner" style="font-size: 2rem;"></i>
+            <span v-if="preview.rotating" style="margin-left: 0.75rem; font-size: 0.875rem;">Rotating…</span>
           </div>
           <img v-else-if="preview.url" :src="preview.url" :alt="preview.doc.name" class="preview-image" />
+
+          <div class="preview-aside">
+            <div class="field">
+              <label>Note</label>
+              <textarea
+                class="sel preview-note"
+                v-model="preview.noteDraft"
+                rows="3"
+                placeholder="Add a note about this scan…"
+                :disabled="preview.savingNote"
+              ></textarea>
+              <div class="preview-note-actions" v-if="preview.noteDraft !== (preview.doc.note || '')">
+                <button class="add-btn add-btn-sm" @click="saveNote" :disabled="preview.savingNote">
+                  <i v-if="preview.savingNote" class="pi pi-spin pi-spinner" style="font-size: 0.75rem;"></i>
+                  <i v-else class="pi pi-check" style="font-size: 0.75rem;"></i>
+                  {{ preview.savingNote ? 'Saving…' : 'Save note' }}
+                </button>
+                <button class="btn-ghost btn-ghost-sm" @click="cancelNote" :disabled="preview.savingNote">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div v-if="preview.doc.scan_content" class="field">
+              <label>Recognized text</label>
+              <pre class="scan-content">{{ preview.doc.scan_content }}</pre>
+            </div>
+            <div v-else class="scan-content-pending">
+              <i class="pi pi-clock" style="font-size: 0.75rem; margin-right: 0.375rem;"></i>
+              Recognized text will appear here once OCR has processed this scan.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -225,10 +307,21 @@ const moveModal = reactive({
   saving: false,
 })
 
+const renameModal = reactive({
+  open: false,
+  id: null,
+  name: '',
+  saving: false,
+})
+const renameInput = ref(null)
+
 const preview = reactive({
   doc: null,
   url: '',
   loading: false,
+  rotating: false,
+  noteDraft: '',
+  savingNote: false,
 })
 
 const thumbUrls = ref({})
@@ -362,6 +455,33 @@ async function submitMove() {
   }
 }
 
+function openRenameDocument(d) {
+  renameModal.id = d.id
+  renameModal.name = d.name
+  renameModal.open = true
+  nextTick(() => renameInput.value?.focus())
+}
+function closeRenameModal() {
+  if (renameModal.saving) return
+  renameModal.open = false
+  renameModal.id = null
+  renameModal.name = ''
+}
+async function submitRenameDocument() {
+  if (!renameModal.name.trim() || renameModal.saving) return
+  renameModal.saving = true
+  try {
+    await store.renameDocument(renameModal.id, renameModal.name)
+    renameModal.open = false
+    renameModal.id = null
+    renameModal.name = ''
+  } catch (e) {
+    console.error('[Documents] rename failed:', e)
+  } finally {
+    renameModal.saving = false
+  }
+}
+
 async function confirmDeleteDocument(d) {
   if (!confirm(`Delete "${d.name}"?`)) return
   await store.deleteDocument(d.id)
@@ -371,6 +491,7 @@ async function confirmDeleteDocument(d) {
 async function openPreview(d) {
   preview.doc = d
   preview.url = ''
+  preview.noteDraft = d.note || ''
   preview.loading = true
   try {
     preview.url = await store.getSignedUrl(d.storage_path, 600)
@@ -379,8 +500,44 @@ async function openPreview(d) {
   }
 }
 function closePreview() {
+  if (preview.rotating || preview.savingNote) return
   preview.doc = null
   preview.url = ''
+  preview.noteDraft = ''
+}
+
+async function saveNote() {
+  if (!preview.doc || preview.savingNote) return
+  preview.savingNote = true
+  try {
+    const updated = await store.updateDocumentNote(preview.doc.id, preview.noteDraft.trim() || null)
+    preview.doc = updated
+    preview.noteDraft = updated.note || ''
+  } catch (e) {
+    console.error('[Documents] saveNote failed:', e)
+  } finally {
+    preview.savingNote = false
+  }
+}
+
+function cancelNote() {
+  preview.noteDraft = preview.doc?.note || ''
+}
+
+async function rotatePreview(deg) {
+  if (!preview.doc || preview.rotating) return
+  preview.rotating = true
+  try {
+    const updated = await store.rotateDocument(preview.doc.id, deg)
+    preview.doc = updated
+    delete thumbUrls.value[updated.id]
+    await refreshThumbnails()
+    preview.url = await store.getSignedUrl(updated.storage_path, 600)
+  } catch (e) {
+    console.error('[Documents] rotate failed:', e)
+  } finally {
+    preview.rotating = false
+  }
 }
 
 async function downloadDocument(d) {
@@ -591,6 +748,7 @@ function formatSize(bytes) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .folder-card,
@@ -616,7 +774,7 @@ function formatSize(bytes) {
   opacity: 1;
 }
 
-.folder-body {
+.documents-app .folder-body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -839,6 +997,67 @@ function formatSize(bytes) {
   justify-content: center;
   padding: 4rem;
   color: var(--text-faint);
+}
+
+.preview-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 0.25rem 0;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.preview-note {
+  resize: vertical;
+  min-height: 4.5rem;
+  font-family: inherit;
+  line-height: 1.45;
+  padding: 0.625rem 0.875rem;
+  height: auto;
+}
+
+.preview-note-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.documents-app .add-btn-sm {
+  height: 2rem;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 0.5rem;
+}
+.documents-app .btn-ghost-sm {
+  height: 2rem;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 0.5rem;
+}
+
+.scan-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.scan-content-pending {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  font-style: italic;
 }
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

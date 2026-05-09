@@ -3,6 +3,13 @@ const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
 
 console.log('[worker] script start, location:', self.location?.href)
 
+self.addEventListener('error', (e) => {
+  console.error('[worker] global error event:', e.message, 'at', e.filename, ':', e.lineno, ':', e.colno, 'error:', e.error)
+})
+self.addEventListener('unhandledrejection', (e) => {
+  console.error('[worker] unhandled rejection:', e.reason)
+})
+
 const cvReady = new Promise((resolve, reject) => {
   let resolved = false
   const finish = (instance, source) => {
@@ -66,17 +73,26 @@ function ensureCv() {
 
 console.log('[worker] registering onmessage handler')
 
+function decodeCvError(e) {
+  if (typeof e === 'number' && cv?.exceptionFromPtr) {
+    try {
+      const exc = cv.exceptionFromPtr(e)
+      return new Error(`OpenCV: ${exc.msg || exc.what?.() || 'unknown'}`)
+    } catch {
+      return new Error(`OpenCV exception ptr: ${e}`)
+    }
+  }
+  if (e instanceof Error) return e
+  return new Error(typeof e === 'string' ? e : JSON.stringify(e))
+}
+
 self.onmessage = async (e) => {
   const { id, action, imageData, corners, filter } = e.data
   console.log('[worker] onmessage:', action, 'id:', id)
   try {
-    console.log('[worker] awaiting ensureCv() for action', action)
     await ensureCv()
-    console.log('[worker] ensureCv() resolved for action', action)
     if (action === 'preload') {
-      console.log('[worker] posting preload OK back to main, id:', id)
       self.postMessage({ id, ok: true })
-      console.log('[worker] preload reply posted')
       return
     }
     if (action === 'detect') {
@@ -85,14 +101,17 @@ self.onmessage = async (e) => {
       return
     }
     if (action === 'process') {
+      console.log('[worker] process: image', imageData?.width, 'x', imageData?.height, 'filter:', filter, 'corners:', corners)
       const out = processCapture(imageData, corners, filter)
+      console.log('[worker] process produced output:', out.width, 'x', out.height)
       self.postMessage({ id, ok: true, imageData: out }, [out.data.buffer])
       return
     }
     throw new Error(`Unknown action: ${action}`)
   } catch (err) {
-    console.error('[scannerWorker] error in onmessage:', err)
-    self.postMessage({ id, ok: false, error: err.message })
+    const decoded = decodeCvError(err)
+    console.error('[worker] error in onmessage (action=' + action + '):', decoded, 'raw:', err)
+    self.postMessage({ id, ok: false, error: decoded.message })
   }
 }
 
@@ -168,14 +187,21 @@ function orderCorners(pts) {
 }
 
 function processCapture(imageData, corners, filter) {
+  console.log('[worker] processCapture: matFromImageData…')
   const src = cv.matFromImageData(imageData)
+  console.log('[worker] processCapture: src is', src.cols, 'x', src.rows, 'channels:', src.channels())
   let working = src
   let warped = null
   if (corners && filter !== 'original') {
+    console.log('[worker] processCapture: warping with corners', corners)
     warped = warpToFlat(src, corners)
     working = warped
+    console.log('[worker] processCapture: warped is', warped.cols, 'x', warped.rows)
+  } else {
+    console.log('[worker] processCapture: skipping warp (corners=', !!corners, 'filter=', filter, ')')
   }
 
+  console.log('[worker] processCapture: applying filter', filter)
   let out
   if (filter === 'scan') {
     out = applyScan(working)
@@ -184,6 +210,7 @@ function processCapture(imageData, corners, filter) {
   } else {
     out = matToImageData(working)
   }
+  console.log('[worker] processCapture: filter applied, out:', out.width, 'x', out.height)
 
   src.delete()
   if (warped) warped.delete()
@@ -219,21 +246,48 @@ function warpToFlat(src, corners) {
   return warped
 }
 
+// "Scan" filter: divide the image by an estimate of its local background.
+// Whitens uneven lighting and shadows while preserving letter grays — no
+// binary holes in thick strokes (which adaptiveThreshold would punch out).
 function applyScan(mat) {
   const gray = new cv.Mat()
   cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY)
-  const thresh = new cv.Mat()
-  cv.adaptiveThreshold(
-    gray, thresh, 255,
-    cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY,
-    25, 10,
-  )
-  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3))
-  cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernel)
-  const out = matToImageData(thresh)
+
+  // Background estimate: downscale 4×, blur, upscale. Equivalent to a much
+  // larger Gaussian on the original but ~16× cheaper.
+  const small = new cv.Mat()
+  cv.resize(gray, small, new cv.Size(0, 0), 0.25, 0.25, cv.INTER_AREA)
+  let k = Math.round(Math.min(small.cols, small.rows) * 0.1)
+  if (k < 15) k = 15
+  if (k % 2 === 0) k += 1
+  const blurred = new cv.Mat()
+  cv.GaussianBlur(small, blurred, new cv.Size(k, k), 0)
+  const bg = new cv.Mat()
+  cv.resize(blurred, bg, new cv.Size(gray.cols, gray.rows), 0, 0, cv.INTER_LINEAR)
+
+  const grayF = new cv.Mat()
+  const bgF = new cv.Mat()
+  gray.convertTo(grayF, cv.CV_32F)
+  bg.convertTo(bgF, cv.CV_32F)
+  const ratio = new cv.Mat()
+  cv.divide(grayF, bgF, ratio, 255)
+  const result = new cv.Mat()
+  ratio.convertTo(result, cv.CV_8U)
+
+  // Mild contrast curve so text reads slightly darker without crushing.
+  const boosted = new cv.Mat()
+  result.convertTo(boosted, cv.CV_8U, 1.15, -20)
+
+  const out = matToImageData(boosted)
   gray.delete()
-  thresh.delete()
-  kernel.delete()
+  small.delete()
+  blurred.delete()
+  bg.delete()
+  grayF.delete()
+  bgF.delete()
+  ratio.delete()
+  result.delete()
+  boosted.delete()
   return out
 }
 
