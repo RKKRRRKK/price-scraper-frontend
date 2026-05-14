@@ -21,6 +21,14 @@
               <div class="stat-value">{{ store.stats.withDeadline }}</div>
               <div class="stat-label">Deadlines</div>
             </div>
+            <div class="stat">
+              <div class="stat-value">{{ store.stats.completed }}</div>
+              <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">{{ store.stats.suspended }}</div>
+              <div class="stat-label">Suspended</div>
+            </div>
           </div>
         </div>
 
@@ -97,6 +105,16 @@
               </button>
             </div>
           </div>
+
+          <!-- Status filter -->
+          <div class="filter-group">
+            <span class="filter-group-label">Status</span>
+            <select class="context-select" v-model="store.statusFilter">
+              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }} ({{ store.statusCounts[opt.value] || 0 }})
+              </option>
+            </select>
+          </div>
         </div>
 
         <button class="add-btn" @click="openAddModal">
@@ -156,7 +174,7 @@
           <button
             v-for="note in store.filteredNotes" :key="note.id"
             class="split-card"
-            :class="{ selected: selectedNote?.id === note.id }"
+            :class="{ selected: selectedNote?.id === note.id, 'is-inactive': store.noteStatus(note) !== 'active' }"
             :style="catStyle(note.category)"
             @click="selectNote(note)"
           >
@@ -175,6 +193,11 @@
                   <span class="catchip-dot"></span> {{ note.category }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + note.context">{{ note.context }}</span>
+                <span
+                  v-if="store.noteStatus(note) !== 'active'"
+                  class="statuspill"
+                  :class="'statuspill-' + store.noteStatus(note)"
+                >{{ store.noteStatus(note) }}</span>
                 <span v-if="note.speaker" class="speaker">
                   <i class="pi pi-user" style="font-size: 0.6875rem;"></i> {{ note.speaker }}
                 </span>
@@ -200,9 +223,25 @@
                   <span class="catchip-dot"></span> {{ editForm.category }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + editForm.context">{{ editForm.context }}</span>
+                <span
+                  class="statuspill"
+                  :class="'statuspill-' + store.noteStatus(selectedNote)"
+                >{{ store.noteStatus(selectedNote) }}</span>
                 <span class="inline-editor-date">{{ formatDate(selectedNote.created_at) }}</span>
               </div>
               <div class="inline-editor-actions">
+                <select
+                  class="status-select"
+                  :class="'status-select-' + store.noteStatus(selectedNote)"
+                  :value="store.noteStatus(selectedNote)"
+                  :disabled="savingStatus"
+                  @change="changeStatus($event.target.value)"
+                >
+                  <option
+                    v-for="opt in statusOptions.filter(o => o.value !== 'all')" :key="opt.value"
+                    :value="opt.value"
+                  >{{ opt.label }}</option>
+                </select>
                 <button class="btn-ghost btn-save" @click="saveInlineEdit">
                   <i class="pi pi-check" style="font-size: 0.8125rem; margin-right: 0.375rem;"></i> Save
                 </button>
@@ -400,6 +439,28 @@ const accentHue = ref(295)
 const accentHues = [295, 260, 210, 160, 120, 45, 10, 340]
 const selectedNote = ref(null)
 const contextDropdown = ref('')
+
+// ── Status filter / switcher ──
+const statusOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'suspended', label: 'Suspended' },
+]
+const savingStatus = ref(false)
+
+async function changeStatus(status) {
+  if (!selectedNote.value || store.noteStatus(selectedNote.value) === status) return
+  savingStatus.value = true
+  try {
+    const updated = await store.setNoteStatus(selectedNote.value.id, status)
+    if (updated) selectedNote.value = updated
+  } catch (e) {
+    // error handled in store
+  } finally {
+    savingStatus.value = false
+  }
+}
 
 function onContextChange() {
   store.activeContexts = contextDropdown.value ? [contextDropdown.value] : []
@@ -783,6 +844,27 @@ watch(() => store.filteredNotes, () => {
   background: oklch(0.95 0.06 35); color: oklch(0.45 0.14 35); border-color: oklch(0.78 0.1 35);
 }
 
+/* Inline editor status dropdown (next to Save / Delete) */
+.status-select {
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  padding: 0.625rem 1rem;
+  height: 2.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #fff;
+  color: var(--text-dim);
+  outline: none;
+  cursor: pointer;
+  transition: all 120ms;
+}
+.status-select:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+.status-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.status-select-active    { background: oklch(0.95 0.06 150); color: oklch(0.42 0.13 150); border-color: oklch(0.78 0.1 150); }
+.status-select-completed { background: oklch(0.95 0.05 230); color: oklch(0.44 0.13 230); border-color: oklch(0.78 0.09 230); }
+.status-select-suspended { background: oklch(0.95 0.05 70);  color: oklch(0.46 0.12 70);  border-color: oklch(0.8 0.09 70); }
+.status-select option { background: #fff; color: var(--text); }
+
 /* ── Category bar (separate row, big pills) ── */
 .category-bar {
   display: flex;
@@ -864,6 +946,19 @@ watch(() => store.filteredNotes, () => {
 }
 .ctxpill-work { background: var(--accent-100); color: var(--accent-600); }
 .ctxpill-personal { background: oklch(0.96 0.04 55); color: oklch(0.48 0.12 55); }
+
+/* ── Status pill (badge) ── */
+.statuspill {
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+.statuspill-active    { background: oklch(0.95 0.06 150); color: oklch(0.42 0.13 150); }
+.statuspill-completed { background: oklch(0.95 0.05 230); color: oklch(0.44 0.13 230); }
+.statuspill-suspended { background: oklch(0.95 0.05 70);  color: oklch(0.46 0.12 70); }
 
 .kwchip-static {
   display: inline-flex; align-items: center; gap: 0.1875rem;
@@ -975,6 +1070,15 @@ watch(() => store.filteredNotes, () => {
 }
 .split-card:focus, .split-card:focus-visible, .split-card:active { outline: none; }
 .split-card.selected .split-card-title { color: var(--accent-600); }
+
+/* Greyed-out state for completed / suspended notes */
+.split-card.is-inactive { background: var(--bg-sunken); }
+.split-card.is-inactive:not(.selected) .split-card-stripe { filter: grayscale(0.5); opacity: 0.1; }
+.split-card.is-inactive:not(.selected) .split-card-title { color: var(--text-dim); }
+.split-card.is-inactive:not(.selected) .split-card-preview,
+.split-card.is-inactive:not(.selected) .split-card-date { color: var(--text-faint); }
+.split-card.is-inactive:not(.selected) .split-card-body { opacity: 0.5; }
+.split-card.is-inactive:not(.selected):hover .split-card-body { opacity: 1; }
 
 /* Category color stripe on left */
 .split-card-stripe {

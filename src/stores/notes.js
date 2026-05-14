@@ -16,6 +16,12 @@ export const useNotesStore = defineStore('notes', () => {
   const deadlineFilter = ref(false)
   const dateFrom = ref(null)       // 'YYYY-MM-DD' string or null
   const dateTo = ref(null)         // 'YYYY-MM-DD' string or null
+  const statusFilter = ref('all')  // 'all' | 'active' | 'completed' | 'suspended'
+
+  // ── Note status helper (notes default to 'active') ──
+  function noteStatus(note) {
+    return note?.status || 'active'
+  }
 
   // ── All unique categories from data ──
   const allCategories = computed(() => {
@@ -90,6 +96,11 @@ export const useNotesStore = defineStore('notes', () => {
       result = result.filter(n => n.deadline)
     }
 
+    // Status filter
+    if (statusFilter.value !== 'all') {
+      result = result.filter(n => noteStatus(n) === statusFilter.value)
+    }
+
     // Date range filter
     if (dateFrom.value) {
       const from = new Date(dateFrom.value)
@@ -128,8 +139,18 @@ export const useNotesStore = defineStore('notes', () => {
       const weekAgo = new Date(now - 7 * 86400000)
       return d >= weekAgo
     }).length
-    return { total, withDeadline, categories, thisWeek }
+    const completed = notes.value.filter(n => noteStatus(n) === 'completed').length
+    const suspended = notes.value.filter(n => noteStatus(n) === 'suspended').length
+    return { total, withDeadline, categories, thisWeek, completed, suspended }
   })
+
+  // ── Status counts (for filter pills) ──
+  const statusCounts = computed(() => ({
+    all: notes.value.length,
+    active: notes.value.filter(n => noteStatus(n) === 'active').length,
+    completed: notes.value.filter(n => noteStatus(n) === 'completed').length,
+    suspended: notes.value.filter(n => noteStatus(n) === 'suspended').length,
+  }))
 
   // ── Upcoming deadlines ──
   const upcomingDeadlines = computed(() => {
@@ -194,6 +215,7 @@ export const useNotesStore = defineStore('notes', () => {
         deadline_stakeholder: note.deadline_stakeholder || null,
         deadline_date: note.deadline_date || null,
         processed_content: note.processed_content || null,
+        status: note.status || 'active',
       }
 
       const { data, error: err } = await supabase
@@ -250,6 +272,11 @@ export const useNotesStore = defineStore('notes', () => {
     }
   }
 
+  // ── Push a note to a given status ('active' | 'completed' | 'suspended') ──
+  async function setNoteStatus(id, status) {
+    return updateNote(id, { status })
+  }
+
   function reset() {
     notes.value = []
     loaded.value = false
@@ -261,6 +288,7 @@ export const useNotesStore = defineStore('notes', () => {
     deadlineFilter.value = false
     dateFrom.value = null
     dateTo.value = null
+    statusFilter.value = 'all'
   }
 
   // ── Toggle helpers ──
@@ -287,18 +315,22 @@ export const useNotesStore = defineStore('notes', () => {
     deadlineFilter,
     dateFrom,
     dateTo,
+    statusFilter,
     allCategories,
     allContexts,
     filteredNotes,
     stats,
+    statusCounts,
     upcomingDeadlines,
     categoryCounts,
     categoryColor,
     deadlineUrgency,
+    noteStatus,
     fetchNotes,
     addNote,
     updateNote,
     deleteNote,
+    setNoteStatus,
     reset,
     toggleContext,
     toggleCategory,

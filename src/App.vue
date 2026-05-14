@@ -91,8 +91,97 @@
       <Button icon="pi pi-user" class="p-button-text" @click="userMenu.toggle($event)" />
       <TieredMenu ref="userMenu" :model="userMenuItems" popup />
     </div>
+    <Button
+      icon="pi pi-bars"
+      class="p-button-text mobile-only nav-hamburger"
+      aria-label="Open navigation"
+      @click="navOpen = true"
+    />
   </div>
 </nav>
+
+<Sidebar
+  v-model:visible="navOpen"
+  position="right"
+  class="nav-drawer"
+  :dismissable="true"
+  :modal="true"
+>
+  <template #header>
+    <span class="nav-drawer-title">Navigation</span>
+  </template>
+  <Accordion :value="['scraper', 'sensors', 'productivity']" multiple>
+    <AccordionPanel value="scraper">
+      <AccordionHeader>
+        <span class="drawer-section-label scraper">Scraper</span>
+      </AccordionHeader>
+      <AccordionContent>
+        <div class="drawer-links scraper-section">
+          <router-link :to="{ name: 'home' }" custom v-slot="{ href, navigate, isExactActive }">
+            <a :href="href" @click="navigate" :class="{ active: isExactActive }">
+              <i class="pi pi-home mr-2" />Home
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'dashboard' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-chart-bar mr-2" />Dashboard
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'database' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-database mr-2" />Database
+            </a>
+          </router-link>
+        </div>
+      </AccordionContent>
+    </AccordionPanel>
+
+    <AccordionPanel value="sensors">
+      <AccordionHeader>
+        <span class="drawer-section-label sensors">Sensors</span>
+      </AccordionHeader>
+      <AccordionContent>
+        <div class="drawer-links sensors-section">
+          <router-link :to="{ name: 'temps' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-sun mr-2" />Weather
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'monitor' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-server mr-2" />Monitor
+            </a>
+          </router-link>
+        </div>
+      </AccordionContent>
+    </AccordionPanel>
+
+    <AccordionPanel value="productivity">
+      <AccordionHeader>
+        <span class="drawer-section-label productivity">Productivity</span>
+      </AccordionHeader>
+      <AccordionContent>
+        <div class="drawer-links productivity-section">
+          <router-link :to="{ name: 'notes' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-file-edit mr-2" />Notes
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'reminders' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-bell mr-2" />Reminders
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'documents' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-camera mr-2" />Documents
+            </a>
+          </router-link>
+        </div>
+      </AccordionContent>
+    </AccordionPanel>
+  </Accordion>
+</Sidebar>
 
       <!-- main content -->
       <main class="flex-1 overflow-auto">
@@ -116,6 +205,11 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import TieredMenu from 'primevue/tieredmenu'
+import Sidebar from 'primevue/sidebar'
+import Accordion from 'primevue/accordion'
+import AccordionPanel from 'primevue/accordionpanel'
+import AccordionHeader from 'primevue/accordionheader'
+import AccordionContent from 'primevue/accordioncontent'
 import Ripple from 'primevue/ripple' // Import Ripple if using v-ripple directive
 
 import { useAuthStore } from '@/stores/auth'
@@ -140,6 +234,14 @@ const ready = ref(false)
 const router = useRouter()
 const route = useRoute()
 const userMenu = ref(null) // Define ref for the TieredMenu
+const navOpen = ref(false)
+
+watch(
+  () => route.fullPath,
+  () => {
+    navOpen.value = false
+  },
+)
 
 onMounted(async () => {
   // Initialize auth FIRST
@@ -418,24 +520,108 @@ function goLogin() {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 0.25rem;
 }
 
-/* ── Responsive ── */
-@media (max-width: 700px) {
+/* ── Mobile / desktop visibility utilities ── */
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
   .app-navbar {
-    flex-wrap: wrap;
     padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
   }
 
   .nav-groups {
-    order: 3;
-    width: 100%;
-    gap: 1.5rem;
-    overflow-x: auto;
+    display: none;
   }
 
-  .nav-end {
-    order: 2;
+  .logo-link {
+    margin-right: 0;
   }
+
+  .mobile-only {
+    display: inline-flex;
+  }
+}
+
+/* ── Drawer (mobile nav) ── */
+.nav-drawer-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #4b5563;
+}
+
+.drawer-section-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.drawer-section-label.scraper {
+  color: #fb923c;
+}
+
+.drawer-section-label.sensors {
+  color: #4ade80;
+}
+
+.drawer-section-label.productivity {
+  color: #c084fc;
+}
+
+.drawer-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid transparent;
+}
+
+.drawer-links.scraper-section {
+  border-left-color: #f97316;
+}
+
+.drawer-links.sensors-section {
+  border-left-color: #22c55e;
+}
+
+.drawer-links.productivity-section {
+  border-left-color: #a855f7;
+}
+
+.drawer-links a {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #4b5563;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.drawer-links a:hover {
+  background: #f3f4f6;
+}
+
+.drawer-links.scraper-section a.active {
+  background-color: var(--p-orange-100);
+  color: var(--p-orange-600);
+}
+
+.drawer-links.sensors-section a.active {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.drawer-links.productivity-section a.active {
+  background-color: #f3e8ff;
+  color: #7e22ce;
 }
 </style>
