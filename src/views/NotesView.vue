@@ -67,54 +67,70 @@
         </div>
 
         <div class="filters">
-          <!-- Context dropdown -->
-          <div class="filter-group" v-if="store.allContexts.length">
-            <span class="filter-group-label">Context</span>
-            <select class="context-select" v-model="contextDropdown" @change="onContextChange">
-              <option value="">All contexts</option>
-              <option v-for="ctx in store.allContexts" :key="ctx" :value="ctx">{{ ctx }}</option>
-            </select>
+          <select class="f-control" v-model="contextDropdown" @change="onContextChange">
+            <option value="">All contexts</option>
+            <option v-for="ctx in store.allContexts" :key="ctx" :value="ctx">{{ ctx }}</option>
+          </select>
+
+          <select class="f-control" v-model="store.categoryFilter">
+            <option value="all">All categories ({{ store.categoryCounts.all || 0 }})</option>
+            <option v-for="c in store.allCategories" :key="c" :value="c">
+              {{ c }} ({{ store.categoryCounts[c] || 0 }})
+            </option>
+          </select>
+
+          <select class="f-control" v-model="store.stakeholderFilter" :disabled="!store.allStakeholders.length">
+            <option value="all">Any stakeholder</option>
+            <option v-for="s in store.allStakeholders" :key="s" :value="s">
+              {{ s }} ({{ store.stakeholderCounts[s] || 0 }})
+            </option>
+          </select>
+
+          <select class="f-control" v-model="store.statusFilter">
+            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label === 'All' ? 'Any status' : opt.label }} ({{ store.statusCounts[opt.value] || 0 }})
+            </option>
+          </select>
+
+          <select class="f-control" v-model="store.priorityFilter">
+            <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label === 'All' ? 'Any priority' : opt.label }} ({{ store.priorityCounts[opt.value] || 0 }})
+            </option>
+          </select>
+
+          <div class="f-daterange">
+            <input type="date" class="f-control f-date" v-model="store.dateFrom" />
+            <span class="f-date-sep">–</span>
+            <input type="date" class="f-control f-date" v-model="store.dateTo" />
+            <button
+              v-if="store.dateFrom || store.dateTo"
+              class="f-date-clear"
+              @click="store.dateFrom = null; store.dateTo = null"
+              title="Clear dates"
+            >&times;</button>
           </div>
 
-          <!-- Date range filter -->
-          <div class="filter-group date-filter-group">
-            <span class="filter-group-label">Date</span>
-            <div class="date-range-inputs">
-              <input type="date" class="date-input" v-model="store.dateFrom" placeholder="From" />
-              <span class="date-separator">–</span>
-              <input type="date" class="date-input" v-model="store.dateTo" placeholder="To" />
-              <button
-                v-if="store.dateFrom || store.dateTo"
-                class="date-clear"
-                @click="store.dateFrom = null; store.dateTo = null"
-                title="Clear dates"
-              >&times;</button>
-            </div>
-          </div>
+          <button
+            class="f-toggle"
+            :class="{ active: store.deadlineFilter }"
+            @click="store.deadlineFilter = !store.deadlineFilter"
+          >
+            <i class="pi pi-clock" style="font-size: 0.875rem;"></i>
+            Has deadline
+          </button>
 
-          <!-- Deadline filter -->
-          <div class="filter-group">
-            <div class="filter-group-pills">
-              <button
-                class="filter-pill deadline-filter"
-                :class="{ active: store.deadlineFilter }"
-                @click="store.deadlineFilter = !store.deadlineFilter"
-              >
-                <i class="pi pi-clock" style="font-size: 0.875rem;"></i>
-                Has deadline
-              </button>
-            </div>
-          </div>
+          <button
+            class="f-toggle f-toggle-review"
+            :class="{ active: store.needsReviewFilter }"
+            :disabled="!store.needsReviewCount && !store.needsReviewFilter"
+            @click="store.needsReviewFilter = !store.needsReviewFilter"
+            :title="store.needsReviewCount + ' note(s) outside the taxonomy'"
+          >
+            <i class="pi pi-exclamation-circle" style="font-size: 0.875rem;"></i>
+            Needs review ({{ store.needsReviewCount }})
+          </button>
 
-          <!-- Status filter -->
-          <div class="filter-group">
-            <span class="filter-group-label">Status</span>
-            <select class="context-select" v-model="store.statusFilter">
-              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }} ({{ store.statusCounts[opt.value] || 0 }})
-              </option>
-            </select>
-          </div>
+          <button v-if="anyFilterActive" class="f-clear" @click="clearAllFilters">Clear</button>
         </div>
 
         <button class="add-btn" @click="openAddModal">
@@ -123,20 +139,20 @@
         </button>
       </div>
 
-      <!-- ── Category filter bar ── -->
-      <div class="category-bar" v-if="store.allCategories.length">
-        <span class="filter-group-label">Categories</span>
+      <!-- ── Subcategory filter bar ── -->
+      <div class="category-bar" v-if="store.allSubcategories.length">
+        <span class="filter-group-label">Subcategories</span>
         <div class="category-pills">
           <button
-            v-for="cat in store.allCategories" :key="cat"
+            v-for="sub in store.allSubcategories" :key="sub"
             class="cat-pill"
-            :class="{ active: store.activeCategories.includes(cat) }"
-            :style="catStyle(cat)"
-            @click="store.toggleCategory(cat)"
+            :class="{ active: store.activeSubcategories.includes(sub) }"
+            :style="catStyle(sub)"
+            @click="store.toggleSubcategory(sub)"
           >
             <span class="catchip-dot"></span>
-            {{ cat }}
-            <span class="filter-count">{{ store.categoryCounts[cat] || 0 }}</span>
+            {{ sub }}
+            <span class="filter-count">{{ store.subcategoryCounts[sub] || 0 }}</span>
           </button>
         </div>
       </div>
@@ -175,7 +191,7 @@
             v-for="note in store.filteredNotes" :key="note.id"
             class="split-card"
             :class="{ selected: selectedNote?.id === note.id, 'is-inactive': store.noteStatus(note) !== 'active' }"
-            :style="catStyle(note.category)"
+            :style="catStyle(store.noteSubcategory(note))"
             @click="selectNote(note)"
           >
             <div class="split-card-stripe"></div>
@@ -188,16 +204,32 @@
               <div class="split-card-meta">
                 <span
                   class="catchip"
-                  :style="catStyle(note.category)"
+                  :style="catStyle(store.noteSubcategory(note))"
                 >
-                  <span class="catchip-dot"></span> {{ note.category }}
+                  <span class="catchip-dot"></span> {{ store.noteSubcategory(note) }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + note.context">{{ note.context }}</span>
+                <span v-if="note.category" class="subcatpill">{{ note.category }}</span>
+                <span
+                  v-if="store.needsReview(note)"
+                  class="review-badge"
+                  title="Not in the canonical taxonomy"
+                >
+                  <i class="pi pi-exclamation-circle" style="font-size: 0.625rem;"></i> review
+                </span>
+                <span
+                  v-if="store.notePriority(note) !== 'none'"
+                  class="prioritypill"
+                  :class="'prioritypill-' + store.notePriority(note)"
+                >{{ store.notePriority(note) }}</span>
                 <span
                   v-if="store.noteStatus(note) !== 'active'"
                   class="statuspill"
                   :class="'statuspill-' + store.noteStatus(note)"
                 >{{ store.noteStatus(note) }}</span>
+                <span v-if="note.stakeholder" class="speaker stakeholder-chip">
+                  <i class="pi pi-users" style="font-size: 0.6875rem;"></i> {{ note.stakeholder }}
+                </span>
                 <span v-if="note.speaker" class="speaker">
                   <i class="pi pi-user" style="font-size: 0.6875rem;"></i> {{ note.speaker }}
                 </span>
@@ -216,20 +248,29 @@
 
         <!-- Right: editor pane -->
         <div v-if="selectedNote" class="split-editor">
-          <div class="inline-editor">
-            <div class="inline-editor-head">
-              <div class="inline-editor-meta">
-                <span class="catchip" :style="catStyle(editForm.category)">
-                  <span class="catchip-dot"></span> {{ editForm.category }}
+          <div class="editor-body">
+            <div class="editor-head">
+              <div class="editor-meta">
+                <span class="catchip" :style="catStyle(editForm.subcategory || 'unassigned')">
+                  <span class="catchip-dot"></span> {{ editForm.subcategory || 'unassigned' }}
                 </span>
                 <span class="ctxpill" :class="'ctxpill-' + editForm.context">{{ editForm.context }}</span>
+                <span v-if="editForm.category" class="subcatpill">{{ editForm.category }}</span>
                 <span
-                  class="statuspill"
-                  :class="'statuspill-' + store.noteStatus(selectedNote)"
-                >{{ store.noteStatus(selectedNote) }}</span>
-                <span class="inline-editor-date">{{ formatDate(selectedNote.created_at) }}</span>
+                  v-if="store.needsReview(selectedNote)"
+                  class="review-badge"
+                  title="Not in the canonical taxonomy"
+                >
+                  <i class="pi pi-exclamation-circle" style="font-size: 0.625rem;"></i> review
+                </span>
+                <span
+                  v-if="store.notePriority(selectedNote) !== 'none'"
+                  class="prioritypill"
+                  :class="'prioritypill-' + store.notePriority(selectedNote)"
+                >{{ store.notePriority(selectedNote) }}</span>
+                <span class="editor-date">{{ formatDate(selectedNote.created_at) }}</span>
               </div>
-              <div class="inline-editor-actions">
+              <div class="editor-actions">
                 <select
                   class="status-select"
                   :class="'status-select-' + store.noteStatus(selectedNote)"
@@ -257,63 +298,140 @@
             </div>
 
             <textarea
-              class="inline-editor-text"
+              class="editor-text"
               v-model="editForm.content"
               placeholder="Write your note..."
             ></textarea>
+          </div>
 
-            <div class="inline-editor-foot">
-              <!-- Keywords -->
-              <div class="inline-editor-kws">
-                <span class="foot-label">Tags</span>
+          <aside class="rail">
+            <section class="rail-section">
+              <h4 class="rail-title">Classification</h4>
+              <label class="rail-field">
+                <span>Context</span>
+                <select class="rail-input" v-model="editForm.context">
+                  <option value="work">work</option>
+                  <option value="personal">personal</option>
+                </select>
+              </label>
+              <label class="rail-field">
+                <span>Category</span>
+                <select class="rail-input" v-model="editForm.category">
+                  <option value="" disabled>Pick a category…</option>
+                  <option
+                    v-if="editForm.category && !editCategoryOptions.includes(editForm.category)"
+                    :value="editForm.category"
+                    disabled
+                  >{{ editForm.category }} (legacy)</option>
+                  <option v-for="c in editCategoryOptions" :key="c" :value="c">{{ c }}</option>
+                </select>
+              </label>
+              <label class="rail-field">
+                <span>Subcategory</span>
+                <select class="rail-input" v-model="editForm.subcategory" :disabled="!editSubcategoryOptions.length">
+                  <option value="" disabled>Pick a subcategory…</option>
+                  <option
+                    v-if="editForm.subcategory && !editSubcategoryOptions.includes(editForm.subcategory)"
+                    :value="editForm.subcategory"
+                    disabled
+                  >{{ editForm.subcategory }} (legacy)</option>
+                  <option v-for="s in editSubcategoryOptions" :key="s" :value="s">{{ s }}</option>
+                </select>
+              </label>
+              <label class="rail-field">
+                <span>Priority</span>
+                <select class="rail-input" v-model="editForm.priority">
+                  <option value="none">None</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+            </section>
+
+            <section class="rail-section">
+              <h4 class="rail-title">People</h4>
+              <label class="rail-field">
+                <span>Speaker</span>
+                <input class="rail-input" v-model="editForm.speaker" placeholder="Optional" />
+              </label>
+              <label class="rail-field">
+                <span>Stakeholder</span>
+                <input class="rail-input" v-model="editForm.stakeholder" placeholder="Optional" />
+              </label>
+            </section>
+
+            <section class="rail-section">
+              <h4 class="rail-title">Tags</h4>
+              <div class="rail-chips">
                 <span
                   v-for="(kw, i) in editForm.keywords" :key="i"
                   class="kwchip-static removable"
                   @click="editForm.keywords.splice(i, 1)"
                 >{{ kw }} <span class="kw-x">&times;</span></span>
                 <input
-                  class="kw-input"
+                  class="rail-tag-input"
                   placeholder="+ tag ↵"
                   @keydown.enter.prevent="addKeywordToEdit"
                   v-model="newKeyword"
                 />
               </div>
+            </section>
 
-              <!-- Metadata selects -->
-              <div class="inline-editor-fields">
-                <div class="inline-field">
-                  <span class="foot-label">Context</span>
-                  <select class="sel" v-model="editForm.context">
-                    <option value="work">work</option>
-                    <option value="personal">personal</option>
-                  </select>
-                </div>
-                <div class="inline-field">
-                  <span class="foot-label">Category</span>
-                  <input class="sel" v-model="editForm.category" placeholder="Category" />
-                </div>
-                <div class="inline-field">
-                  <span class="foot-label">Speaker</span>
-                  <input class="sel" v-model="editForm.speaker" placeholder="Speaker" />
-                </div>
-
-                <label class="deadline-toggle">
-                  <input type="checkbox" v-model="editForm.deadline" />
-                  Deadline
-                </label>
-                <template v-if="editForm.deadline">
-                  <div class="inline-field">
-                    <span class="foot-label">Due</span>
-                    <input type="date" class="sel" v-model="editForm.deadline_date" />
+            <section class="rail-section">
+              <h4 class="rail-title">Related notes</h4>
+              <div v-if="!relatedNotes.length" class="rail-empty">No linked notes yet</div>
+              <ul v-else class="rail-rellist">
+                <li v-for="rel in relatedNotes" :key="rel.id" class="rail-relitem">
+                  <button class="rail-rellink" @click="selectNote(rel)">
+                    <i class="pi pi-link" style="font-size: 0.75rem;"></i>
+                    <span class="rail-reltitle">{{ noteTitle(rel) }}</span>
+                  </button>
+                  <button class="rail-relx" @click="unlinkRelated(rel.id)" title="Unlink">&times;</button>
+                </li>
+              </ul>
+              <div class="rel-picker-wrap" ref="relPickerWrap">
+                <button class="rail-link-btn" @click="openRelPicker">
+                  <i class="pi pi-link" style="font-size: 0.8125rem;"></i>
+                  Link related note
+                </button>
+                <div v-if="showRelatedPicker" class="rel-popover">
+                  <input
+                    ref="relSearchInput"
+                    class="rel-popover-input"
+                    v-model="relatedSearch"
+                    placeholder="Search notes…"
+                  />
+                  <div class="rel-popover-list">
+                    <button
+                      v-for="cand in relatedSearchResults" :key="cand.id"
+                      class="rel-popover-option"
+                      @click="linkRelated(cand)"
+                    >{{ noteTitle(cand) }}</button>
+                    <div v-if="!relatedSearchResults.length" class="rel-popover-empty">No matches</div>
                   </div>
-                  <div class="inline-field">
-                    <span class="foot-label">Stakeholder</span>
-                    <input class="sel" v-model="editForm.deadline_stakeholder" placeholder="Stakeholder" />
-                  </div>
-                </template>
+                </div>
               </div>
-            </div>
-          </div>
+            </section>
+
+            <section class="rail-section">
+              <h4 class="rail-title">Deadline</h4>
+              <label class="rail-toggle">
+                <input type="checkbox" v-model="editForm.deadline" />
+                <span>Has deadline</span>
+              </label>
+              <template v-if="editForm.deadline">
+                <label class="rail-field">
+                  <span>Due</span>
+                  <input type="date" class="rail-input" v-model="editForm.deadline_date" />
+                </label>
+                <label class="rail-field">
+                  <span>Stakeholder</span>
+                  <input class="rail-input" v-model="editForm.deadline_stakeholder" placeholder="Optional" />
+                </label>
+              </template>
+            </section>
+          </aside>
         </div>
         <div v-else class="split-editor">
           <div class="split-placeholder">
@@ -358,56 +476,96 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="modal-meta">
-            <div class="field">
-              <label>Context</label>
-              <select class="sel" v-model="modalForm.context">
-                <option value="work">work</option>
-                <option value="personal">personal</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Category</label>
-              <input class="sel" v-model="modalForm.category" placeholder="e.g. meeting, idea, task" />
-            </div>
-            <div class="field">
-              <label>Speaker</label>
-              <input class="sel" v-model="modalForm.speaker" placeholder="Optional" />
-            </div>
-          </div>
           <textarea
             class="modal-textarea"
             v-model="modalForm.content"
             placeholder="Write your note..."
           ></textarea>
 
-          <!-- Keywords -->
-          <div class="inline-editor-kws">
-            <span class="foot-label">Keywords</span>
-            <span
-              v-for="(kw, i) in modalForm.keywords" :key="i"
-              class="kwchip-static removable"
-              @click="modalForm.keywords.splice(i, 1)"
-            >{{ kw }} <span class="kw-x">&times;</span></span>
-            <input
-              class="kw-input"
-              placeholder="+ keyword ↵"
-              @keydown.enter.prevent="addKeywordToModal"
-              v-model="modalNewKeyword"
-            />
-          </div>
+          <section class="modal-section">
+            <h4 class="modal-section-title">Classification</h4>
+            <div class="modal-grid modal-grid-2">
+              <label class="modal-field">
+                <span>Context</span>
+                <select class="sel" v-model="modalForm.context">
+                  <option value="work">work</option>
+                  <option value="personal">personal</option>
+                </select>
+              </label>
+              <label class="modal-field">
+                <span>Category</span>
+                <select class="sel" v-model="modalForm.category">
+                  <option value="" disabled>Pick a category…</option>
+                  <option v-for="c in modalCategoryOptions" :key="c" :value="c">{{ c }}</option>
+                </select>
+              </label>
+              <label class="modal-field">
+                <span>Subcategory</span>
+                <select class="sel" v-model="modalForm.subcategory" :disabled="!modalSubcategoryOptions.length">
+                  <option value="" disabled>Pick a subcategory…</option>
+                  <option v-for="s in modalSubcategoryOptions" :key="s" :value="s">{{ s }}</option>
+                </select>
+              </label>
+              <label class="modal-field">
+                <span>Priority</span>
+                <select class="sel" v-model="modalForm.priority">
+                  <option value="none">None</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+            </div>
+          </section>
 
-          <!-- Deadline -->
-          <div class="modal-deadline">
-            <label class="deadline-toggle">
+          <section class="modal-section">
+            <h4 class="modal-section-title">People</h4>
+            <div class="modal-grid modal-grid-2">
+              <label class="modal-field">
+                <span>Speaker</span>
+                <input class="sel" v-model="modalForm.speaker" placeholder="Optional" />
+              </label>
+              <label class="modal-field">
+                <span>Stakeholder</span>
+                <input class="sel" v-model="modalForm.stakeholder" placeholder="Optional" />
+              </label>
+            </div>
+          </section>
+
+          <section class="modal-section">
+            <h4 class="modal-section-title">Tags</h4>
+            <div class="modal-chips">
+              <span
+                v-for="(kw, i) in modalForm.keywords" :key="i"
+                class="kwchip-static removable"
+                @click="modalForm.keywords.splice(i, 1)"
+              >{{ kw }} <span class="kw-x">&times;</span></span>
+              <input
+                class="rail-tag-input"
+                placeholder="+ keyword ↵"
+                @keydown.enter.prevent="addKeywordToModal"
+                v-model="modalNewKeyword"
+              />
+            </div>
+          </section>
+
+          <section class="modal-section">
+            <h4 class="modal-section-title">Deadline</h4>
+            <label class="rail-toggle">
               <input type="checkbox" v-model="modalForm.deadline" />
-              Has deadline
+              <span>Has deadline</span>
             </label>
-            <template v-if="modalForm.deadline">
-              <input type="date" class="sel" v-model="modalForm.deadline_date" />
-              <input class="sel" v-model="modalForm.deadline_stakeholder" placeholder="Stakeholder" style="min-width: 8.75rem;" />
-            </template>
-          </div>
+            <div v-if="modalForm.deadline" class="modal-grid modal-grid-2" style="margin-top: 0.625rem;">
+              <label class="modal-field">
+                <span>Due</span>
+                <input type="date" class="sel" v-model="modalForm.deadline_date" />
+              </label>
+              <label class="modal-field">
+                <span>Stakeholder</span>
+                <input class="sel" v-model="modalForm.deadline_stakeholder" placeholder="Optional" />
+              </label>
+            </div>
+          </section>
         </div>
         <div class="modal-foot">
           <button class="add-btn" @click="submitModal" :disabled="saving">
@@ -425,8 +583,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useNotesStore } from '@/stores/notes'
+import { categoriesFor, subcategoriesFor } from '@/lib/taxonomy'
 import dayjs from 'dayjs'
 
 const store = useNotesStore()
@@ -447,6 +606,13 @@ const statusOptions = [
   { value: 'completed', label: 'Completed' },
   { value: 'suspended', label: 'Suspended' },
 ]
+const priorityOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'none', label: 'None' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
 const savingStatus = ref(false)
 
 async function changeStatus(status) {
@@ -466,6 +632,33 @@ function onContextChange() {
   store.activeContexts = contextDropdown.value ? [contextDropdown.value] : []
 }
 
+const anyFilterActive = computed(() =>
+  !!contextDropdown.value
+  || store.categoryFilter !== 'all'
+  || store.activeSubcategories.length > 0
+  || store.stakeholderFilter !== 'all'
+  || store.statusFilter !== 'all'
+  || store.priorityFilter !== 'all'
+  || !!store.dateFrom
+  || !!store.dateTo
+  || store.deadlineFilter
+  || store.needsReviewFilter
+)
+
+function clearAllFilters() {
+  contextDropdown.value = ''
+  store.activeContexts = []
+  store.activeSubcategories = []
+  store.categoryFilter = 'all'
+  store.stakeholderFilter = 'all'
+  store.statusFilter = 'all'
+  store.priorityFilter = 'all'
+  store.dateFrom = null
+  store.dateTo = null
+  store.deadlineFilter = false
+  store.needsReviewFilter = false
+}
+
 // ── Modal state ──
 const modalOpen = ref(false)
 const modalMode = ref('add')
@@ -478,9 +671,13 @@ function emptyForm() {
     id: null,
     context: 'work',
     category: '',
+    subcategory: '',
     content: '',
     keywords: [],
     speaker: '',
+    stakeholder: '',
+    priority: 'none',
+    related_note_ids: [],
     deadline: false,
     deadline_date: '',
     deadline_stakeholder: '',
@@ -498,14 +695,20 @@ function selectNote(note) {
     id: note.id,
     context: note.context,
     category: note.category,
+    subcategory: note.subcategory || '',
     content: note.content,
     keywords: [...(note.keywords || [])],
     speaker: note.speaker || '',
+    stakeholder: note.stakeholder || '',
+    priority: note.priority || 'none',
+    related_note_ids: [...(note.related_note_ids || [])],
     deadline: note.deadline || false,
     deadline_date: note.deadline_date || '',
     deadline_stakeholder: note.deadline_stakeholder || '',
     processed_content: note.processed_content || '',
   }
+  relatedSearch.value = ''
+  showRelatedPicker.value = false
 }
 
 function addKeywordToEdit() {
@@ -523,9 +726,12 @@ async function saveInlineEdit() {
     const updated = await store.updateNote(selectedNote.value.id, {
       context: editForm.value.context,
       category: editForm.value.category,
+      subcategory: editForm.value.subcategory || 'unassigned',
       content: editForm.value.content,
       keywords: editForm.value.keywords,
       speaker: editForm.value.speaker || null,
+      stakeholder: editForm.value.stakeholder || null,
+      priority: editForm.value.priority || 'none',
       deadline: editForm.value.deadline,
       deadline_date: editForm.value.deadline_date || null,
       deadline_stakeholder: editForm.value.deadline_stakeholder || null,
@@ -535,6 +741,104 @@ async function saveInlineEdit() {
     // error handled in store
   } finally {
     saving.value = false
+  }
+}
+
+// ── Taxonomy-driven cascading selects ──
+const editCategoryOptions    = computed(() => categoriesFor(editForm.value.context))
+const editSubcategoryOptions = computed(() => subcategoriesFor(editForm.value.context, editForm.value.category))
+const modalCategoryOptions    = computed(() => categoriesFor(modalForm.value.context))
+const modalSubcategoryOptions = computed(() => subcategoriesFor(modalForm.value.context, modalForm.value.category))
+
+// When context changes, drop a category that no longer belongs to it.
+watch(() => editForm.value.context, (ctx) => {
+  if (editForm.value.category && !categoriesFor(ctx).includes(editForm.value.category)) {
+    editForm.value.category = ''
+    editForm.value.subcategory = ''
+  }
+})
+watch(() => modalForm.value.context, (ctx) => {
+  if (modalForm.value.category && !categoriesFor(ctx).includes(modalForm.value.category)) {
+    modalForm.value.category = ''
+    modalForm.value.subcategory = ''
+  }
+})
+
+// When category changes, drop a subcategory that no longer belongs to it.
+watch(() => editForm.value.category, (cat) => {
+  const valid = subcategoriesFor(editForm.value.context, cat)
+  if (editForm.value.subcategory && !valid.includes(editForm.value.subcategory)) {
+    editForm.value.subcategory = ''
+  }
+})
+watch(() => modalForm.value.category, (cat) => {
+  const valid = subcategoriesFor(modalForm.value.context, cat)
+  if (modalForm.value.subcategory && !valid.includes(modalForm.value.subcategory)) {
+    modalForm.value.subcategory = ''
+  }
+})
+
+// ── Related notes (link picker) ──
+const relatedSearch = ref('')
+const showRelatedPicker = ref(false)
+const relPickerWrap = ref(null)
+const relSearchInput = ref(null)
+
+const relatedNotes = computed(() =>
+  (editForm.value.related_note_ids || [])
+    .map(id => store.notes.find(n => n.id === id))
+    .filter(Boolean)
+)
+
+const relatedSearchResults = computed(() => {
+  if (!selectedNote.value) return []
+  const q = relatedSearch.value.trim().toLowerCase()
+  const linked = new Set(editForm.value.related_note_ids || [])
+  return store.notes
+    .filter(n => n.id !== selectedNote.value.id && !linked.has(n.id))
+    .filter(n => !q || n.content.toLowerCase().includes(q))
+    .slice(0, 8)
+})
+
+async function openRelPicker() {
+  showRelatedPicker.value = true
+  relatedSearch.value = ''
+  await nextTick()
+  relSearchInput.value?.focus()
+}
+
+function closeRelPicker() {
+  showRelatedPicker.value = false
+  relatedSearch.value = ''
+}
+
+function onDocMousedown(e) {
+  if (!showRelatedPicker.value) return
+  const root = relPickerWrap.value
+  if (root && !root.contains(e.target)) closeRelPicker()
+}
+
+onMounted(() => document.addEventListener('mousedown', onDocMousedown))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMousedown))
+
+async function linkRelated(cand) {
+  if (!selectedNote.value) return
+  await store.linkRelated(selectedNote.value.id, cand.id)
+  const fresh = store.notes.find(n => n.id === selectedNote.value.id)
+  if (fresh) {
+    selectedNote.value = fresh
+    editForm.value.related_note_ids = [...(fresh.related_note_ids || [])]
+  }
+  closeRelPicker()
+}
+
+async function unlinkRelated(otherId) {
+  if (!selectedNote.value) return
+  await store.unlinkRelated(selectedNote.value.id, otherId)
+  const fresh = store.notes.find(n => n.id === selectedNote.value.id)
+  if (fresh) {
+    selectedNote.value = fresh
+    editForm.value.related_note_ids = [...(fresh.related_note_ids || [])]
   }
 }
 
@@ -559,16 +863,23 @@ function addKeywordToModal() {
 }
 
 async function submitModal() {
-  if (!modalForm.value.content.trim() || !modalForm.value.category.trim()) return
+  if (
+    !modalForm.value.content.trim()
+    || !modalForm.value.category.trim()
+    || !modalForm.value.subcategory.trim()
+  ) return
   saving.value = true
   try {
     if (modalMode.value === 'add') {
       const created = await store.addNote({
         context: modalForm.value.context,
         category: modalForm.value.category,
+        subcategory: modalForm.value.subcategory || 'unassigned',
         content: modalForm.value.content,
         keywords: modalForm.value.keywords,
         speaker: modalForm.value.speaker || null,
+        stakeholder: modalForm.value.stakeholder || null,
+        priority: modalForm.value.priority || 'none',
         deadline: modalForm.value.deadline,
         deadline_date: modalForm.value.deadline_date || null,
         deadline_stakeholder: modalForm.value.deadline_stakeholder || null,
@@ -578,9 +889,12 @@ async function submitModal() {
       await store.updateNote(modalForm.value.id, {
         context: modalForm.value.context,
         category: modalForm.value.category,
+        subcategory: modalForm.value.subcategory || 'unassigned',
         content: modalForm.value.content,
         keywords: modalForm.value.keywords,
         speaker: modalForm.value.speaker || null,
+        stakeholder: modalForm.value.stakeholder || null,
+        priority: modalForm.value.priority || 'none',
         deadline: modalForm.value.deadline,
         deadline_date: modalForm.value.deadline_date || null,
         deadline_stakeholder: modalForm.value.deadline_stakeholder || null,
@@ -614,8 +928,9 @@ function formatDeadlineDate(d) {
   return d ? dayjs(d).format('MMM D') : ''
 }
 
-function catStyle(cat) {
-  const c = store.categoryColor(cat)
+function catStyle(name) {
+  // `name` is now a subcategory — palette assignment lives in the store.
+  const c = store.subcategoryColor(name)
   return {
     '--cat-h': c.h,
     '--cat-s': c.s + '%',
@@ -629,11 +944,11 @@ function setAccent(hue) {
 }
 
 // Keep selected note synced when store data changes
-watch(() => store.filteredNotes, () => {
-  if (selectedNote.value) {
-    const fresh = store.notes.find(n => n.id === selectedNote.value.id)
-    if (!fresh) selectedNote.value = null
-  }
+watch(() => store.filteredNotes, (list) => {
+  if (!selectedNote.value) return
+  // Clear the selection if it no longer matches the current filters (or was deleted).
+  const stillVisible = list.some(n => n.id === selectedNote.value.id)
+  if (!stillVisible) selectedNote.value = null
 }, { deep: true })
 </script>
 
@@ -779,69 +1094,100 @@ watch(() => store.filteredNotes, () => {
 }
 .search-clear:hover { background: var(--border); color: var(--text); }
 
-.filters { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: center; flex: 1; }
-.filter-group { display: flex; align-items: center; gap: 0.625rem; }
-.filter-group-label {
-  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-faint); font-weight: 600;
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+  align-items: center;
+  flex: 1;
 }
-.filter-group-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
-/* Context dropdown */
-.context-select {
+/* Unified filter control — selects, date inputs */
+.f-control {
+  height: 2.5rem;
   border: 1px solid var(--border);
   border-radius: 0.625rem;
-  padding: 0.5625rem 1rem;
-  height: 2.625rem;
-  font-size: 0.875rem;
-  background: #fff;
-  color: var(--text);
-  outline: none;
-  min-width: 10rem;
-  cursor: pointer;
-}
-.context-select:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-
-/* Date filter */
-.date-filter-group { gap: 0.625rem; }
-.date-range-inputs {
-  display: flex; align-items: center; gap: 0.5rem;
-}
-.date-input {
-  border: 1px solid var(--border);
-  border-radius: 0.625rem;
-  padding: 0.5625rem 0.875rem;
-  height: 2.625rem;
+  padding: 0 0.875rem;
   font-size: 0.8125rem;
   background: #fff;
   color: var(--text);
   outline: none;
-  min-width: 8.75rem;
+  cursor: pointer;
+  transition: border-color 120ms, box-shadow 120ms;
+  min-width: 0;
 }
-.date-input:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-.date-separator { color: var(--text-faint); font-size: 1rem; }
-.date-clear {
-  width: 1.75rem; height: 1.75rem; border-radius: 50%;
-  color: var(--text-faint); display: flex; align-items: center; justify-content: center;
-  font-size: 1.25rem; line-height: 1;
-}
-.date-clear:hover { background: var(--border); color: var(--text); }
+.f-control:hover:not(:disabled) { border-color: var(--text-faint); }
+.f-control:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+.f-control:disabled { opacity: 0.55; cursor: not-allowed; }
+select.f-control { padding-right: 0.5rem; }
 
-/* Deadline filter pill (stays as pill) */
-.filter-pill {
+/* Date range — two date inputs visually grouped */
+.f-daterange {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+}
+.f-date { min-width: 8.5rem; font-size: 0.8125rem; padding: 0 0.625rem; }
+.f-date-sep { color: var(--text-faint); font-size: 0.875rem; }
+.f-date-clear {
+  width: 1.625rem; height: 1.625rem; border-radius: 50%;
+  color: var(--text-faint);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.125rem; line-height: 1;
+}
+.f-date-clear:hover { background: var(--border); color: var(--text); }
+
+/* Has-deadline toggle — same shape as f-control */
+.f-toggle {
   display: inline-flex; align-items: center; gap: 0.5rem;
-  padding: 0.5625rem 1.25rem;
-  border-radius: 999px;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border-radius: 0.625rem;
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text-dim);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   transition: all 120ms;
 }
-.filter-pill:hover { border-color: var(--text-faint); color: var(--text); background: var(--bg-sunken); }
-.filter-pill.deadline-filter.active {
-  background: oklch(0.95 0.06 35); color: oklch(0.45 0.14 35); border-color: oklch(0.78 0.1 35);
+.f-toggle:hover { border-color: var(--text-faint); color: var(--text); }
+.f-toggle.active {
+  background: var(--accent-100);
+  color: var(--accent-600);
+  border-color: var(--accent-400);
+  font-weight: 600;
+}
+
+.f-clear {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  text-decoration: underline;
+  padding: 0 0.5rem;
+}
+.f-clear:hover { color: var(--text); }
+
+/* Needs-review toggle — uses an amber palette to distinguish from the deadline toggle */
+.f-toggle-review.active {
+  background: oklch(0.95 0.07 60);
+  color: oklch(0.45 0.16 60);
+  border-color: oklch(0.78 0.13 60);
+}
+.f-toggle-review:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Review badge — small inline pill on cards / editor head */
+.review-badge {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 0.375rem;
+  background: oklch(0.95 0.07 60);
+  color: oklch(0.45 0.16 60);
+  border: 1px solid oklch(0.85 0.11 60);
 }
 
 /* Inline editor status dropdown (next to Save / Delete) */
@@ -959,6 +1305,37 @@ watch(() => store.filteredNotes, () => {
 .statuspill-active    { background: oklch(0.95 0.06 150); color: oklch(0.42 0.13 150); }
 .statuspill-completed { background: oklch(0.95 0.05 230); color: oklch(0.44 0.13 230); }
 .statuspill-suspended { background: oklch(0.95 0.05 70);  color: oklch(0.46 0.12 70); }
+
+/* ── Subcategory chip ── */
+.subcatpill {
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  border: 1px solid var(--border-soft);
+  text-transform: lowercase;
+}
+
+/* ── Priority chip ── */
+.prioritypill {
+  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+.prioritypill-low    { background: oklch(0.95 0.05 230); color: oklch(0.44 0.13 230); }
+.prioritypill-medium { background: oklch(0.95 0.06 70);  color: oklch(0.46 0.13 70); }
+.prioritypill-high   { background: oklch(0.94 0.08 25);  color: oklch(0.46 0.16 25); }
+
+/* Stakeholder reuses .speaker styling; small tonal shift */
+.speaker.stakeholder-chip {
+  background: oklch(0.96 0.03 210);
+  color: oklch(0.45 0.11 210);
+}
 
 .kwchip-static {
   display: inline-flex; align-items: center; gap: 0.1875rem;
@@ -1127,35 +1504,39 @@ watch(() => store.filteredNotes, () => {
   display: inline-flex; gap: 0.25rem; margin-left: auto;
 }
 
-/* ── Right panel: editor ── */
+/* ── Right panel: editor (body + rail grid) ── */
 .split-editor {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  display: flex; flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 19rem;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
-.inline-editor {
+.editor-body {
   display: flex; flex-direction: column;
-  height: 100%;
-  padding: 1.75rem 2.25rem 1.5rem;
+  padding: 1.75rem 2.25rem 1.75rem;
   gap: 1rem;
+  min-width: 0;
 }
 
-.inline-editor-head {
+.editor-head {
   display: flex; justify-content: space-between; align-items: center;
   padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft);
+  gap: 1rem;
+  flex-wrap: wrap;
 }
-.inline-editor-meta { display: flex; gap: 0.75rem; align-items: center; }
-.inline-editor-date { font-size: 0.8125rem; color: var(--text-faint); }
-.inline-editor-actions { display: flex; gap: 0.625rem; }
+.editor-meta { display: flex; gap: 0.625rem; align-items: center; flex-wrap: wrap; }
+.editor-date { font-size: 0.8125rem; color: var(--text-faint); }
+.editor-actions { display: flex; gap: 0.625rem; align-items: center; }
 
 .inline-processed { margin: 0.25rem 0 0.5rem; }
 
-.inline-editor-text {
+.editor-text {
   flex: 1;
-  min-height: 18.75rem;
+  min-height: 22rem;
   border: none; outline: none;
   resize: none;
   font-size: 1rem;
@@ -1166,27 +1547,170 @@ watch(() => store.filteredNotes, () => {
   padding: 0.75rem 0;
 }
 
-.inline-editor-foot {
-  display: flex; flex-direction: column; gap: 0.875rem;
-  padding-top: 1rem; border-top: 1px solid var(--border-soft);
+/* ── Right rail ── */
+.rail {
+  background: var(--bg-sunken);
+  border-left: 1px solid var(--border);
+  padding: 1.25rem 1.25rem 1.5rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 21.25rem);
+  display: flex; flex-direction: column;
 }
-
-.foot-label {
-  font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-faint); margin-right: 0.25rem;
+.rail-section + .rail-section {
+  border-top: 1px solid var(--border-soft);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
 }
-
-.inline-editor-kws { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-
-.inline-editor-fields {
-  display: flex; flex-wrap: wrap; gap: 0.875rem; align-items: flex-end;
+.rail-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 0.625rem;
 }
-.inline-field {
+.rail-field {
   display: flex; flex-direction: column; gap: 0.25rem;
+  margin-bottom: 0.625rem;
 }
+.rail-field:last-child { margin-bottom: 0; }
+.rail-field > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.rail-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  height: 2.375rem;
+  font-size: 0.8125rem;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  font-family: inherit;
+}
+.rail-input:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
 
-.deadline-toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer; font-weight: 500; }
-.deadline-toggle input { accent-color: var(--accent-500); width: 1rem; height: 1rem; }
+.rail-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+.rail-tag-input {
+  border: 1px dashed var(--border); outline: none; background: #fff;
+  padding: 0.3125rem 0.625rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  width: 100%;
+  height: 1.875rem;
+  color: var(--text);
+}
+.rail-tag-input:focus { background: var(--accent-050); border-color: var(--accent-400); border-style: solid; }
+
+.rail-toggle {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8125rem; cursor: pointer; font-weight: 500;
+  color: var(--text);
+}
+.rail-toggle input { accent-color: var(--accent-500); width: 1rem; height: 1rem; }
+
+/* Related notes in rail */
+.rail-empty {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 0.375rem 0;
+}
+.rail-rellist { list-style: none; padding: 0; margin: 0 0 0.625rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.rail-relitem {
+  display: flex; align-items: center;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  transition: border-color 120ms, background 120ms;
+}
+.rail-relitem:hover { border-color: var(--accent-400); background: var(--accent-050); }
+.rail-rellink {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+  text-align: left;
+  background: none; border: none;
+  cursor: pointer;
+}
+.rail-rellink:hover { color: var(--accent-600); }
+.rail-rellink .pi-link { color: var(--accent-500); }
+.rail-reltitle {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.rail-relx {
+  width: 1.75rem; height: 1.75rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-faint);
+  font-size: 1.125rem; line-height: 1;
+  border-radius: 0.375rem;
+  margin-right: 0.25rem;
+}
+.rail-relx:hover { background: #fff0f0; color: #c33; }
+
+.rel-picker-wrap { position: relative; }
+.rail-link-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  width: 100%;
+  justify-content: center;
+  padding: 0.5625rem 0.875rem;
+  background: var(--accent-050);
+  border: 1px dashed var(--accent-400);
+  color: var(--accent-600);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background 120ms, border-style 120ms;
+}
+.rail-link-btn:hover { background: var(--accent-100); border-style: solid; }
+
+.rel-popover {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0; right: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  box-shadow: var(--shadow-lg);
+  padding: 0.5rem;
+  display: flex; flex-direction: column; gap: 0.375rem;
+  max-height: 18rem;
+}
+.rel-popover-input {
+  width: 100%;
+  height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+  outline: none;
+}
+.rel-popover-input:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+.rel-popover-list { display: flex; flex-direction: column; overflow-y: auto; max-height: 14rem; }
+.rel-popover-option {
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+  border-radius: 0.375rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rel-popover-option:hover { background: var(--accent-050); color: var(--accent-600); }
+.rel-popover-empty {
+  padding: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  text-align: center;
+  font-style: italic;
+}
 
 .sel {
   border: 1px solid var(--border);
@@ -1200,17 +1724,6 @@ watch(() => store.filteredNotes, () => {
   min-width: 7.5rem;
 }
 .sel:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-
-.kw-input {
-  border: 1px solid var(--border-soft); outline: none; background: var(--bg-sunken);
-  padding: 0.375rem 0.875rem;
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  font-family: 'SF Mono', ui-monospace, monospace;
-  width: 8.75rem;
-  height: 2rem;
-}
-.kw-input:focus { background: var(--accent-050); border-color: var(--accent-400); }
 
 /* Placeholder state */
 .split-placeholder {
@@ -1257,9 +1770,17 @@ watch(() => store.filteredNotes, () => {
 
 .modal-body { padding: 1.5rem 1.75rem; display: flex; flex-direction: column; gap: 1.125rem; overflow-y: auto; }
 
-.modal-meta { display: flex; gap: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.375rem; flex: 1; }
-.field > label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); font-weight: 600; }
+.modal-section + .modal-section { border-top: 1px solid var(--border-soft); padding-top: 1.125rem; }
+.modal-section-title {
+  font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-faint);
+  margin: 0 0 0.75rem;
+}
+.modal-grid { display: grid; gap: 0.875rem; }
+.modal-grid-2 { grid-template-columns: 1fr 1fr; }
+.modal-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.modal-field > span { font-size: 0.75rem; font-weight: 600; color: var(--text-dim); }
+.modal-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
 
 .modal-textarea {
   width: 100%;
@@ -1275,8 +1796,6 @@ watch(() => store.filteredNotes, () => {
   background: #fff;
 }
 .modal-textarea:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-
-.modal-deadline { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding-top: 0.25rem; }
 
 .modal-foot {
   display: flex; gap: 0.75rem; align-items: center;
@@ -1352,9 +1871,18 @@ watch(() => store.filteredNotes, () => {
 @keyframes pop-in  { from { opacity: 0; transform: translateY(0.375rem) scale(0.97); } to { opacity: 1; transform: none; } }
 
 /* ── Responsive ── */
+@media (max-width: 75em) {
+  .split-editor { grid-template-columns: 1fr; }
+  .rail {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: none;
+  }
+}
 @media (max-width: 62.5em) {
   .filterbar { flex-wrap: wrap; }
   .notes-title-row { flex-direction: column; align-items: flex-start; }
   .split-layout { grid-template-columns: 1fr; }
+  .modal-grid-2 { grid-template-columns: 1fr; }
 }
 </style>

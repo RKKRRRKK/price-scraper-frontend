@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
+import { isCanonical } from '@/lib/taxonomy'
 
 export const useNotesStore = defineStore('notes', () => {
   const notes = ref([])
@@ -11,21 +12,67 @@ export const useNotesStore = defineStore('notes', () => {
 
   // ── Filters ──
   const searchQuery = ref('')
-  const activeContexts = ref([])      // ['work','personal']
-  const activeCategories = ref([])    // ['meeting','idea',...]
+  const activeContexts = ref([])           // ['work','personal']
+  const categoryFilter = ref('all')        // single-select: 'all' | <value>
+  const activeSubcategories = ref([])      // multi-select pill toggle, e.g. ['idea','meta',…]
   const deadlineFilter = ref(false)
-  const dateFrom = ref(null)       // 'YYYY-MM-DD' string or null
-  const dateTo = ref(null)         // 'YYYY-MM-DD' string or null
-  const statusFilter = ref('all')  // 'all' | 'active' | 'completed' | 'suspended'
+  const dateFrom = ref(null)               // 'YYYY-MM-DD' string or null
+  const dateTo = ref(null)                 // 'YYYY-MM-DD' string or null
+  const statusFilter = ref('all')          // 'all' | 'active' | 'completed' | 'suspended'
+  const priorityFilter = ref('all')        // 'all' | 'none' | 'low' | 'medium' | 'high'
+  const stakeholderFilter = ref('all')     // 'all' | <value>
+  const needsReviewFilter = ref(false)     // true → only show non-canonical notes
 
-  // ── Note status helper (notes default to 'active') ──
+  // ── Note field helpers (apply defaults for legacy rows) ──
   function noteStatus(note) {
     return note?.status || 'active'
   }
+  function notePriority(note) {
+    return note?.priority || 'none'
+  }
+  function noteSubcategory(note) {
+    return note?.subcategory || 'unassigned'
+  }
+  // True if this note's (context, category, subcategory) does NOT match the
+  // canonical taxonomy. Used to flag legacy/free-text rows for the user.
+  function needsReview(note) {
+    if (!note) return false
+    return !isCanonical(note.context, note.category, note.subcategory)
+  }
 
-  // ── All unique categories from data ──
+  // ── Scoping pool: notes after context + date are applied. Basis for all
+  //    "scoped" counts (stats, category/status/priority counts, allCategories). ──
+  const scopedNotes = computed(() => {
+    let r = notes.value
+    if (activeContexts.value.length) {
+      r = r.filter(n => activeContexts.value.includes(n.context))
+    }
+    if (dateFrom.value) {
+      const from = new Date(dateFrom.value); from.setHours(0, 0, 0, 0)
+      r = r.filter(n => new Date(n.created_at) >= from)
+    }
+    if (dateTo.value) {
+      const to = new Date(dateTo.value); to.setHours(23, 59, 59, 999)
+      r = r.filter(n => new Date(n.created_at) <= to)
+    }
+    return r
+  })
+
+  // ── All unique categories from data (scoped to context+date) ──
   const allCategories = computed(() => {
-    const set = new Set(notes.value.map(n => n.category).filter(Boolean))
+    const set = new Set(scopedNotes.value.map(n => n.category).filter(Boolean))
+    return [...set].sort()
+  })
+
+  // ── All unique subcategories (scoped) — includes 'unassigned' as a value ──
+  const allSubcategories = computed(() => {
+    const set = new Set(scopedNotes.value.map(n => n.subcategory || 'unassigned'))
+    return [...set].sort()
+  })
+
+  // ── All unique stakeholders (scoped, excludes empty) ──
+  const allStakeholders = computed(() => {
+    const set = new Set(scopedNotes.value.map(n => n.stakeholder).filter(Boolean))
     return [...set].sort()
   })
 
@@ -49,16 +96,16 @@ export const useNotesStore = defineStore('notes', () => {
     { h: 0,   s: 100, l: 55 }, // red
   ]
 
-  // Assign palette entries to categories in the order they appear in
-  // `allCategories` (alphabetical). Wraps if there are more categories
-  // than palette entries. Unknown categories fall back to a deterministic
-  // hash into the same palette.
-  function categoryColor(cat) {
-    if (!cat) return CATEGORY_PALETTE[0]
-    const idx = allCategories.value.indexOf(cat)
+  // Palette assignment now follows **subcategories** (the colored pill axis).
+  // Entries are picked in the alphabetical order of `allSubcategories`. Unknown
+  // names hash deterministically into the same palette so a brand-new
+  // subcategory still gets a stable color.
+  function subcategoryColor(name) {
+    if (!name) return CATEGORY_PALETTE[0]
+    const idx = allSubcategories.value.indexOf(name)
     if (idx === -1) {
       let h = 0
-      for (let i = 0; i < cat.length; i++) h = (h * 31 + cat.charCodeAt(i)) >>> 0
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
       return CATEGORY_PALETTE[h % CATEGORY_PALETTE.length]
     }
     return CATEGORY_PALETTE[idx % CATEGORY_PALETTE.length]
@@ -86,9 +133,9 @@ export const useNotesStore = defineStore('notes', () => {
       result = result.filter(n => activeContexts.value.includes(n.context))
     }
 
-    // Category filter
-    if (activeCategories.value.length) {
-      result = result.filter(n => activeCategories.value.includes(n.category))
+    // Category filter (single-select dropdown)
+    if (categoryFilter.value !== 'all') {
+      result = result.filter(n => n.category === categoryFilter.value)
     }
 
     // Deadline filter
@@ -99,6 +146,26 @@ export const useNotesStore = defineStore('notes', () => {
     // Status filter
     if (statusFilter.value !== 'all') {
       result = result.filter(n => noteStatus(n) === statusFilter.value)
+    }
+
+    // Priority filter
+    if (priorityFilter.value !== 'all') {
+      result = result.filter(n => notePriority(n) === priorityFilter.value)
+    }
+
+    // Subcategory filter (multi-select pills)
+    if (activeSubcategories.value.length) {
+      result = result.filter(n => activeSubcategories.value.includes(n.subcategory || 'unassigned'))
+    }
+
+    // Stakeholder filter
+    if (stakeholderFilter.value !== 'all') {
+      result = result.filter(n => n.stakeholder === stakeholderFilter.value)
+    }
+
+    // Needs-review filter (legacy / non-canonical taxonomy values)
+    if (needsReviewFilter.value) {
+      result = result.filter(n => needsReview(n))
     }
 
     // Date range filter
@@ -128,29 +195,69 @@ export const useNotesStore = defineStore('notes', () => {
     return result
   })
 
-  // ── Stats ──
+  // ── Stats (scoped to context+date) ──
   const stats = computed(() => {
-    const total = notes.value.length
-    const withDeadline = notes.value.filter(n => n.deadline).length
+    const pool = scopedNotes.value
+    const total = pool.length
+    const withDeadline = pool.filter(n => n.deadline).length
     const categories = allCategories.value.length
-    const thisWeek = notes.value.filter(n => {
+    const thisWeek = pool.filter(n => {
       const d = new Date(n.created_at)
       const now = new Date()
       const weekAgo = new Date(now - 7 * 86400000)
       return d >= weekAgo
     }).length
-    const completed = notes.value.filter(n => noteStatus(n) === 'completed').length
-    const suspended = notes.value.filter(n => noteStatus(n) === 'suspended').length
+    const completed = pool.filter(n => noteStatus(n) === 'completed').length
+    const suspended = pool.filter(n => noteStatus(n) === 'suspended').length
     return { total, withDeadline, categories, thisWeek, completed, suspended }
   })
 
-  // ── Status counts (for filter pills) ──
-  const statusCounts = computed(() => ({
-    all: notes.value.length,
-    active: notes.value.filter(n => noteStatus(n) === 'active').length,
-    completed: notes.value.filter(n => noteStatus(n) === 'completed').length,
-    suspended: notes.value.filter(n => noteStatus(n) === 'suspended').length,
-  }))
+  // ── Status counts (for filter dropdown) — scoped to context+date ──
+  const statusCounts = computed(() => {
+    const pool = scopedNotes.value
+    return {
+      all: pool.length,
+      active: pool.filter(n => noteStatus(n) === 'active').length,
+      completed: pool.filter(n => noteStatus(n) === 'completed').length,
+      suspended: pool.filter(n => noteStatus(n) === 'suspended').length,
+    }
+  })
+
+  // ── Priority counts (for filter dropdown) — scoped to context+date ──
+  const priorityCounts = computed(() => {
+    const pool = scopedNotes.value
+    return {
+      all: pool.length,
+      none:   pool.filter(n => notePriority(n) === 'none').length,
+      low:    pool.filter(n => notePriority(n) === 'low').length,
+      medium: pool.filter(n => notePriority(n) === 'medium').length,
+      high:   pool.filter(n => notePriority(n) === 'high').length,
+    }
+  })
+
+  // ── Subcategory counts (scoped) ──
+  const subcategoryCounts = computed(() => {
+    const map = { all: scopedNotes.value.length }
+    scopedNotes.value.forEach(n => {
+      const k = n.subcategory || 'unassigned'
+      map[k] = (map[k] || 0) + 1
+    })
+    return map
+  })
+
+  // ── Stakeholder counts (scoped) ──
+  const stakeholderCounts = computed(() => {
+    const map = { all: scopedNotes.value.length }
+    scopedNotes.value.forEach(n => {
+      if (n.stakeholder) map[n.stakeholder] = (map[n.stakeholder] || 0) + 1
+    })
+    return map
+  })
+
+  // ── Needs-review count (scoped) ──
+  const needsReviewCount = computed(
+    () => scopedNotes.value.filter(n => needsReview(n)).length
+  )
 
   // ── Upcoming deadlines ──
   const upcomingDeadlines = computed(() => {
@@ -163,10 +270,10 @@ export const useNotesStore = defineStore('notes', () => {
       .slice(0, 5)
   })
 
-  // ── Category counts (for filter pills) ──
+  // ── Category counts (for the Category dropdown) — scoped to context+date ──
   const categoryCounts = computed(() => {
-    const map = {}
-    notes.value.forEach(n => {
+    const map = { all: scopedNotes.value.length }
+    scopedNotes.value.forEach(n => {
       if (n.category) map[n.category] = (map[n.category] || 0) + 1
     })
     return map
@@ -208,14 +315,18 @@ export const useNotesStore = defineStore('notes', () => {
         user_id: auth.user.id,
         context: note.context,
         category: note.category,
+        subcategory: note.subcategory || 'unassigned',
         content: note.content,
         keywords: note.keywords || [],
         speaker: note.speaker || null,
+        stakeholder: note.stakeholder || null,
         deadline: note.deadline || false,
         deadline_stakeholder: note.deadline_stakeholder || null,
         deadline_date: note.deadline_date || null,
         processed_content: note.processed_content || null,
         status: note.status || 'active',
+        priority: note.priority || 'none',
+        related_note_ids: note.related_note_ids || [],
       }
 
       const { data, error: err } = await supabase
@@ -265,6 +376,12 @@ export const useNotesStore = defineStore('notes', () => {
 
       if (err) throw err
       notes.value = notes.value.filter(n => n.id !== id)
+
+      // Scrub the deleted id from every sibling's related_note_ids
+      const orphans = notes.value.filter(n => (n.related_note_ids || []).includes(id))
+      await Promise.all(orphans.map(o => updateNote(o.id, {
+        related_note_ids: (o.related_note_ids || []).filter(x => x !== id),
+      })))
     } catch (e) {
       console.error('[Notes] deleteNote error:', e)
       error.value = e.message
@@ -277,6 +394,31 @@ export const useNotesStore = defineStore('notes', () => {
     return updateNote(id, { status })
   }
 
+  // ── Bidirectional linking between two notes ──
+  async function linkRelated(aId, bId) {
+    if (!aId || !bId || aId === bId) return
+    const a = notes.value.find(n => n.id === aId)
+    const b = notes.value.find(n => n.id === bId)
+    if (!a || !b) return
+    const aIds = Array.from(new Set([...(a.related_note_ids || []), bId]))
+    const bIds = Array.from(new Set([...(b.related_note_ids || []), aId]))
+    await Promise.all([
+      updateNote(aId, { related_note_ids: aIds }),
+      updateNote(bId, { related_note_ids: bIds }),
+    ])
+  }
+
+  async function unlinkRelated(aId, bId) {
+    if (!aId || !bId) return
+    const a = notes.value.find(n => n.id === aId)
+    const b = notes.value.find(n => n.id === bId)
+    if (!a || !b) return
+    await Promise.all([
+      updateNote(aId, { related_note_ids: (a.related_note_ids || []).filter(x => x !== bId) }),
+      updateNote(bId, { related_note_ids: (b.related_note_ids || []).filter(x => x !== aId) }),
+    ])
+  }
+
   function reset() {
     notes.value = []
     loaded.value = false
@@ -284,11 +426,15 @@ export const useNotesStore = defineStore('notes', () => {
     error.value = null
     searchQuery.value = ''
     activeContexts.value = []
-    activeCategories.value = []
+    activeSubcategories.value = []
+    categoryFilter.value = 'all'
     deadlineFilter.value = false
     dateFrom.value = null
     dateTo.value = null
     statusFilter.value = 'all'
+    priorityFilter.value = 'all'
+    stakeholderFilter.value = 'all'
+    needsReviewFilter.value = false
   }
 
   // ── Toggle helpers ──
@@ -298,10 +444,10 @@ export const useNotesStore = defineStore('notes', () => {
     else activeContexts.value.splice(i, 1)
   }
 
-  function toggleCategory(cat) {
-    const i = activeCategories.value.indexOf(cat)
-    if (i === -1) activeCategories.value.push(cat)
-    else activeCategories.value.splice(i, 1)
+  function toggleSubcategory(sub) {
+    const i = activeSubcategories.value.indexOf(sub)
+    if (i === -1) activeSubcategories.value.push(sub)
+    else activeSubcategories.value.splice(i, 1)
   }
 
   return {
@@ -311,28 +457,44 @@ export const useNotesStore = defineStore('notes', () => {
     error,
     searchQuery,
     activeContexts,
-    activeCategories,
+    activeSubcategories,
+    categoryFilter,
     deadlineFilter,
     dateFrom,
     dateTo,
     statusFilter,
+    priorityFilter,
+    stakeholderFilter,
+    needsReviewFilter,
+    scopedNotes,
     allCategories,
     allContexts,
+    allSubcategories,
+    allStakeholders,
     filteredNotes,
     stats,
     statusCounts,
+    priorityCounts,
+    subcategoryCounts,
+    stakeholderCounts,
+    needsReviewCount,
     upcomingDeadlines,
     categoryCounts,
-    categoryColor,
+    subcategoryColor,
     deadlineUrgency,
     noteStatus,
+    notePriority,
+    noteSubcategory,
+    needsReview,
     fetchNotes,
     addNote,
     updateNote,
     deleteNote,
     setNoteStatus,
+    linkRelated,
+    unlinkRelated,
     reset,
     toggleContext,
-    toggleCategory,
+    toggleSubcategory,
   }
 })
