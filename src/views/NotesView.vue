@@ -250,6 +250,9 @@
         <div v-if="selectedNote" class="split-editor">
           <div class="editor-body">
             <div class="editor-head">
+              <button class="editor-back" @click="selectedNote = null" title="Back to list">
+                <i class="pi pi-arrow-left" style="font-size: 0.9375rem;"></i>
+              </button>
               <div class="editor-meta">
                 <span class="catchip" :style="catStyle(editForm.subcategory || 'unassigned')">
                   <span class="catchip-dot"></span> {{ editForm.subcategory || 'unassigned' }}
@@ -1532,6 +1535,21 @@ select.f-control { padding-right: 0.5rem; }
 .editor-date { font-size: 0.8125rem; color: var(--text-faint); }
 .editor-actions { display: flex; gap: 0.625rem; align-items: center; }
 
+/* Back-to-list button — mobile master/detail only */
+.editor-back {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 2.375rem; height: 2.375rem;
+  border-radius: 0.5rem;
+  color: var(--text-dim);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+  transition: all 120ms;
+}
+.editor-back:hover { color: var(--text); border-color: var(--text-faint); }
+
 .inline-processed { margin: 0.25rem 0 0.5rem; }
 
 .editor-text {
@@ -1879,10 +1897,56 @@ select.f-control { padding-right: 0.5rem; }
     max-height: none;
   }
 }
+
 @media (max-width: 62.5em) {
   .filterbar { flex-wrap: wrap; }
   .notes-title-row { flex-direction: column; align-items: flex-start; }
-  .split-layout { grid-template-columns: 1fr; }
+  .split-layout { grid-template-columns: 1fr; min-height: 0; }
   .modal-grid-2 { grid-template-columns: 1fr; }
+
+  /* Master–detail: the list and the editor become full-width "pages".
+     The empty editor renders a .split-placeholder, so its presence tells us
+     nothing is selected → show the list; its absence → show the editor. */
+  .split-list {
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+  .split-layout:not(:has(.split-placeholder)) .split-list { display: none; }
+  .split-layout:has(.split-placeholder) .split-editor { display: none; }
+  .editor-back { display: inline-flex; }
+  .editor-body { max-height: none; }
+}
+
+/* ── Phone ── */
+@media (max-width: 47.99em) {
+  .notes-main { padding: 1.5rem 1rem 4rem; }
+
+  /* Stats overflow horizontally instead of breaking the row */
+  .notes-stats { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .stat { padding: 0.625rem 1rem; min-width: 4.5rem; }
+  .stat-value { font-size: 1.375rem; }
+
+  .upcoming { flex-direction: column; align-items: flex-start; gap: 0.625rem; }
+  .upcoming-title { max-width: 60vw; }
+
+  .filterbar { padding: 0.875rem 1rem; gap: 0.75rem; }
+  .searchwrap { width: 100%; min-width: 0; }
+  .filters { width: 100%; }
+  .filters .f-control { flex: 1 1 8rem; }
+  .f-daterange { width: 100%; }
+  .f-date { flex: 1; min-width: 0; }
+  .notes-app .add-btn { width: 100%; padding-left: 1.5rem; padding-right: 1.5rem; }
+
+  .editor-body { padding: 1.25rem 1.25rem 1.5rem; }
+  .editor-actions { width: 100%; }
+  .editor-actions .btn-save,
+  .editor-actions .btn-danger { flex: 1; justify-content: center; }
+
+  .modal { max-width: calc(100vw - 1.5rem); }
+  .modal-head,
+  .modal-body,
+  .modal-foot { padding-left: 1.25rem; padding-right: 1.25rem; }
 }
 </style>

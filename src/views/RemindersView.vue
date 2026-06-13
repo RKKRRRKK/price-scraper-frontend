@@ -594,8 +594,27 @@ function isOverdue(r) {
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop-in  { from { opacity: 0; transform: translateY(0.375rem) scale(0.97); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 36em) {
-  .reminders-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
-  .reminder-card { flex-wrap: wrap; }
+@media (max-width: 47.99em) {
+  .reminders-main { padding: 1.5rem 1rem 4rem; }
+
+  .reminders-header { flex-direction: column; align-items: stretch; gap: 1rem; }
+  .reminders-app .add-btn { width: 100%; }
+
+  /* Card collapses to: [check + text] on row 1, actions on row 2 */
+  .reminder-card { flex-wrap: wrap; padding: 1rem; gap: 0.875rem; }
+  .reminder-actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .day-quick { flex-wrap: wrap; gap: 0.5rem; }
+
+  .modal { max-width: calc(100vw - 1.5rem); }
+  .modal-head,
+  .modal-body,
+  .modal-foot { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .modal-foot { flex-wrap: wrap; }
 }
 </style>
