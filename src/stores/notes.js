@@ -64,9 +64,56 @@ export const useNotesStore = defineStore('notes', () => {
     return [...set].sort()
   })
 
-  // ── All unique subcategories (scoped) — includes 'unassigned' as a value ──
+  // ── Pool for subcategory pills: all filters applied except activeSubcategories,
+  //    so the pill bar reflects the current filter context without filtering itself. ──
+  const preSubcategoryPool = computed(() => {
+    let r = notes.value
+    if (activeContexts.value.length) {
+      r = r.filter(n => activeContexts.value.includes(n.context))
+    }
+    if (categoryFilter.value !== 'all') {
+      r = r.filter(n => n.category === categoryFilter.value)
+    }
+    if (deadlineFilter.value) {
+      r = r.filter(n => n.deadline)
+    }
+    if (statusFilter.value !== 'all') {
+      r = r.filter(n => noteStatus(n) === statusFilter.value)
+    }
+    if (priorityFilter.value !== 'all') {
+      r = r.filter(n => notePriority(n) === priorityFilter.value)
+    }
+    if (stakeholderFilter.value !== 'all') {
+      r = r.filter(n => n.stakeholder === stakeholderFilter.value)
+    }
+    if (needsReviewFilter.value) {
+      r = r.filter(n => needsReview(n))
+    }
+    if (dateFrom.value) {
+      const from = new Date(dateFrom.value); from.setHours(0, 0, 0, 0)
+      r = r.filter(n => new Date(n.created_at) >= from)
+    }
+    if (dateTo.value) {
+      const to = new Date(dateTo.value); to.setHours(23, 59, 59, 999)
+      r = r.filter(n => new Date(n.created_at) <= to)
+    }
+    const q = searchQuery.value.trim().toLowerCase()
+    if (q) {
+      r = r.filter(n => {
+        const inContent = n.content.toLowerCase().includes(q)
+        const inKeywords = (n.keywords || []).some(kw => kw.toLowerCase().includes(q))
+        const inTitle = (n.content.split('\n')[0] || '').toLowerCase().includes(q)
+        const inProcessed = (n.processed_content || '').toLowerCase().includes(q)
+        return inContent || inKeywords || inTitle || inProcessed
+      })
+    }
+    return r
+  })
+
+  // ── All unique subcategories — scoped to preSubcategoryPool so pills update
+  //    when category/status/priority filters change. ──
   const allSubcategories = computed(() => {
-    const set = new Set(scopedNotes.value.map(n => n.subcategory || 'unassigned'))
+    const set = new Set(preSubcategoryPool.value.map(n => n.subcategory || 'unassigned'))
     return [...set].sort()
   })
 
@@ -124,75 +171,13 @@ export const useNotesStore = defineStore('notes', () => {
     return 'later'
   }
 
-  // ── Filtered notes ──
+  // ── Filtered notes — preSubcategoryPool already has all other filters applied ──
   const filteredNotes = computed(() => {
-    let result = notes.value
-
-    // Context filter
-    if (activeContexts.value.length) {
-      result = result.filter(n => activeContexts.value.includes(n.context))
-    }
-
-    // Category filter (single-select dropdown)
-    if (categoryFilter.value !== 'all') {
-      result = result.filter(n => n.category === categoryFilter.value)
-    }
-
-    // Deadline filter
-    if (deadlineFilter.value) {
-      result = result.filter(n => n.deadline)
-    }
-
-    // Status filter
-    if (statusFilter.value !== 'all') {
-      result = result.filter(n => noteStatus(n) === statusFilter.value)
-    }
-
-    // Priority filter
-    if (priorityFilter.value !== 'all') {
-      result = result.filter(n => notePriority(n) === priorityFilter.value)
-    }
-
-    // Subcategory filter (multi-select pills)
-    if (activeSubcategories.value.length) {
-      result = result.filter(n => activeSubcategories.value.includes(n.subcategory || 'unassigned'))
-    }
-
-    // Stakeholder filter
-    if (stakeholderFilter.value !== 'all') {
-      result = result.filter(n => n.stakeholder === stakeholderFilter.value)
-    }
-
-    // Needs-review filter (legacy / non-canonical taxonomy values)
-    if (needsReviewFilter.value) {
-      result = result.filter(n => needsReview(n))
-    }
-
-    // Date range filter
-    if (dateFrom.value) {
-      const from = new Date(dateFrom.value)
-      from.setHours(0, 0, 0, 0)
-      result = result.filter(n => new Date(n.created_at) >= from)
-    }
-    if (dateTo.value) {
-      const to = new Date(dateTo.value)
-      to.setHours(23, 59, 59, 999)
-      result = result.filter(n => new Date(n.created_at) <= to)
-    }
-
-    // Search (content + keywords)
-    const q = searchQuery.value.trim().toLowerCase()
-    if (q) {
-      result = result.filter(n => {
-        const inContent = n.content.toLowerCase().includes(q)
-        const inKeywords = (n.keywords || []).some(kw => kw.toLowerCase().includes(q))
-        const inTitle = (n.content.split('\n')[0] || '').toLowerCase().includes(q)
-        const inProcessed = (n.processed_content || '').toLowerCase().includes(q)
-        return inContent || inKeywords || inTitle || inProcessed
-      })
-    }
-
-    return result
+    if (!activeSubcategories.value.length) return preSubcategoryPool.value
+    // Only honour active subcategories that still exist in the current context.
+    const valid = activeSubcategories.value.filter(s => allSubcategories.value.includes(s))
+    if (!valid.length) return preSubcategoryPool.value
+    return preSubcategoryPool.value.filter(n => valid.includes(n.subcategory || 'unassigned'))
   })
 
   // ── Stats (scoped to context+date) ──
@@ -235,10 +220,10 @@ export const useNotesStore = defineStore('notes', () => {
     }
   })
 
-  // ── Subcategory counts (scoped) ──
+  // ── Subcategory counts — from preSubcategoryPool so counts reflect active filters ──
   const subcategoryCounts = computed(() => {
-    const map = { all: scopedNotes.value.length }
-    scopedNotes.value.forEach(n => {
+    const map = { all: preSubcategoryPool.value.length }
+    preSubcategoryPool.value.forEach(n => {
       const k = n.subcategory || 'unassigned'
       map[k] = (map[k] || 0) + 1
     })

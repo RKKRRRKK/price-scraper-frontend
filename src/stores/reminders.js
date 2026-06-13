@@ -135,6 +135,12 @@ export const useRemindersStore = defineStore('reminders', () => {
     })
   }
 
+  async function toggleSwitchReceiver(id) {
+    const r = reminders.value.find(x => x.id === id)
+    if (!r) return
+    return updateReminder(id, { switch_receiver: !r.switch_receiver })
+  }
+
   function reset() {
     reminders.value = []
     loaded.value = false
@@ -152,6 +158,7 @@ export const useRemindersStore = defineStore('reminders', () => {
     updateReminder,
     deleteReminder,
     toggleChecked,
+    toggleSwitchReceiver,
     reset,
   }
 })

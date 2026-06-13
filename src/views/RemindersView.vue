@@ -64,6 +64,16 @@
           </div>
 
           <div class="reminder-actions">
+            <button
+              class="switch"
+              :class="{ on: r.switch_receiver }"
+              role="switch"
+              :aria-checked="r.switch_receiver ? 'true' : 'false'"
+              @click="store.toggleSwitchReceiver(r.id)"
+              :title="r.switch_receiver ? 'Switch receiver: on' : 'Switch receiver: off'"
+            >
+              <span class="switch-knob"></span>
+            </button>
             <button class="icon-btn" @click="openEditModal(r)" title="Edit">
               <i class="pi pi-pencil" style="font-size: 0.875rem;"></i>
             </button>
@@ -437,9 +447,30 @@ function isOverdue(r) {
 }
 
 .reminder-actions {
-  display: flex; gap: 0.375rem;
+  display: flex; gap: 0.375rem; align-items: center;
   flex-shrink: 0;
 }
+
+.reminders-app .switch {
+  width: 2.375rem; height: 1.375rem;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 140ms;
+  margin-right: 0.25rem;
+}
+.reminders-app .switch.on { background: var(--accent-500); }
+.switch-knob {
+  position: absolute;
+  top: 0.1875rem; left: 0.1875rem;
+  width: 1rem; height: 1rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: transform 140ms;
+}
+.reminders-app .switch.on .switch-knob { transform: translateX(1rem); }
 
 /* Empty */
 .empty {

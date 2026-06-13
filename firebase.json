@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/debate/**",
+        "destination": "/debate/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

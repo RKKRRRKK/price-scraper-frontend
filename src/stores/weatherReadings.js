@@ -30,20 +30,45 @@ export const useWeatherStore = defineStore('weatherReadings', () => {
     }
   }
 
+  function getBucketSeconds(range) {
+    switch (range) {
+      case '7d':
+      case '30d':
+        return 3600    // hourly averages
+      case 'all':
+        return 21600   // 6-hour averages
+      default:
+        return null    // raw data (≤3d)
+    }
+  }
+
   async function fetchReadings() {
     loading.value = true
     try {
-      let query = supabase
-        .from('weather_readings')
-        .select('*')
-        .order('timestamp', { ascending: true })
-
       const start = getStartDate(timeRange.value)
-      if (start) {
-        query = query.gte('timestamp', start.toISOString())
+      const bucketSeconds = getBucketSeconds(timeRange.value)
+      let data, error
+
+      if (bucketSeconds) {
+        ;({ data, error } = await supabase.rpc('get_weather_bucketed', {
+          bucket_seconds: bucketSeconds,
+          start_time: start ? start.toISOString() : null,
+        }))
+      } else {
+        let query = supabase
+          .from('weather_readings')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(5000)
+
+        if (start) {
+          query = query.gte('timestamp', start.toISOString())
+        }
+
+        ;({ data, error } = await query)
+        data = (data || []).reverse()
       }
 
-      const { data, error } = await query
       if (error) throw error
       readings.value = data || []
     } catch (err) {
