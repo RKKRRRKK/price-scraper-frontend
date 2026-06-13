@@ -64,26 +64,36 @@ export const useNotesStore = defineStore('notes', () => {
     return [...set].sort()
   })
 
-  // ── Pool for subcategory pills: all filters applied except activeSubcategories,
-  //    so the pill bar reflects the current filter context without filtering itself. ──
-  const preSubcategoryPool = computed(() => {
+  // ── Generic pool builder: applies all active filters with optional per-filter skips.
+  //    Each filter's count dropdown uses this with its own filter skipped, so its
+  //    counts always reflect "how many notes match everything else". ──
+  function buildFilteredPool({
+    skipStatus = false,
+    skipPriority = false,
+    skipCategory = false,
+    skipStakeholder = false,
+    skipSubcategory = false,
+  } = {}) {
     let r = notes.value
     if (activeContexts.value.length) {
       r = r.filter(n => activeContexts.value.includes(n.context))
     }
-    if (categoryFilter.value !== 'all') {
+    if (!skipCategory && categoryFilter.value !== 'all') {
       r = r.filter(n => n.category === categoryFilter.value)
+    }
+    if (!skipSubcategory && activeSubcategories.value.length) {
+      r = r.filter(n => activeSubcategories.value.includes(n.subcategory || 'unassigned'))
     }
     if (deadlineFilter.value) {
       r = r.filter(n => n.deadline)
     }
-    if (statusFilter.value !== 'all') {
+    if (!skipStatus && statusFilter.value !== 'all') {
       r = r.filter(n => noteStatus(n) === statusFilter.value)
     }
-    if (priorityFilter.value !== 'all') {
+    if (!skipPriority && priorityFilter.value !== 'all') {
       r = r.filter(n => notePriority(n) === priorityFilter.value)
     }
-    if (stakeholderFilter.value !== 'all') {
+    if (!skipStakeholder && stakeholderFilter.value !== 'all') {
       r = r.filter(n => n.stakeholder === stakeholderFilter.value)
     }
     if (needsReviewFilter.value) {
@@ -108,7 +118,10 @@ export const useNotesStore = defineStore('notes', () => {
       })
     }
     return r
-  })
+  }
+
+  // ── Pool for subcategory pills: all filters applied except activeSubcategories ──
+  const preSubcategoryPool = computed(() => buildFilteredPool({ skipSubcategory: true }))
 
   // ── All unique subcategories — scoped to preSubcategoryPool so pills update
   //    when category/status/priority filters change. ──
@@ -197,22 +210,22 @@ export const useNotesStore = defineStore('notes', () => {
     return { total, withDeadline, categories, thisWeek, completed, suspended }
   })
 
-  // ── Status counts (for filter dropdown) — scoped to context+date ──
+  // ── Status counts — all other filters applied, status skipped ──
   const statusCounts = computed(() => {
-    const pool = scopedNotes.value
+    const pool = buildFilteredPool({ skipStatus: true })
     return {
       all: pool.length,
-      active: pool.filter(n => noteStatus(n) === 'active').length,
+      active:    pool.filter(n => noteStatus(n) === 'active').length,
       completed: pool.filter(n => noteStatus(n) === 'completed').length,
       suspended: pool.filter(n => noteStatus(n) === 'suspended').length,
     }
   })
 
-  // ── Priority counts (for filter dropdown) — scoped to context+date ──
+  // ── Priority counts — all other filters applied, priority skipped ──
   const priorityCounts = computed(() => {
-    const pool = scopedNotes.value
+    const pool = buildFilteredPool({ skipPriority: true })
     return {
-      all: pool.length,
+      all:    pool.length,
       none:   pool.filter(n => notePriority(n) === 'none').length,
       low:    pool.filter(n => notePriority(n) === 'low').length,
       medium: pool.filter(n => notePriority(n) === 'medium').length,
@@ -230,10 +243,11 @@ export const useNotesStore = defineStore('notes', () => {
     return map
   })
 
-  // ── Stakeholder counts (scoped) ──
+  // ── Stakeholder counts — all other filters applied, stakeholder skipped ──
   const stakeholderCounts = computed(() => {
-    const map = { all: scopedNotes.value.length }
-    scopedNotes.value.forEach(n => {
+    const pool = buildFilteredPool({ skipStakeholder: true })
+    const map = { all: pool.length }
+    pool.forEach(n => {
       if (n.stakeholder) map[n.stakeholder] = (map[n.stakeholder] || 0) + 1
     })
     return map
@@ -255,10 +269,11 @@ export const useNotesStore = defineStore('notes', () => {
       .slice(0, 5)
   })
 
-  // ── Category counts (for the Category dropdown) — scoped to context+date ──
+  // ── Category counts — all other filters applied, category skipped ──
   const categoryCounts = computed(() => {
-    const map = { all: scopedNotes.value.length }
-    scopedNotes.value.forEach(n => {
+    const pool = buildFilteredPool({ skipCategory: true })
+    const map = { all: pool.length }
+    pool.forEach(n => {
       if (n.category) map[n.category] = (map[n.category] || 0) + 1
     })
     return map
