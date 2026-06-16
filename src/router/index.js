@@ -11,6 +11,7 @@ import MonitorView from '@/views/MonitorView.vue'
 import NotesView from '@/views/NotesView.vue'
 import RemindersView from '@/views/RemindersView.vue'
 import DocumentsView from '@/views/DocumentsView.vue'
+import SquellView from '@/views/SquellView.vue'
 
 const routes = [
   {
@@ -68,6 +69,12 @@ const routes = [
     path: '/documents',
     name: 'documents',
     component: DocumentsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/squell',
+    name: 'squell',
+    component: SquellView,
     meta: { requiresAuth: true },
   },
 ]
