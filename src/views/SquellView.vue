@@ -125,38 +125,28 @@
           ><i class="pi pi-pencil" style="font-size: 0.6875rem;"></i> New revision</button>
         </div>
 
-        <!-- Compare panes -->
-        <div class="panes">
-          <div class="pane">
-            <div class="pane-head">
-              <span class="pane-title">{{ leftTitle }}</span>
-            </div>
-            <SqlEditor :model-value="leftSql" :dialect="dialectDraft" readonly />
-          </div>
-          <div class="pane">
-            <div class="pane-head">
-              <span class="pane-title">{{ rightTitle }}</span>
+        <!-- Side-by-side diff (left = baseline, red; right = candidate, green) -->
+        <section class="compare">
+          <div class="compare-head">
+            <span class="pane-title half">{{ leftTitle }}</span>
+            <span class="pane-title half right-half">
+              {{ rightTitle }}
               <button
                 v-if="mode === 'edit'"
                 class="link-btn"
                 @click="candidateSql = leftSql"
                 title="Reset to baseline"
               >reset</button>
-            </div>
-            <SqlEditor
-              v-if="mode === 'edit'"
-              v-model="candidateSql"
-              :dialect="dialectDraft"
-              placeholder="Paste or edit the new version here…"
-            />
-            <SqlEditor v-else :model-value="rightSql" :dialect="dialectDraft" readonly />
+            </span>
           </div>
-        </div>
-
-        <!-- Diff -->
-        <section class="card">
-          <div class="card-head"><label class="card-label">Difference</label></div>
-          <SqlDiff :before="diffBefore" :after="diffAfter" />
+          <SqlMergeView
+            :key="mergeKey"
+            :original="leftSql"
+            :model-value="mergeRight"
+            :dialect="dialectDraft"
+            :readonly="mode === 'review'"
+            @update:model-value="onMergeInput"
+          />
         </section>
 
         <!-- Note -->
@@ -240,7 +230,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import { useSquellStore } from '@/stores/squell'
 import SqlEditor from '@/components/SqlEditor.vue'
-import SqlDiff from '@/components/SqlDiff.vue'
+import SqlMergeView from '@/components/SqlMergeView.vue'
 import {
   buildQueryMarkdown,
   buildCatalogueMarkdown,
@@ -354,9 +344,19 @@ const rightTitle = computed(() => {
   }
   return `v${nextVersionNumber.value} (candidate)`
 })
-const diffBefore = computed(() => leftSql.value)
-const diffAfter = computed(() => (mode.value === 'review' ? rightSql.value : candidateSql.value))
 const reviewNote = computed(() => versions.value[reviewIndex.value]?.note || '')
+
+// The right-hand doc for the merge view: live candidate while editing, or the
+// selected version while reviewing.
+const mergeRight = computed(() => (mode.value === 'review' ? rightSql.value : candidateSql.value))
+function onMergeInput(val) {
+  if (mode.value === 'edit') candidateSql.value = val
+}
+// Remount the merge editor only when the comparison context changes (query,
+// mode, or reviewed version) — not on every keystroke.
+const mergeKey = computed(
+  () => `${store.activeQueryId}-${mode.value}-${reviewIndex.value}`,
+)
 
 function isChipActive(i) {
   if (mode.value === 'review') return i === reviewIndex.value
@@ -593,7 +593,7 @@ function formatDate(ts) {
 /* ── Main ── */
 .main {
   flex: 1; min-width: 0;
-  padding: 2rem 2.5rem 5rem;
+  padding: 2rem 16rem 5rem;
   width: 100%;
   display: flex; flex-direction: column; gap: 1.25rem;
 }
@@ -639,11 +639,12 @@ function formatDate(ts) {
 .vchip.latest:not(.active) { border-color: var(--accent-400); color: var(--accent-600); }
 .vchip-edit { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--accent-600); border-style: dashed; }
 
-/* ── Panes ── */
-.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.pane { display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; }
-.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+/* ── Compare (side-by-side diff) ── */
+.compare { display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; }
+.compare-head { display: flex; gap: 1px; }
 .pane-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-dim); }
+.pane-title.half { flex: 1; min-width: 0; }
+.pane-title.right-half { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-left: 0.75rem; }
 
 /* ── Buttons (shared with reminders idiom) ── */
 .squell-app .add-btn {
