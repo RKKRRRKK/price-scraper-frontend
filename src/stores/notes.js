@@ -3,6 +3,18 @@ import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { isCanonical } from '@/lib/taxonomy'
+import { htmlToText } from '@/lib/richtext'
+
+// Notes are stored as HTML; cache the plain-text projection per content string so
+// searching across keystrokes doesn't re-parse the same HTML repeatedly.
+const textCache = new Map()
+function noteText(content) {
+  if (!content) return ''
+  if (textCache.has(content)) return textCache.get(content)
+  const text = htmlToText(content).toLowerCase()
+  textCache.set(content, text)
+  return text
+}
 
 export const useNotesStore = defineStore('notes', () => {
   const notes = ref([])
@@ -110,11 +122,10 @@ export const useNotesStore = defineStore('notes', () => {
     const q = searchQuery.value.trim().toLowerCase()
     if (q) {
       r = r.filter(n => {
-        const inContent = n.content.toLowerCase().includes(q)
+        const inContent = noteText(n.content).includes(q)
         const inKeywords = (n.keywords || []).some(kw => kw.toLowerCase().includes(q))
-        const inTitle = (n.content.split('\n')[0] || '').toLowerCase().includes(q)
         const inProcessed = (n.processed_content || '').toLowerCase().includes(q)
-        return inContent || inKeywords || inTitle || inProcessed
+        return inContent || inKeywords || inProcessed
       })
     }
     return r

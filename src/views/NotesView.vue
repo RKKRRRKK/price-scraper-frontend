@@ -200,7 +200,7 @@
                 <span class="split-card-title">{{ noteTitle(note) }}</span>
                 <span class="split-card-date">{{ formatDate(note.created_at) }}</span>
               </div>
-              <div class="split-card-preview">{{ note.content }}</div>
+              <div class="split-card-preview">{{ notePreview(note) }}</div>
               <div class="split-card-meta">
                 <span
                   class="catchip"
@@ -300,11 +300,11 @@
               <div class="processed-text">{{ selectedNote.processed_content }}</div>
             </div>
 
-            <textarea
-              class="editor-text"
+            <RichTextEditor
+              variant="inline"
               v-model="editForm.content"
               placeholder="Write your note..."
-            ></textarea>
+            />
           </div>
 
           <aside class="rail">
@@ -479,11 +479,11 @@
           </button>
         </div>
         <div class="modal-body">
-          <textarea
-            class="modal-textarea"
+          <RichTextEditor
+            variant="modal"
             v-model="modalForm.content"
             placeholder="Write your note..."
-          ></textarea>
+          />
 
           <section class="modal-section">
             <h4 class="modal-section-title">Classification</h4>
@@ -589,6 +589,8 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useNotesStore } from '@/stores/notes'
 import { categoriesFor, subcategoriesFor } from '@/lib/taxonomy'
+import { htmlToText } from '@/lib/richtext'
+import RichTextEditor from '@/components/RichTextEditor.vue'
 import dayjs from 'dayjs'
 
 const store = useNotesStore()
@@ -867,7 +869,7 @@ function addKeywordToModal() {
 
 async function submitModal() {
   if (
-    !modalForm.value.content.trim()
+    !htmlToText(modalForm.value.content).trim()
     || !modalForm.value.category.trim()
     || !modalForm.value.subcategory.trim()
   ) return
@@ -920,7 +922,12 @@ async function confirmDelete(id) {
 
 // ── Helpers ──
 function noteTitle(note) {
-  return note.content.split('\n')[0].slice(0, 100) || 'Untitled'
+  return htmlToText(note.content).split('\n')[0].slice(0, 100) || 'Untitled'
+}
+
+// Plain-text excerpt for list cards (strips the stored HTML formatting).
+function notePreview(note) {
+  return htmlToText(note.content).replace(/\n+/g, ' ')
 }
 
 function formatDate(ts) {
