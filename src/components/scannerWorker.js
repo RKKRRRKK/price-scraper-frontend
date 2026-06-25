@@ -1,5 +1,10 @@
 /* eslint-disable no-restricted-globals */
-const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
+// Served from our own origin (public/vendor/opencv.js) so the scanner does not
+// depend on docs.opencv.org, which silently dropped versioned paths like
+// /4.10.0/opencv.js (now 404) and broke loading. The CDN is a last-resort
+// fallback only.
+const OPENCV_URL = new URL('/vendor/opencv.js', self.location.origin).href
+const OPENCV_FALLBACK_URL = 'https://docs.opencv.org/4.x/opencv.js'
 
 console.log('[worker] script start, location:', self.location?.href)
 
@@ -34,7 +39,12 @@ const cvReady = new Promise((resolve, reject) => {
   console.log('[worker] importing opencv.js…')
   const t0 = Date.now()
   try {
-    self.importScripts(OPENCV_URL)
+    try {
+      self.importScripts(OPENCV_URL)
+    } catch (localErr) {
+      console.warn('[worker] local opencv.js failed, falling back to CDN:', localErr)
+      self.importScripts(OPENCV_FALLBACK_URL)
+    }
     console.log('[worker] importScripts returned in', Date.now() - t0, 'ms. typeof cv:', typeof self.cv, 'typeof Module:', typeof self.Module)
     if (typeof self.cv !== 'undefined') {
       console.log('[worker] cv keys sample:', Object.keys(self.cv).slice(0, 10))
