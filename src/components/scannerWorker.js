@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-globals */
+ 
 // Served from our own origin (public/vendor/opencv.js) so the scanner does not
 // depend on docs.opencv.org, which silently dropped versioned paths like
 // /4.10.0/opencv.js (now 404) and broke loading. The CDN is a last-resort

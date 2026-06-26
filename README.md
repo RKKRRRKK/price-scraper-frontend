@@ -27,3 +27,8 @@ bugs/todo
 _done_
 11. Scatterplot for specific item prices
 14. Custom instructions for smart filter
+- Tools → Breadboard tool: illustrative breadboard designer (full/half/mini), components +
+  Pi/ESP32/custom boards, jumper wires, computed electrical nets, multi-sheet persistence
+  (Supabase `breadboard_sheets` — run `supabase/breadboard_schema.sql`), Copy-as-MD with an
+  embedded build spec, and an "AI build" paste-to-construct round-trip. Docs:
+  `src/components/breadboard/README.md`.

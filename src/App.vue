@@ -88,6 +88,17 @@
         </router-link>
       </div>
     </div>
+
+    <div class="nav-section tools-section">
+      <span class="nav-section-label">Tools</span>
+      <div class="nav-section-links">
+        <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-microchip mr-2" />Breadboard
+          </a>
+        </router-link>
+      </div>
+    </div>
   </div>
 
   <div class="nav-end">
@@ -115,7 +126,7 @@
   <template #header>
     <span class="nav-drawer-title">Navigation</span>
   </template>
-  <Accordion :value="['scraper', 'sensors', 'productivity']" multiple>
+  <Accordion :value="['scraper', 'sensors', 'productivity', 'tools']" multiple>
     <AccordionPanel value="scraper">
       <AccordionHeader>
         <span class="drawer-section-label scraper">Scraper</span>
@@ -190,6 +201,21 @@
         </div>
       </AccordionContent>
     </AccordionPanel>
+
+    <AccordionPanel value="tools">
+      <AccordionHeader>
+        <span class="drawer-section-label tools">Tools</span>
+      </AccordionHeader>
+      <AccordionContent>
+        <div class="drawer-links tools-section">
+          <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-microchip mr-2" />Breadboard
+            </a>
+          </router-link>
+        </div>
+      </AccordionContent>
+    </AccordionPanel>
   </Accordion>
 </Sidebar>
 
@@ -230,6 +256,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useRemindersStore } from '@/stores/reminders'
 import { useDocumentsStore } from '@/stores/documents'
 import { useSquellStore } from '@/stores/squell'
+import { useBreadboardStore } from '@/stores/breadboard'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -241,6 +268,7 @@ const notesStore = useNotesStore()
 const remindersStore = useRemindersStore()
 const documentsStore = useDocumentsStore()
 const squellStore = useSquellStore()
+const breadboardStore = useBreadboardStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -312,6 +340,7 @@ async function fetchDataForUser() {
       remindersStore.fetchReminders(), // Fetch reminders for productivity section
       documentsStore.fetchAll(), // Fetch document folders + documents
       squellStore.fetchQueries(), // Fetch Squell SQL query catalogue
+      breadboardStore.fetchSheets(), // Fetch Breadboard sheets
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -333,6 +362,7 @@ function resetStores() {
   remindersStore.reset()
   documentsStore.reset()
   squellStore.reset()
+  breadboardStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {
@@ -456,6 +486,10 @@ function goLogin() {
   border-left-color: #a855f7;
 }
 
+.tools-section {
+  border-left-color: #14b8a6;
+}
+
 .nav-section-label {
   font-size: 0.8rem;
   font-weight: 700;
@@ -475,6 +509,10 @@ function goLogin() {
 
 .productivity-section .nav-section-label {
   color: #c084fc;
+}
+
+.tools-section .nav-section-label {
+  color: #2dd4bf;
 }
 
 .nav-section-links {
@@ -528,6 +566,16 @@ function goLogin() {
 
 .productivity-section .nav-section-links a:active {
   background-color: #e9d5ff;
+}
+
+.tools-section .nav-section-links a.active {
+  background-color: #ccfbf1;
+  color: #0f766e;
+  text-shadow: 0 0 0.25px currentColor, 0 0 0.5px currentColor;
+}
+
+.tools-section .nav-section-links a:active {
+  background-color: #99f6e4;
 }
 
 .nav-end {
@@ -588,6 +636,10 @@ function goLogin() {
   color: #c084fc;
 }
 
+.drawer-section-label.tools {
+  color: #2dd4bf;
+}
+
 .drawer-links {
   display: flex;
   flex-direction: column;
@@ -606,6 +658,10 @@ function goLogin() {
 
 .drawer-links.productivity-section {
   border-left-color: #a855f7;
+}
+
+.drawer-links.tools-section {
+  border-left-color: #14b8a6;
 }
 
 .drawer-links a {
@@ -637,5 +693,10 @@ function goLogin() {
 .drawer-links.productivity-section a.active {
   background-color: #f3e8ff;
   color: #7e22ce;
+}
+
+.drawer-links.tools-section a.active {
+  background-color: #ccfbf1;
+  color: #0f766e;
 }
 </style>
