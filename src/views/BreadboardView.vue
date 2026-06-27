@@ -81,7 +81,15 @@
 
         <!-- workspace -->
         <div class="workspace">
-          <ComponentPalette class="pane palette-pane" :tool="tool" @select-tool="tool = $event" @custom="customOpen = true" />
+          <ComponentPalette
+            class="pane palette-pane"
+            :tool="tool"
+            :used-kinds="usedKinds"
+            @select-tool="tool = $event"
+            @custom="customOpen = true"
+            @create="openCreator()"
+            @library="libraryOpen = true"
+          />
 
           <div class="canvas-pane">
             <BreadboardCanvas
@@ -89,13 +97,16 @@
               :data="data"
               :sheet-id="store.activeSheetId"
               :selected-id="selectedId"
+              :selected-wire-id="selectedWire"
+              :net-info="netInfo"
               :tool="tool"
               :wire-color="wireColor"
               @add="onAdd"
               @move="onMove"
-              @select="selectedId = $event"
+              @select="onSelect"
               @add-wire="onAddWire"
               @remove-wire="onRemoveWire"
+              @delete-selected="onDeleteSelected"
               @placed="tool = null"
               @cancel="tool = null"
             />
@@ -116,6 +127,8 @@
           <Inspector
             class="pane inspector-pane"
             :item="selectedItem"
+            :wire="selectedWireObj"
+            :wire-colors="WIRE_COLORS"
             :layout="primaryLayout"
             :net-map="netMap"
             @rename="renameItem"
@@ -124,6 +137,9 @@
             @set-pincount="setPinCount"
             @delete="deleteItem"
             @duplicate="duplicateItem"
+            @set-wire-color="setWireColor"
+            @flip-wire-arc="flipWireArc"
+            @delete-wire="deleteWire"
           />
         </div>
       </template>
@@ -188,6 +204,24 @@
 
     <!-- ── Custom board modal ── -->
     <CustomBoardModal :open="customOpen" @close="customOpen = false" @create="addCustomBoard" />
+
+    <!-- ── Part creator modal ── -->
+    <PartCreatorModal
+      :open="creatorOpen"
+      :part="editingPart"
+      @close="closeCreator"
+      @create="savePart"
+    />
+
+    <!-- ── Parts library modal ── -->
+    <PartLibraryModal
+      :open="libraryOpen"
+      :used-kinds="usedKinds"
+      @close="libraryOpen = false"
+      @create="openCreator()"
+      @edit="openCreator"
+      @place="placeFromLibrary"
+    />
   </div>
 </template>
 
@@ -195,12 +229,16 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { v4 as uuid } from 'uuid'
 import { useBreadboardStore, blankData } from '@/stores/breadboard'
+import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 import BreadboardCanvas from '@/components/breadboard/BreadboardCanvas.vue'
 import ComponentPalette from '@/components/breadboard/ComponentPalette.vue'
 import Inspector from '@/components/breadboard/Inspector.vue'
 import CustomBoardModal from '@/components/breadboard/CustomBoardModal.vue'
+import PartCreatorModal from '@/components/breadboard/PartCreatorModal.vue'
+import PartLibraryModal from '@/components/breadboard/PartLibraryModal.vue'
 import {
   makeItem, resetLabelCounters, BREADBOARD_LIST,
+  listBuiltinParts, listCustomParts,
 } from '@/lib/breadboard/templates'
 import { getBreadboardLayout, PITCH, pinEndpointId } from '@/lib/breadboard/geometry'
 import { computeNets } from '@/lib/breadboard/nets'
@@ -208,14 +246,19 @@ import { buildSheetMarkdown, copyToClipboard, downloadTextFile, slugify } from '
 import { parseBuild } from '@/lib/breadboard/importBuild'
 
 const store = useBreadboardStore()
+const library = useBreadboardLibraryStore()
 
 const railOpen = ref(false)
 const newOpen = ref(false)
 const customOpen = ref(false)
+const creatorOpen = ref(false)
+const libraryOpen = ref(false)
+const editingPart = ref(null)
 const creating = ref(false)
 const copied = ref(false)
 
 const selectedId = ref(null)
+const selectedWire = ref(null)
 const tool = ref(null)
 const wireColor = ref('#16a34a')
 const canvasRef = ref(null)
@@ -240,15 +283,19 @@ function loadActive() {
   d.wires = d.wires || []
   data.value = d
   selectedId.value = null
+  selectedWire.value = null
   tool.value = null
   resetLabelCounters(d.items)
 }
 watch(() => store.activeSheetId, loadActive, { immediate: true })
 
 onMounted(async () => {
-  await store.fetchSheets()
+  await Promise.all([store.fetchSheets(), library.fetchLibrary()])
   if (!data.value) loadActive()
 })
+
+// kinds present on the current sheet — surfaced in the library as "on sheet".
+const usedKinds = computed(() => [...new Set((data.value?.items || []).map((i) => i.kind))])
 
 function persist() {
   if (store.activeSheetId && data.value) store.updateSheetData(store.activeSheetId, data.value)
@@ -260,6 +307,7 @@ const primaryLayout = computed(() =>
   data.value?.breadboards?.length ? getBreadboardLayout(data.value.breadboards[0]) : null,
 )
 const selectedItem = computed(() => data.value?.items.find((it) => it.id === selectedId.value) || null)
+const selectedWireObj = computed(() => data.value?.wires.find((w) => w.id === selectedWire.value) || null)
 const netInfo = computed(() => (data.value ? computeNets(data.value) : { nets: [], floating: [], bridges: [] }))
 const netMap = computed(() => {
   const m = {}
@@ -327,7 +375,32 @@ function onAddWire(wire) {
 }
 function onRemoveWire(id) {
   data.value.wires = data.value.wires.filter((w) => w.id !== id)
+  if (selectedWire.value === id) selectedWire.value = null
   persist()
+}
+
+// ── selection (items + wires share one entry point) ──
+function onSelect(payload) {
+  if (!payload) { selectedId.value = null; selectedWire.value = null; return }
+  if (payload.type === 'wire') { selectedWire.value = payload.id; selectedId.value = null }
+  else { selectedId.value = payload.id; selectedWire.value = null }
+}
+function onDeleteSelected() {
+  if (selectedWire.value) onRemoveWire(selectedWire.value)
+  else if (selectedId.value) deleteItem()
+}
+
+// ── wire inspector ops ──
+function setWireColor(color) {
+  const w = selectedWireObj.value
+  if (w) { w.color = color; persist() }
+}
+function flipWireArc() {
+  const w = selectedWireObj.value
+  if (w) { w.arc = w.arc === -1 ? 1 : -1; persist() }
+}
+function deleteWire() {
+  if (selectedWire.value) onRemoveWire(selectedWire.value)
 }
 
 // ── inspector ops ──
@@ -397,9 +470,73 @@ function addCustomBoard({ name, pinNames }) {
   nextTick(() => canvasRef.value?.fit())
 }
 
+// ── part library / creator ──
+function openCreator(kind) {
+  editingPart.value = kind ? library.customParts.find((p) => p.kind === kind) || null : null
+  libraryOpen.value = false
+  creatorOpen.value = true
+}
+function closeCreator() {
+  creatorOpen.value = false
+  editingPart.value = null
+}
+function partSlug(s) {
+  return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'part'
+}
+function uniqueKind(label) {
+  const base = `lib_${partSlug(label)}`
+  const existing = new Set(library.customParts.map((p) => p.kind))
+  if (!existing.has(base)) return base
+  let i = 2
+  while (existing.has(`${base}_${i}`)) i++
+  return `${base}_${i}`
+}
+function defFromPayload(payload, kind) {
+  return {
+    kind,
+    label: payload.label,
+    partNumber: payload.partNumber || '',
+    placement: payload.placement,
+    body: payload.shape === 'board' ? 'board' : payload.shape,
+    polar: !!payload.polar,
+    accent: payload.accent,
+    icon: payload.icon || '',
+    pins: payload.pinNames.map((name, i) => ({ id: `p${i + 1}`, name })),
+  }
+}
+function savePart(payload) {
+  if (editingPart.value) {
+    library.updateCustomPart(editingPart.value.kind, defFromPayload(payload, editingPart.value.kind))
+  } else {
+    const kind = uniqueKind(payload.label)
+    library.addCustomPart(defFromPayload(payload, kind))
+    tool.value = { type: 'place', kind } // ready to drop the new part
+  }
+  closeCreator()
+}
+function placeFromLibrary(kind) {
+  tool.value = { type: 'place', kind }
+  libraryOpen.value = false
+}
+
 // ── markdown ──
+// Catalogue passed to the exporter: every library part plus what's in stock, so
+// the assistant designs with parts the user actually has.
+function libraryCatalog() {
+  const customs = listCustomParts()
+  const parts = [...customs, ...listBuiltinParts()].map((p) => ({
+    ...p,
+    inStock: library.isInStock(p.kind),
+  }))
+  return { parts, customParts: customs }
+}
 function currentSheet() {
-  return { name: store.activeSheet?.name, data: data.value, updated_at: store.activeSheet?.updated_at }
+  return {
+    name: store.activeSheet?.name,
+    data: data.value,
+    updated_at: store.activeSheet?.updated_at,
+    library: libraryCatalog(),
+  }
 }
 async function copyMd() {
   const ok = await copyToClipboard(buildSheetMarkdown(currentSheet()))
@@ -429,6 +566,7 @@ function buildFromText() {
   d.wires = d.wires || []
   data.value = d
   selectedId.value = null
+  selectedWire.value = null
   tool.value = null
   resetLabelCounters(d.items)
   persist()

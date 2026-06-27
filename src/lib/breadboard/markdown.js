@@ -55,8 +55,14 @@ export function describeItem(item) {
       return 'ESP32 DevKitC (38-pin)'
     case 'custom':
       return `${item.label} (custom board, ${item.pins.length}-pin)`
-    default:
-      return getTemplate(item.kind)?.label || item.kind
+    default: {
+      const t = getTemplate(item.kind)
+      if (t?.custom) {
+        const pn = item.props?.partNumber || t.partNumber
+        return `${t.label}${pn ? ` (${pn})` : ''} — custom part, ${item.pins.length}-pin`
+      }
+      return t?.label || item.kind
+    }
   }
 }
 
@@ -172,9 +178,48 @@ export function buildSheetMarkdown(sheet) {
     L.push('')
   }
 
-  L.push(buildSpecSection())
+  L.push(buildInventorySection(sheet.library))
+  L.push(buildSpecSection(sheet.library?.customParts))
 
   return L.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
+}
+
+// ── Parts inventory ──────────────────────────────────────────────────────────
+// Tells the assistant which parts the user has configured and which they
+// physically have in stock, so a design prefers parts on hand. `library` is
+// { parts: [{ kind, label, partNumber, placement, pins:[names], inStock, custom }] }.
+export function buildInventorySection(library) {
+  const parts = library?.parts || []
+  if (!parts.length) return ''
+  const fmt = (p) => {
+    const pn = p.partNumber ? ` [${p.partNumber}]` : ''
+    const pins = p.pins?.length ? ` — pins: ${p.pins.join(', ')}` : ''
+    const tag = p.placement === 'standalone' ? ' (board)' : ''
+    const cust = p.custom ? ' (custom)' : ''
+    return `- ${p.label}${pn}${tag}${cust}${pins}`
+  }
+  const inStock = parts.filter((p) => p.inStock)
+  const notStock = parts.filter((p) => !p.inStock)
+
+  const L = []
+  L.push('---')
+  L.push('')
+  L.push('## Parts inventory & library')
+  L.push('')
+  L.push('The user maintains a parts library. **Prefer parts that are in stock.** Parts not')
+  L.push('in stock are known/configured but not currently owned — use them only if needed,')
+  L.push('and call out anything the user would have to buy.')
+  L.push('')
+  L.push(`### In stock (${inStock.length})`)
+  if (inStock.length) inStock.forEach((p) => L.push(fmt(p)))
+  else L.push('_Nothing marked in stock._')
+  L.push('')
+  if (notStock.length) {
+    L.push(`### Configured but not in stock (${notStock.length})`)
+    notStock.forEach((p) => L.push(fmt(p)))
+    L.push('')
+  }
+  return L.join('\n')
 }
 
 // ── Build spec ───────────────────────────────────────────────────────────────
@@ -188,14 +233,14 @@ const PROP_HINT = {
 }
 function specPartLine(kind) {
   const tpl = getTemplate(kind)
-  if (!tpl) return null
+  if (!tpl || tpl.stockOnly) return null
   if (kind === 'ic') return '- `ic` — pins `1`..`N` — prop `pinCount`'
   const names = tpl.pins.map((p) => p.name.replace(/\s*\(.*?\)/g, '')).join(', ')
   const prop = PROP_HINT[kind] ? ` — prop \`${PROP_HINT[kind]}\`` : ''
   return `- \`${kind}\` — pins: ${names}${prop}`
 }
 
-export function buildSpecSection() {
+export function buildSpecSection(customParts = []) {
   const L = []
   L.push('---')
   L.push('')
@@ -213,9 +258,9 @@ export function buildSpecSection() {
   L.push('    { "id": "Pi1", "type": "raspi40" }')
   L.push('  ],')
   L.push('  "wires": [')
-  L.push('    { "from": "Pi1:GPIO17", "to": "10A" },')
-  L.push('    { "from": "20A", "to": "-T" },')
-  L.push('    { "from": "Pi1:GND", "to": "-T" }')
+  L.push('    { "from": "Pi1:GPIO17", "to": "10A", "color": "#16a34a" },')
+  L.push('    { "from": "20A", "to": "-T", "color": "#000000" },')
+  L.push('    { "from": "Pi1:5V", "to": "+T", "color": "#dc2626", "arc": -1 }')
   L.push('  ]')
   L.push('}')
   L.push('```')
@@ -229,6 +274,18 @@ export function buildSpecSection() {
   L.push('wires, so use wires to reach the rails and boards. Give a part `"pins"` to plug its')
   L.push('legs into holes; give a board pins only via wires.')
   L.push('')
+  L.push('**Wire colors** — set `"color"` (hex). Follow this convention so the board reads')
+  L.push('clearly:')
+  L.push('- `#dc2626` **RED** → positive power only (5V / 3.3V / VCC).')
+  L.push('- `#000000` **BLACK** → ground / − (GND, the `-T`/`-B` rails).')
+  L.push('- Give **each component or sensor its own distinct color** for its signal/logic wiring,')
+  L.push('  chosen from: `#16a34a` green, `#2563eb` blue, `#f59e0b` amber, `#9333ea` purple')
+  L.push('  (reuse a color only after these run out). Never use red/black for signal wires.')
+  L.push('')
+  L.push('**Wire arc** — each wire draws as an arc. `"arc": 1` bends one way (default); `"arc": -1`')
+  L.push('bends it the opposite way. Use `-1` to route a wire around others and keep a crowded')
+  L.push('board uncluttered — e.g. alternate arcs for wires that share endpoints or cross.')
+  L.push('')
   L.push('**Part types** (use these pin names):')
   for (const g of PALETTE_GROUPS) {
     for (const kind of g.kinds) {
@@ -238,6 +295,17 @@ export function buildSpecSection() {
       if (kind === 'custom') { L.push('- `custom` — your own board: give `"pinNames": ["VCC","GND",…]` (wire by those names)'); continue }
       const line = specPartLine(kind)
       if (line) L.push(line)
+    }
+  }
+  if (customParts && customParts.length) {
+    L.push('')
+    L.push('**Custom library parts** (use the `type` shown; pin names as listed):')
+    for (const p of customParts) {
+      const type = String(p.kind || '').replace(/^lib_/, '')
+      const names = (p.pins || []).join(', ')
+      const tag = p.placement === 'standalone' ? ' (standalone board — wire to its pins)' : ''
+      const pn = p.partNumber ? ` [${p.partNumber}]` : ''
+      L.push(`- \`${type}\`${pn} — ${p.label} — pins: ${names}${tag}`)
     }
   }
   L.push('')

@@ -5,6 +5,15 @@
       <span v-if="tool" class="palette-hint">{{ hintText }}</span>
     </div>
 
+    <div class="palette-actions">
+      <button class="pal-action" title="Create a new part" @click="$emit('create')">
+        <i class="pi pi-plus" style="font-size: 0.7rem"></i> Create
+      </button>
+      <button class="pal-action" title="Open the parts library" @click="$emit('library')">
+        <i class="pi pi-box" style="font-size: 0.7rem"></i> Library
+      </button>
+    </div>
+
     <div v-for="g in groups" :key="g.id" class="pal-group">
       <div class="pal-group-label">{{ g.label }}</div>
       <div class="pal-items">
@@ -15,9 +24,13 @@
           :title="labelFor(kind)"
           @click="pick(kind)"
         >
-          <span class="pal-dot" :style="dotStyle(kind)"></span>
+          <img class="pal-icon" :src="iconUrl(kind)" alt="" draggable="false" />
           <span class="pal-label">{{ labelFor(kind) }}</span>
+          <i v-if="inStock(kind)" class="pi pi-star-fill stock-star" title="In stock"></i>
         </button>
+        <div v-if="g.id === 'active' && !g.kinds.length" class="pal-empty">
+          Place a part from the <strong>Library</strong> and it shows up here.
+        </div>
       </div>
     </div>
   </div>
@@ -25,28 +38,45 @@
 
 <script setup>
 import { computed } from 'vue'
-import { PALETTE_GROUPS, COMPONENTS, BOARDS } from '@/lib/breadboard/templates'
+import { COMPONENTS, BOARDS, getTemplate, iconUrl } from '@/lib/breadboard/templates'
+import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 
 const props = defineProps({
   tool: { type: Object, default: null },
+  // distinct kinds placed on the current sheet (drives the "Active devices" group)
+  usedKinds: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['select-tool', 'custom'])
+const emit = defineEmits(['select-tool', 'custom', 'create', 'library'])
 
-const groups = PALETTE_GROUPS
+const lib = useBreadboardLibraryStore()
+
+// Only the common discrete parts live in the palette permanently. Everything else
+// (sensors, boards, custom library parts) lives in the Library — it surfaces under
+// "Active devices" once it's placed on the sheet, so re-adding more is one click.
+const CORE_KINDS = ['resistor', 'led', 'cap_104', 'button', 'wire']
+const ACTIVE_BASE = ['diode', 'transistor', 'potentiometer', 'ic']
+
+const groups = computed(() => {
+  const known = new Set([...CORE_KINDS, ...ACTIVE_BASE])
+  const placed = []
+  for (const k of props.usedKinds) {
+    // 'custom' boards are one-offs per sheet — can't be re-added blindly from here
+    if (k === 'custom' || known.has(k) || placed.includes(k)) continue
+    placed.push(k)
+  }
+  return [
+    { id: 'core', label: 'Core', kinds: CORE_KINDS },
+    { id: 'active', label: 'Active devices', kinds: [...ACTIVE_BASE, ...placed] },
+  ]
+})
+
+function inStock(kind) {
+  return lib.isInStock(kind)
+}
 
 function labelFor(kind) {
   if (kind === 'custom') return 'Custom board'
-  return COMPONENTS[kind]?.label || BOARDS[kind]?.label || kind
-}
-
-const DOT = {
-  resistor: '#e3c79b', led: '#e8403a', cap_104: '#2f6fae', button: '#3a4252', wire: '#16a34a',
-  diode: '#2a2a2a', transistor: '#232323', potentiometer: '#d8dde4', ic: '#1f1f1f',
-  ir_led_tsal6400: '#9ec3e0', tsop38238: '#1b1b1b', ds18b20: '#232323',
-  veml7700: '#1e8f6e', bme280: '#5a4fb0', raspi40: '#2bb673', esp32devkit: '#d34b3b', custom: '#6b7280',
-}
-function dotStyle(kind) {
-  return { background: DOT[kind] || '#888' }
+  return COMPONENTS[kind]?.label || BOARDS[kind]?.label || getTemplate(kind)?.label || kind
 }
 
 function isActive(kind) {
@@ -96,6 +126,40 @@ const hintText = computed(() => {
   color: #0f766e;
   font-weight: 600;
 }
+.palette-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+.pal-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.38rem 0.4rem;
+  border: 1px solid var(--bb-border, #e5e4e1);
+  border-radius: 0.5rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--bb-text, #1a1a1a);
+}
+.pal-action:hover {
+  background: var(--bb-sunken, #f3f2f0);
+  border-color: #14b8a6;
+  color: #0f766e;
+}
+.pal-empty {
+  font-size: 0.72rem;
+  color: var(--bb-text-faint, #9a9a9a);
+  padding: 0.2rem 0.1rem;
+}
+.stock-star {
+  font-size: 0.6rem;
+  color: #f59e0b;
+  margin-left: auto;
+}
 .pal-group-label {
   font-size: 0.68rem;
   font-weight: 700;
@@ -132,12 +196,14 @@ const hintText = computed(() => {
   color: #0f766e;
   font-weight: 600;
 }
-.pal-dot {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 3px;
+.pal-icon {
+  width: 1.95rem;
+  height: 1.95rem;
   flex: none;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 2px;
+  border-radius: 5px;
+  background: var(--bb-sunken, #f3f2f0);
+  object-fit: contain;
 }
 .pal-label {
   white-space: nowrap;

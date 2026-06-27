@@ -5,7 +5,7 @@
 
 import { v4 as uuid } from 'uuid'
 import { getBreadboardLayout, pinEndpointId } from './geometry'
-import { getTemplate, makeItem, BREADBOARDS } from './templates'
+import { getTemplate, makeItem, BREADBOARDS, findCustomKind } from './templates'
 
 // Pull the first JSON object out of a pasted reply (fenced ```json block first,
 // then any ```block, then the first balanced {…}).
@@ -45,7 +45,7 @@ function normalizeKind(type) {
   if (!type) return null
   const k = String(type).toLowerCase().replace(/[\s-]+/g, '_')
   if (getTemplate(k)) return k
-  return KIND_ALIASES[k] || KIND_ALIASES[k.replace(/_/g, '')] || null
+  return KIND_ALIASES[k] || KIND_ALIASES[k.replace(/_/g, '')] || findCustomKind(type) || null
 }
 
 function parseOhms(v) {
@@ -210,7 +210,7 @@ export function parseBuild(text) {
     const to = resolveEndpoint(w.to)
     if (!from) { warnings.push(`Wire skipped: bad point "${w.from}"`); continue }
     if (!to) { warnings.push(`Wire skipped: bad point "${w.to}"`); continue }
-    wires.push({ id: uuid(), from, to, color: w.color || '#16a34a' })
+    wires.push({ id: uuid(), from, to, color: w.color || '#16a34a', arc: w.arc === -1 ? -1 : 1 })
   }
 
   return { ok: true, data: { breadboards: [bb], items, wires }, warnings }

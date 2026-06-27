@@ -1,5 +1,5 @@
 <template>
-  <g :class="['sprite', { selected }]">
+  <g :class="['sprite', { selected, dimmed }]">
     <!-- ════ Resistor ════ -->
     <g v-if="body === 'resistor'" :transform="axisTransform">
       <line :x1="-axis.half" y1="0" :x2="-bodyHalf" y2="0" class="leg" />
@@ -135,13 +135,16 @@ const props = defineProps({
   layout: { type: Object, default: null },
   boardLayout: { type: Object, default: null },
   selected: { type: Boolean, default: false },
+  dimmed: { type: Boolean, default: false },
 })
 
 const tpl = computed(() => getTemplate(props.item.kind))
 const isStandalone = computed(
   () => (props.item.placement || tpl.value?.placement) === 'standalone',
 )
-const body = computed(() => (isStandalone.value ? 'board' : tpl.value?.body || 'resistor'))
+const body = computed(() =>
+  isStandalone.value ? 'board' : props.item.body || tpl.value?.body || 'resistor',
+)
 const tplAccent = computed(() => tpl.value?.accent || '#5a4fb0')
 
 // pin coordinates in scene space
@@ -214,7 +217,7 @@ const shortPart = computed(() => {
   if (props.item.kind === 'veml7700') return 'VEML7700'
   if (props.item.kind === 'bme280') return 'BME280'
   if (props.item.kind === 'ic') return p.part || ''
-  return p.part || ''
+  return p.part || p.partNumber || ''
 })
 
 // ── DIP geometry ──
@@ -257,6 +260,12 @@ const tagW = computed(() => 12 + (props.item.label?.length || 1) * 6)
 </script>
 
 <style scoped>
+.sprite {
+  transition: opacity 0.12s;
+}
+.sprite.dimmed {
+  opacity: 0.15;
+}
 .leg {
   stroke: #b9b29c;
   stroke-width: 2px;

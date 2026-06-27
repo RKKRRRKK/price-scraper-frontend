@@ -257,6 +257,7 @@ import { useRemindersStore } from '@/stores/reminders'
 import { useDocumentsStore } from '@/stores/documents'
 import { useSquellStore } from '@/stores/squell'
 import { useBreadboardStore } from '@/stores/breadboard'
+import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -269,6 +270,7 @@ const remindersStore = useRemindersStore()
 const documentsStore = useDocumentsStore()
 const squellStore = useSquellStore()
 const breadboardStore = useBreadboardStore()
+const breadboardLibraryStore = useBreadboardLibraryStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -341,6 +343,7 @@ async function fetchDataForUser() {
       documentsStore.fetchAll(), // Fetch document folders + documents
       squellStore.fetchQueries(), // Fetch Squell SQL query catalogue
       breadboardStore.fetchSheets(), // Fetch Breadboard sheets
+      breadboardLibraryStore.fetchLibrary(), // Fetch Breadboard parts library + stock
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -363,6 +366,7 @@ function resetStores() {
   documentsStore.reset()
   squellStore.reset()
   breadboardStore.reset()
+  breadboardLibraryStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {

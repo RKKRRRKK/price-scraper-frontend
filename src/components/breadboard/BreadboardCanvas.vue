@@ -4,11 +4,12 @@
       ref="svgEl"
       :viewBox="vbStr"
       class="bb-svg"
-      :class="{ wiring: tool?.type === 'wire', placing: tool?.type === 'place', dragging: !!drag }"
+      :class="{ wiring: tool?.type === 'wire', placing: tool?.type === 'place', dragging: !!drag, panmode: panMode }"
       @pointerdown="onDown"
       @pointermove="onMove"
       @pointerup="onUp"
       @pointercancel="onUp"
+      @pointerleave="onLeave"
       @wheel.prevent="onWheel"
     >
       <!-- breadboards -->
@@ -22,17 +23,21 @@
         :layout="sceneLayout"
         :board-layout="boardLayouts[it.id]"
         :selected="it.id === selectedId"
+        :dimmed="itemDimmed(it)"
       />
 
       <!-- wires (drawn above parts so connections stay visible on boards) -->
       <g class="wires">
         <g v-for="w in data.wires" :key="w.id">
-          <path :d="wirePath(w)" class="wire" :style="{ stroke: w.color || '#16a34a' }" />
-          <circle v-for="pt in wireEnds(w)" :key="pt.k" :cx="pt.x" :cy="pt.y" r="3.4" class="wire-end" :style="{ fill: w.color || '#16a34a' }" />
-          <g v-if="wireMid(w)" class="wire-del" :transform="`translate(${wireMid(w).x}, ${wireMid(w).y})`" @pointerdown.stop="$emit('remove-wire', w.id)">
-            <circle r="7" class="wire-del-bg" />
-            <text y="3" text-anchor="middle" class="wire-del-x">×</text>
-          </g>
+          <path
+            :d="wirePath(w)" class="wire"
+            :class="{ 'wire-sel': w.id === selectedWireId, dimmed: wireDimmed(w) }"
+            :style="{ stroke: w.color || '#16a34a' }"
+          />
+          <circle
+            v-for="pt in wireEnds(w)" :key="pt.k" :cx="pt.x" :cy="pt.y" r="3.4"
+            class="wire-end" :class="{ dimmed: wireDimmed(w) }" :style="{ fill: w.color || '#16a34a' }"
+          />
         </g>
       </g>
 
@@ -67,10 +72,12 @@ const props = defineProps({
   data: { type: Object, required: true },
   sheetId: { type: String, default: '' },
   selectedId: { type: String, default: null },
+  selectedWireId: { type: String, default: null },
+  netInfo: { type: Object, default: () => ({ nets: [] }) },
   tool: { type: Object, default: null },
   wireColor: { type: String, default: '#16a34a' },
 })
-const emit = defineEmits(['add', 'move', 'select', 'add-wire', 'remove-wire', 'placed', 'cancel'])
+const emit = defineEmits(['add', 'move', 'select', 'add-wire', 'remove-wire', 'delete-selected', 'placed', 'cancel'])
 
 const wrap = ref(null)
 const svgEl = ref(null)
@@ -82,6 +89,8 @@ const hoverHole = ref(null)
 const wireStart = ref(null)
 const drag = ref(null)
 const pan = ref(null)
+const panMode = ref(false)
+const hover = ref(null) // { type: 'item' | 'wire', id } under the pointer
 
 // ── derived geometry ──
 const layouts = computed(() => (props.data.breadboards || []).map((bb) => getBreadboardLayout(bb)))
@@ -129,9 +138,10 @@ function wirePath(w) {
   const a = endpointXY(w.from, wireCtx())
   const b = endpointXY(w.to, wireCtx())
   if (!a || !b) return ''
+  const dir = w.arc === -1 ? -1 : 1
   const lift = Math.hypot(b.x - a.x, b.y - a.y) * 0.16 + 6
   const mx = (a.x + b.x) / 2
-  const my = (a.y + b.y) / 2 - lift
+  const my = (a.y + b.y) / 2 - lift * dir
   return `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`
 }
 function wireEnds(w) {
@@ -142,12 +152,119 @@ function wireEnds(w) {
   if (b) out.push({ k: 'b', x: b.x, y: b.y })
   return out
 }
-function wireMid(w) {
-  const a = endpointXY(w.from, wireCtx())
-  const b = endpointXY(w.to, wireCtx())
-  if (!a || !b) return null
-  const lift = Math.hypot(b.x - a.x, b.y - a.y) * 0.16 + 6
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - lift / 2 }
+
+// ── unified pick: nearest wire (forgiving) else topmost item ──
+// Hit radius tracks zoom so a thin wire stays grabbable at any scale:
+// ~12 screen px worth of scene units, floored so it's never too tight when zoomed in.
+function wireHitRadius() {
+  const scale = vb.w / (wrap.value?.clientWidth || 1) // scene units per screen px
+  return Math.max(10, 12 * scale)
+}
+function nearestWire(p) {
+  let best = null
+  let bestD = wireHitRadius() ** 2
+  const ctx = wireCtx()
+  for (const w of props.data.wires || []) {
+    const a = endpointXY(w.from, ctx)
+    const b = endpointXY(w.to, ctx)
+    if (!a || !b) continue
+    const dir = w.arc === -1 ? -1 : 1
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const lift = len * 0.16 + 6
+    const cx = (a.x + b.x) / 2
+    const cy = (a.y + b.y) / 2 - lift * dir
+    // enough samples that the gap between them stays under the hit radius
+    const steps = Math.max(16, Math.ceil((len + lift) / 8))
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const mt = 1 - t
+      const x = mt * mt * a.x + 2 * mt * t * cx + t * t * b.x
+      const y = mt * mt * a.y + 2 * mt * t * cy + t * t * b.y
+      const d = (x - p.x) ** 2 + (y - p.y) ** 2
+      if (d < bestD) { bestD = d; best = w }
+    }
+  }
+  return best
+}
+function pick(p) {
+  const w = nearestWire(p)
+  if (w) return { type: 'wire', id: w.id }
+  const it = topItemAt(p)
+  if (it) return { type: 'item', id: it.id }
+  return null
+}
+
+// ── focus + highlight (hover overrides persisted selection) ──
+const activeFocus = computed(() => {
+  if (hover.value) return hover.value
+  if (props.selectedWireId) return { type: 'wire', id: props.selectedWireId }
+  if (props.selectedId) return { type: 'item', id: props.selectedId }
+  return null
+})
+function ownerOf(endpointId) {
+  for (const it of props.data.items || []) {
+    for (const pin of it.pins || []) {
+      if (pinEndpointId(it, pin) === endpointId) return it.id
+    }
+  }
+  return null
+}
+// endpoint id (pin or hole) → electrical net id, derived from the computed nets.
+const endpointNet = computed(() => {
+  const m = new Map()
+  for (const net of props.netInfo?.nets || []) {
+    for (const p of net.pins) m.set(p.endpointId, net.id)
+    for (const h of net.holeRefs || []) m.set(h.id, net.id)
+  }
+  return m
+})
+// Set of { items, wires } to keep lit; null ⇒ dim nothing. Connectivity follows
+// electrical nets (through breadboard strips), so a part's legs light up the cables
+// wired to the same strip even though they don't share a literal endpoint id.
+const highlight = computed(() => {
+  const f = activeFocus.value
+  if (!f) return null
+  const en = endpointNet.value
+  const items = new Set()
+  const wires = new Set()
+  const focusNets = new Set()
+  const wlist = props.data.wires || []
+  const ilist = props.data.items || []
+  if (f.type === 'wire') {
+    const w = wlist.find((x) => x.id === f.id)
+    if (!w) return null
+    wires.add(w.id)
+    for (const ep of [w.from, w.to]) {
+      const nid = en.get(ep); if (nid) focusNets.add(nid)
+      const o = ownerOf(ep); if (o) items.add(o)
+    }
+  } else {
+    items.add(f.id)
+    const it = ilist.find((x) => x.id === f.id)
+    for (const pin of it?.pins || []) {
+      const nid = en.get(pinEndpointId(it, pin)); if (nid) focusNets.add(nid)
+    }
+  }
+  if (focusNets.size) {
+    for (const w of wlist) {
+      const a = en.get(w.from)
+      const b = en.get(w.to)
+      if ((a && focusNets.has(a)) || (b && focusNets.has(b))) wires.add(w.id)
+    }
+    for (const it of ilist) {
+      for (const pin of it.pins || []) {
+        const nid = en.get(pinEndpointId(it, pin))
+        if (nid && focusNets.has(nid)) { items.add(it.id); break }
+      }
+    }
+  }
+  return { items, wires }
+})
+function itemDimmed(it) {
+  return !!highlight.value && !highlight.value.items.has(it.id)
+}
+function wireDimmed(w) {
+  return !!highlight.value && !highlight.value.wires.has(w.id)
 }
 
 // ── endpoint hit-testing for wiring (holes + board pins) ──
@@ -187,7 +304,7 @@ function placeAt(kind, p) {
   if (standalone) {
     const item = makeItem(kind, { x: p.x, y: p.y })
     emit('add', item)
-    emit('select', item.id)
+    emit('select', { type: 'item', id: item.id })
     emit('placed')
     return
   }
@@ -214,25 +331,41 @@ function onDown(e) {
     return
   }
 
-  const hit = topItemAt(p)
-  if (hit) {
-    emit('select', hit.id)
+  // panning only via middle mouse or held Space — never on a plain background click
+  if (e.button === 1 || panMode.value) {
+    hover.value = null
+    pan.value = { cx: e.clientX, cy: e.clientY, vx: vb.x, vy: vb.y }
+    try { svgEl.value.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+    return
+  }
+
+  const picked = pick(p)
+  if (picked?.type === 'wire') {
+    emit('select', { type: 'wire', id: picked.id })
+    return
+  }
+  if (picked?.type === 'item') {
+    const hit = itemsById.value[picked.id]
+    emit('select', { type: 'item', id: hit.id })
+    hover.value = null
     const standalone = (hit.placement || getTemplate(hit.kind)?.placement) === 'standalone'
     const anchor = standalone
       ? { x: hit.x, y: hit.y }
       : sceneLayout.value.holesById[hit.pins[0]?.hole] || { x: hit.x, y: hit.y }
     drag.value = { id: hit.id, ox: p.x - anchor.x, oy: p.y - anchor.y, standalone }
+    try { svgEl.value.setPointerCapture(e.pointerId) } catch { /* ignore */ }
   } else {
     emit('select', null)
-    pan.value = { cx: e.clientX, cy: e.clientY, vx: vb.x, vy: vb.y }
   }
-  try { svgEl.value.setPointerCapture(e.pointerId) } catch { /* ignore */ }
 }
 
 function onMove(e) {
   const p = toSvg(e)
   pointer.value = p
   hoverHole.value = nearestHole(sceneLayout.value, p.x, p.y)
+
+  // hover-focus only in selection mode (not while placing/wiring/dragging/panning)
+  if (!drag.value && !pan.value && !props.tool) hover.value = pick(p)
 
   if (drag.value) {
     const it = itemsById.value[drag.value.id]
@@ -258,6 +391,10 @@ function onUp(e) {
   drag.value = null
   pan.value = null
   try { svgEl.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+}
+
+function onLeave() {
+  hover.value = null
 }
 
 function onWheel(e) {
@@ -305,17 +442,31 @@ function fit() {
   vb.x = x; vb.y = y; vb.w = w; vb.h = h
 }
 
+function isTypingTarget(t) {
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+}
 function onKey(e) {
+  if (isTypingTarget(e.target)) return
   if (e.key === 'Escape') {
     if (wireStart.value) wireStart.value = null
     emit('cancel')
+  } else if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault()
+    panMode.value = true
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault()
+    emit('delete-selected')
   }
+}
+function onKeyUp(e) {
+  if (e.key === ' ' || e.code === 'Space') panMode.value = false
 }
 
 let ro = null
 onMounted(() => {
   nextTick(fit)
   window.addEventListener('keydown', onKey)
+  window.addEventListener('keyup', onKeyUp)
   if (window.ResizeObserver && wrap.value) {
     ro = new ResizeObserver(() => {
       const el = wrap.value
@@ -329,6 +480,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keyup', onKeyUp)
   if (ro) ro.disconnect()
 })
 
@@ -352,6 +504,9 @@ defineExpose({ fit })
   height: 100%;
   display: block;
   touch-action: none;
+  cursor: default;
+}
+.bb-svg.panmode {
   cursor: grab;
 }
 .bb-svg.dragging {
@@ -368,28 +523,21 @@ defineExpose({ fit })
   stroke-width: 3.2px;
   stroke-linecap: round;
   opacity: 0.92;
+  transition: opacity 0.12s;
+}
+.wire.wire-sel {
+  stroke-width: 4.6px;
+  opacity: 1;
+  filter: drop-shadow(0 0 2px rgba(20, 184, 166, 0.9));
+}
+.wire.dimmed,
+.wire-end.dimmed {
+  opacity: 0.12;
 }
 .wire-end {
   stroke: rgba(0, 0, 0, 0.25);
   stroke-width: 0.5px;
-}
-.wire-del {
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
   transition: opacity 0.12s;
-}
-.wires g:hover .wire-del {
-  opacity: 1;
-  pointer-events: auto;
-}
-.wire-del-bg {
-  fill: #ef4444;
-}
-.wire-del-x {
-  fill: #fff;
-  font-size: 11px;
-  font-weight: 700;
 }
 .hover-ring {
   fill: none;

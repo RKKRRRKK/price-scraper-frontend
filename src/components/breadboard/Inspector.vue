@@ -1,6 +1,37 @@
 <template>
   <div class="inspector">
-    <div v-if="!item" class="insp-empty">
+    <!-- ── wire selected ── -->
+    <template v-if="wire">
+      <div class="insp-head">
+        <span class="insp-name static">Wire</span>
+        <button class="icon-btn danger" title="Delete wire" @click="$emit('delete-wire')">
+          <i class="pi pi-trash" style="font-size: 0.85rem"></i>
+        </button>
+      </div>
+      <div class="insp-kind">Connection</div>
+
+      <div class="field">
+        <label>Colour</label>
+        <div class="swatches">
+          <button
+            v-for="c in wireColors" :key="c" class="swatch"
+            :class="{ on: (wire.color || '#16a34a') === c }"
+            :style="{ background: c }" :title="c"
+            @click="$emit('set-wire-color', c)"
+          ></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Arc</label>
+        <button class="dup-btn" @click="$emit('flip-wire-arc')">
+          <i class="pi pi-sync" style="font-size: 0.75rem"></i>
+          Flip arc {{ wire.arc === -1 ? '(opposing)' : '(default)' }}
+        </button>
+      </div>
+    </template>
+
+    <div v-else-if="!item" class="insp-empty">
       <i class="pi pi-sliders-h" style="font-size: 1.5rem; opacity: 0.4"></i>
       <p>Select a part to edit it, or pick one from <strong>Add parts</strong> and click the board.</p>
     </div>
@@ -13,6 +44,7 @@
         </button>
       </div>
       <div class="insp-kind">{{ kindLabel }}</div>
+      <div v-if="partNumber" class="insp-pn">Part #{{ partNumber }}</div>
 
       <!-- ── props ── -->
       <div v-if="item.kind === 'resistor'" class="field">
@@ -99,10 +131,15 @@ import { pinEndpointId } from '@/lib/breadboard/geometry'
 
 const props = defineProps({
   item: { type: Object, default: null },
+  wire: { type: Object, default: null },
+  wireColors: { type: Array, default: () => [] },
   layout: { type: Object, default: null },
   netMap: { type: Object, default: () => ({}) }, // endpointId -> { id, label }
 })
-const emit = defineEmits(['rename', 'update-prop', 'set-pin', 'set-pincount', 'delete', 'duplicate'])
+const emit = defineEmits([
+  'rename', 'update-prop', 'set-pin', 'set-pincount', 'delete', 'duplicate',
+  'set-wire-color', 'flip-wire-arc', 'delete-wire',
+])
 
 const RES_PRESETS = [1, 10, 22, 47, 100, 150, 220, 330, 470, 680, 1000, 2200, 4700, 10000, 22000, 47000, 100000, 220000, 470000, 1000000]
 const POT_PRESETS = [1000, 5000, 10000, 50000, 100000]
@@ -111,6 +148,7 @@ const LED_COLORS = ['red', 'green', 'blue', 'yellow', 'white', 'orange']
 const tpl = computed(() => getTemplate(props.item?.kind))
 const isStandalone = computed(() => (props.item?.placement || tpl.value?.placement) === 'standalone')
 const kindLabel = computed(() => tpl.value?.label || props.item?.kind)
+const partNumber = computed(() => props.item?.props?.partNumber || tpl.value?.partNumber || '')
 const maxCol = computed(() => props.layout?.cfg?.cols || 63)
 
 const bands = computed(() => valueToBands(props.item?.props?.ohms).map((n) => BAND_COLORS[n]))
@@ -210,12 +248,42 @@ function netLabel(pin) {
   background: #fff;
   color: var(--bb-text, #1a1a1a);
 }
+.insp-name.static {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.35rem 0.5rem;
+  color: var(--bb-text, #1a1a1a);
+}
+.swatches {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.4rem;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.on {
+  border-color: var(--bb-text, #1a1a1a);
+}
 .insp-kind {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--bb-text-faint, #9a9a9a);
   font-weight: 600;
+}
+.insp-pn {
+  font-size: 0.72rem;
+  color: #0f766e;
+  font-weight: 600;
+  margin-top: -0.4rem;
 }
 .field {
   display: flex;

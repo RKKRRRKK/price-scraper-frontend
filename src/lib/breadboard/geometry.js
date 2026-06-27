@@ -139,8 +139,9 @@ export function placeInlineItem(layout, item, anchorHole) {
   const tpl = getTemplate(item.kind)
   const col0 = anchorHole.col
   const r0 = ROWS.indexOf(anchorHole.row)
+  const straddle = item.kind === 'ic' || item.straddle || tpl?.straddle || item.body === 'dip'
 
-  if (item.kind === 'ic') {
+  if (straddle) {
     // DIP straddles the ravine: top pins on row E, bottom on row F.
     const n = item.pins.length
     const perSide = Math.ceil(n / 2)
@@ -151,7 +152,7 @@ export function placeInlineItem(layout, item, anchorHole) {
       item.pins[i].hole = holeAt(layout, col, rowIndex)?.id ?? null
     }
   } else {
-    const span = tpl?.span ?? 1
+    const span = item.span ?? tpl?.span ?? 1
     for (let i = 0; i < item.pins.length; i++) {
       const col = col0 + i * span
       item.pins[i].hole = holeAt(layout, col, r0)?.id ?? null

@@ -1,0 +1,64 @@
+Category,Component Type,Examples / Details
+Prototyping & Power,Solderless Breadboards,"830-pt, 400-pt, 170-pt"
+,Pre-made Jumper Wires,"M-M, M-F, F-F (10/20/30cm)"
+,Solid Core Wire,22 AWG Spools for custom lengths
+,Test Leads,Alligator / Crocodile clips
+,Pi Breakouts & Cables,"T-Cobbler, 40-pin Ribbon Cable"
+,Power Supply Modules,Breadboard PSU (3.3V / 5V)
+,USB Breakout Boards,USB-C / Micro-USB to DIP/Pins
+,Logic Level Shifters,"Bi-directional, 4/8-channel"
+,Battery Holders,"AA, AAA, 18650, CR2032"
+,DC-DC Converters,"Buck (LM2596), Boost (MT3608)"
+,Terminals & Headers,"Screw terminals, Pin headers (2.54mm pitch)"
+,JST Connectors,Connectors and Cable Assemblies
+Microcontrollers,SBCs,Raspberry Pi (implied by T-Cobbler)
+,Bare-Metal MCUs,"Arduino Nano, ESP32, Raspberry Pi Pico"
+Passives & Protection,Resistors,1/4W Assortment (10Ω to 1MΩ)
+,Capacitors,"Ceramic (10pF-1µF), Electrolytic (1µF-1000µF)"
+,Inductors,Assortment for LC circuits / filtering
+,Fuses,"PTC Resettable, Inline Glass Fuses"
+,Diodes,"Rectifier (1N4007), Signal (1N4148), Schottky, Zener"
+,Potentiometers & Trimpots,"Linear/Logarithmic (1k-100k), 10k multi-turn"
+Switches & Buttons,Tactile Push Buttons,"6x6mm, 12x12mm"
+,Panel & PCB Switches,"DIP (4/8 pos), Slide (SPDT/DPDT), Toggle"
+,Rotary Encoders,KY-040
+,Mechanical Switches,Microswitches / Lever Limit Switches
+,Magnetic Switches,Reed Switches with Neodymium magnets
+Semiconductors & ICs,Transistors (BJT),"NPN (2N2222, BC547), PNP (2N2907, BC557)"
+,Transistors (MOSFET),"N-Channel (IRLZ44N, IRLB8721), P-Channel"
+,Optoisolators,"4N35, PC817"
+,Operational Amplifiers,"LM324, LM358, OP07"
+,Comparators,LM393 (for digital threshold triggering)
+,Logic Gates,"74HC04 (Inverter), 74HC08 (AND), 74HC32 (OR)"
+,Shift Registers & I/O,"74HC595, MCP23017, PCF8574"
+,Analog-to-Digital,"MCP3008, ADS1115, ADS1015"
+,Timers & Clocks,NE555
+,Real-Time Clocks (RTC),"DS3231, DS1307 with coin cell backup"
+,Voltage Regulators,"LM7805, LM7812, AMS1117-3.3"
+,Motor / Servo Drivers,"L293D, SN754410, PCA9685"
+Environment Sensors,Temperature & Humidity,"DHT11/22, SHT31, AHT20, DS18B20 (Waterproof)"
+,Barometric Pressure,"BMP280, BME280, BME680"
+,Gas / Air Quality,"MQ-2, MQ-3, MQ-135, CCS811"
+,Soil & Water,"Moisture (Capacitive/Resistive), Depth/Level"
+Spatial & Motion,Distance & Ranging,"Ultrasonic (HC-SR04), ToF/Laser (VL53L0X/L1X)"
+,Motion (Occupancy),"PIR (HC-SR501, AM312), Microwave (RCWL-0516)"
+,Orientation & Location,"IMU (MPU6050, BNO055), Magnetometer, GPS"
+Optical & Bio Sensors,Light & Color,"LDRs, Ambient Light (TSL2591), Color (TCS34725)"
+,Infrared (IR),"Receivers (TSOP38238), Transmitters/Break Beam"
+,Biological & Weight,"Heart Rate (MAX30102), Fingerprint, Load Cell (HX711)"
+,Audio,"Microphones (MAX4466, KY-037)"
+,Identification,"RFID / NFC Readers (RC522, PN532)"
+Displays & Indicators,Discrete LEDs,"3mm/5mm (Standard), RGB (Common Anode/Cathode)"
+,Addressable LEDs,"Neopixels (WS2812B strips, rings, panels)"
+,Alphanumeric Displays,"7-Segment, Character LCDs (16x2, 20x4) + I2C"
+,Graphical Displays,"LED Matrix, OLED (SSD1306), TFT SPI, E-Ink"
+Actuators & Motors,Servos,"Micro (SG90), High-Torque (MG996R)"
+,DC Motors,"Hobby (3V-6V), Geared (TT Motors)"
+,Stepper Motors,"28BYJ-48 (+ULN2003), NEMA 17"
+,Stepper Drivers,"A4988, DRV8825, TMC2209"
+,Pumps & Solenoids,"Submersible Pumps (3V-5V), Push/Pull Solenoids"
+,Relays,"Mechanical (1/2/4/8-ch), Solid State (SSR)"
+,Audio & Haptic Output,"Buzzers (Active/Passive), Vibration/Coin Motors"
+Communications,Wireless (Local/IoT),"Bluetooth (HC-05/06, HM-10), RF (433MHz), LoRa"
+,High-Speed Wireless,nRF24L01+ (2.4GHz transceivers)
+,Wired Networking,"CAN Bus (MCP2515), RS485 to TTL, Ethernet (W5500)"
