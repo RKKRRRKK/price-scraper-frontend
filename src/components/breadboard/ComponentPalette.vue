@@ -123,7 +123,7 @@ const hintText = computed(() => {
 }
 .palette-hint {
   font-size: 0.7rem;
-  color: #0f766e;
+  color: #b91c1c;
   font-weight: 600;
 }
 .palette-actions {
@@ -147,8 +147,8 @@ const hintText = computed(() => {
 }
 .pal-action:hover {
   background: var(--bb-sunken, #f3f2f0);
-  border-color: #14b8a6;
-  color: #0f766e;
+  border-color: #ef4444;
+  color: #b91c1c;
 }
 .pal-empty {
   font-size: 0.72rem;
@@ -191,9 +191,9 @@ const hintText = computed(() => {
   background: var(--bb-sunken, #f3f2f0);
 }
 .pal-item.active {
-  background: #ccfbf1;
-  border-color: #14b8a6;
-  color: #0f766e;
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
   font-weight: 600;
 }
 .pal-icon {

@@ -3,9 +3,10 @@
     <!-- ── Sheet catalogue rail ── -->
     <aside class="rail" :class="{ open: railOpen }">
       <div class="rail-head">
-        <div>
+        <div class="rail-head-text">
           <div class="eyebrow">Tools</div>
-          <h1 class="rail-title">Breadboard</h1>
+          <h1 class="rail-title">Breadly</h1>
+          <div class="rail-sub">{{ store.sheets.length }} {{ store.sheets.length === 1 ? 'sheet' : 'sheets' }}</div>
         </div>
         <button class="icon-btn mobile-only" @click="railOpen = false" title="Close">
           <i class="pi pi-times" style="font-size: 0.85rem"></i>
@@ -16,20 +17,43 @@
         <i class="pi pi-plus" style="font-size: 0.8rem"></i> New sheet
       </button>
 
+      <div class="rail-search">
+        <i class="pi pi-search"></i>
+        <input v-model="railQuery" type="text" placeholder="Filter sheets…" />
+        <button v-if="railQuery" class="rail-search-clear" @click="railQuery = ''" title="Clear">
+          <i class="pi pi-times"></i>
+        </button>
+      </div>
+
       <div class="rail-list">
-        <div v-if="store.loading && !store.sheets.length" class="rail-loading">
+        <div v-if="store.loading && !store.sheets.length" class="rail-state">
           <i class="pi pi-spin pi-spinner" style="font-size: 1.2rem"></i>
         </div>
-        <div v-else-if="!store.sheets.length" class="rail-empty">No sheets yet.</div>
+        <div v-else-if="!store.sheets.length" class="rail-state">
+          <i class="pi pi-microchip rail-state-icon"></i>
+          <span>No sheets yet.</span>
+        </div>
+        <div v-else-if="!filteredSheets.length" class="rail-state">
+          <i class="pi pi-search rail-state-icon"></i>
+          <span>No matches for “{{ railQuery }}”.</span>
+        </div>
         <button
-          v-for="s in store.sheets"
+          v-for="s in filteredSheets"
           :key="s.id"
           class="rail-item"
           :class="{ active: s.id === store.activeSheetId }"
           @click="selectSheet(s.id)"
         >
-          <span class="rail-item-name">{{ s.name }}</span>
-          <span class="rail-item-meta">{{ partCount(s) }}</span>
+          <span class="rail-item-icon"><i class="pi pi-microchip"></i></span>
+          <span class="rail-item-body">
+            <span class="rail-item-name">{{ s.name }}</span>
+            <span class="rail-meta">
+              <span class="stat stat-board">{{ sheetBoard(s) }}</span>
+              <span class="stat" title="Parts"><i class="pi pi-box"></i>{{ sheetParts(s) }}</span>
+              <span class="stat" title="Wires"><i class="pi pi-share-alt"></i>{{ sheetWires(s) }}</span>
+              <span v-if="s.updated_at" class="stat stat-time" :title="'Updated ' + relTime(s.updated_at)">{{ shortAgo(s.updated_at) }}</span>
+            </span>
+          </span>
         </button>
       </div>
     </aside>
@@ -244,11 +268,22 @@ import {
 import { getBreadboardLayout, PITCH, pinEndpointId } from '@/lib/breadboard/geometry'
 import { computeNets } from '@/lib/breadboard/nets'
 import { parseBuild } from '@/lib/breadboard/importBuild'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+dayjs.extend(relativeTime, { rounding: Math.floor })
 
 const store = useBreadboardStore()
 const library = useBreadboardLibraryStore()
 
 const railOpen = ref(false)
+const railQuery = ref('')
+
+const filteredSheets = computed(() => {
+  const q = railQuery.value.trim().toLowerCase()
+  if (!q) return store.sheets
+  return store.sheets.filter((s) => (s.name || '').toLowerCase().includes(q))
+})
+
 const newOpen = ref(false)
 const customOpen = ref(false)
 const creatorOpen = ref(false)
@@ -317,9 +352,29 @@ const netMap = computed(() => {
   return m
 })
 
-function partCount(s) {
-  const n = s.data?.items?.length || 0
-  return n ? `${n}` : '·'
+function sheetParts(s) {
+  return s.data?.items?.length || 0
+}
+function sheetWires(s) {
+  return s.data?.wires?.length || 0
+}
+function sheetBoard(s) {
+  const t = s.data?.breadboards?.[0]?.type
+  const label = BREADBOARD_LIST.find((b) => b.type === t)?.label || t || '—'
+  return String(label).split('(')[0].trim() // drop the "(830 pts)" detail for the rail
+}
+function relTime(ts) {
+  return ts ? dayjs(ts).fromNow() : ''
+}
+function shortAgo(ts) {
+  if (!ts) return ''
+  const s = Math.max(0, dayjs().diff(dayjs(ts), 'second'))
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  if (s < 2592000) return `${Math.floor(s / 86400)}d`
+  if (s < 31536000) return `${Math.floor(s / 2592000)}mo`
+  return `${Math.floor(s / 31536000)}y`
 }
 
 // ── sheet ops ──
@@ -608,12 +663,12 @@ function buildFromText(text) {
   --bb-sunken: #f3f2f0;
   --bb-canvas-bg: #fbfaf7;
   --bb-card: #ffffff;
-  --bb-accent: #14b8a6;
-  --bb-accent-600: #0f766e;
-  --bb-accent-050: #ccfbf1;
+  --bb-accent: #ef4444;
+  --bb-accent-600: #b91c1c;
+  --bb-accent-050: #fee2e2;
 
   display: grid;
-  grid-template-columns: 15rem 1fr;
+  grid-template-columns: 17rem 1fr;
   height: calc(100vh - 4rem);
   background: var(--bb-sunken);
   color: var(--bb-text);
@@ -625,8 +680,8 @@ function buildFromText(text) {
   border-right: 1px solid var(--bb-border);
   display: flex;
   flex-direction: column;
-  padding: 1rem 0.85rem;
-  gap: 0.75rem;
+  padding: 1.25rem 0.85rem 1rem;
+  gap: 0.85rem;
   overflow: hidden;
 }
 .rail-head {
@@ -638,60 +693,190 @@ function buildFromText(text) {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #2dd4bf;
+  letter-spacing: 0.09em;
+  color: var(--bb-accent);
 }
 .rail-title {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   font-weight: 800;
   margin: 0.1rem 0 0;
+  letter-spacing: -0.01em;
 }
+.rail-sub {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--bb-text-faint);
+}
+
+/* primary "new" button — shared spec across both tools */
+.add-btn.rail-new {
+  width: 100%;
+  height: 2.6rem;
+  padding: 0 1rem;
+  border-radius: 0.6rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.25);
+}
+
+/* search */
+.rail-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--bb-border);
+  border-radius: 0.6rem;
+  padding: 0 0.6rem;
+  background: var(--bb-sunken);
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.rail-search:focus-within {
+  border-color: var(--bb-accent);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--bb-accent-050);
+}
+.rail-search .pi-search {
+  font-size: 0.8rem;
+  color: var(--bb-text-faint);
+}
+.rail-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--bb-text);
+}
+.rail-search input::placeholder { color: var(--bb-text-faint); }
+.rail-search-clear {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--bb-text-faint);
+  padding: 0.15rem;
+  font-size: 0.72rem;
+  display: inline-flex;
+}
+.rail-search-clear:hover { color: var(--bb-text-dim); }
+
+/* list */
 .rail-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.4rem;
   overflow-y: auto;
   flex: 1;
+  padding: 0.15rem 0.15rem 0.4rem;
 }
 .rail-item {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 0.55rem;
-  padding: 0.5rem 0.6rem;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border: 1px solid var(--bb-border);
+  background: var(--bb-card);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.7rem;
   cursor: pointer;
   text-align: left;
-  font-size: 0.88rem;
   color: var(--bb-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
 }
 .rail-item:hover {
-  background: var(--bb-sunken);
+  border-color: #f87171;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.07);
 }
 .rail-item.active {
-  background: var(--bb-accent-050);
+  background: #fef2f2;
   border-color: var(--bb-accent);
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.18);
+}
+.rail-item-icon {
+  flex: none;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bb-sunken);
+  color: var(--bb-text-dim);
+  font-size: 0.9rem;
+}
+.rail-item.active .rail-item-icon {
+  background: #fff;
   color: var(--bb-accent-600);
-  font-weight: 600;
+}
+.rail-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 .rail-item-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-item-meta {
+.rail-item.active .rail-item-name { color: var(--bb-accent-600); }
+
+/* meta stat row */
+.rail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.05rem;
   font-size: 0.72rem;
-  color: var(--bb-text-faint);
-  flex: none;
+  color: var(--bb-text-dim);
 }
-.rail-empty,
-.rail-loading {
+.rail-meta .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.rail-meta .stat i { font-size: 0.68rem; color: var(--bb-text-faint); }
+.rail-meta .stat-board {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--bb-sunken);
+  color: var(--bb-text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.66rem;
+}
+.rail-item.active .rail-meta .stat-board {
+  background: #fff;
+  color: var(--bb-accent-600);
+}
+.rail-meta .stat-time {
+  margin-left: auto;
   color: var(--bb-text-faint);
-  font-size: 0.82rem;
-  padding: 0.5rem;
+  font-size: 0.7rem;
+}
+
+/* empty / loading / no-match */
+.rail-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--bb-text-faint);
+  font-size: 0.85rem;
+  padding: 1.75rem 0.5rem;
   text-align: center;
+}
+.rail-state-icon {
+  font-size: 1.5rem;
+  opacity: 0.55;
 }
 
 /* ── main ── */
@@ -1025,7 +1210,7 @@ function buildFromText(text) {
   .rail {
     position: fixed;
     inset: 4rem auto 0 0;
-    width: 15rem;
+    width: 17rem;
     z-index: 50;
     transform: translateX(-105%);
     transition: transform 0.2s;

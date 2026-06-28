@@ -353,7 +353,7 @@ function netLabel(pin) {
 }
 .insp-pn {
   font-size: 0.72rem;
-  color: #0f766e;
+  color: #b91c1c;
   font-weight: 600;
   margin-top: -0.4rem;
 }
@@ -377,7 +377,7 @@ function netLabel(pin) {
   border-left: 1px solid var(--bb-border, #e5e4e1);
 }
 .seg-btn.on {
-  background: #14b8a6;
+  background: #ef4444;
   color: #fff;
 }
 .field {
@@ -460,7 +460,7 @@ function netLabel(pin) {
 }
 .pin-net {
   font-size: 0.72rem;
-  color: #0f766e;
+  color: #b91c1c;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;

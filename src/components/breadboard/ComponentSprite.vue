@@ -594,13 +594,13 @@ const tagW = computed(() => 12 + (props.item.label?.length || 1) * 6)
   text-anchor: middle;
 }
 .sel-outline {
-  fill: rgba(20, 184, 166, 0.06);
-  stroke: #14b8a6;
+  fill: rgba(239, 68, 68, 0.06);
+  stroke: #ef4444;
   stroke-width: 1.5px;
   stroke-dasharray: 5 3;
 }
 .tag-bg {
-  fill: #14b8a6;
+  fill: #ef4444;
 }
 .tag-text {
   fill: #fff;

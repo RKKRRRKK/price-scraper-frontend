@@ -127,7 +127,7 @@ function create() {
   border-top: 1px solid #eeede9;
 }
 .add-btn {
-  background: #14b8a6;
+  background: #ef4444;
   color: #fff;
   border: none;
   border-radius: 0.55rem;

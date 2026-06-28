@@ -293,7 +293,7 @@ function remove(p) {
   width: 14rem;
 }
 .search:focus-within {
-  border-color: #14b8a6;
+  border-color: #ef4444;
   background: #fff;
 }
 .search > .pi-search {
@@ -363,8 +363,8 @@ function remove(p) {
   color: #1a1a1a;
 }
 .rail-item.active {
-  background: #ccfbf1;
-  color: #0f766e;
+  background: #fee2e2;
+  color: #b91c1c;
   font-weight: 600;
 }
 .rail-item > .pi {
@@ -378,7 +378,7 @@ function remove(p) {
   color: #7a766d;
 }
 .rail-item.active > .pi {
-  color: #0f766e;
+  color: #b91c1c;
 }
 .rail-star {
   color: #f59e0b !important;
@@ -396,7 +396,7 @@ function remove(p) {
   font-variant-numeric: tabular-nums;
 }
 .rail-item.active .rail-count {
-  color: #0f766e;
+  color: #b91c1c;
 }
 .rail-cap {
   font-size: 0.64rem;
@@ -465,7 +465,7 @@ function remove(p) {
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 .card:hover {
-  border-color: #14b8a6;
+  border-color: #ef4444;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 .card.stocked {
@@ -473,7 +473,7 @@ function remove(p) {
   border-color: #cdeee7;
 }
 .card.stocked:hover {
-  border-color: #14b8a6;
+  border-color: #ef4444;
 }
 .card-badge {
   position: absolute;
@@ -483,8 +483,8 @@ function remove(p) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #0f766e;
-  background: #ccfbf1;
+  color: #b91c1c;
+  background: #fee2e2;
   border-radius: 999px;
   padding: 0.08rem 0.38rem;
 }
@@ -547,7 +547,7 @@ function remove(p) {
 }
 .card-pn {
   font-size: 0.68rem;
-  color: #0f766e;
+  color: #b91c1c;
   font-weight: 600;
 }
 .card-pins {
@@ -583,7 +583,7 @@ function remove(p) {
   align-items: center;
   gap: 0.25rem;
   border: none;
-  background: #14b8a6;
+  background: #ef4444;
   color: #fff;
   font-size: 0.72rem;
   font-weight: 600;
@@ -592,7 +592,7 @@ function remove(p) {
   cursor: pointer;
 }
 .place-btn:hover {
-  background: #0f766e;
+  background: #b91c1c;
 }
 .place-btn .pi {
   font-size: 0.66rem;
@@ -618,7 +618,7 @@ function remove(p) {
   color: #b91c1c;
 }
 .add-btn {
-  background: #14b8a6;
+  background: #ef4444;
   color: #fff;
   border: none;
   border-radius: 0.55rem;

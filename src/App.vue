@@ -89,12 +89,12 @@
       <div class="nav-section-links">
         <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-microchip mr-2" />Breadboard
+            <i class="pi pi-microchip mr-2" />Breadly
           </a>
         </router-link>
         <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-database mr-2" />Squell
+            <i class="pi pi-database mr-2" />Diffy
           </a>
         </router-link>
       </div>
@@ -205,12 +205,12 @@
         <div class="drawer-links tools-section">
           <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
             <a :href="href" @click="navigate" :class="{ active: isActive }">
-              <i class="pi pi-microchip mr-2" />Breadboard
+              <i class="pi pi-microchip mr-2" />Breadly
             </a>
           </router-link>
           <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
             <a :href="href" @click="navigate" :class="{ active: isActive }">
-              <i class="pi pi-database mr-2" />Squell
+              <i class="pi pi-database mr-2" />Diffy
             </a>
           </router-link>
         </div>
@@ -491,7 +491,7 @@ function goLogin() {
 }
 
 .tools-section {
-  border-left-color: #14b8a6;
+  border-left-color: #ef4444;
 }
 
 .nav-section-label {
@@ -516,7 +516,7 @@ function goLogin() {
 }
 
 .tools-section .nav-section-label {
-  color: #2dd4bf;
+  color: #f87171;
 }
 
 .nav-section-links {
@@ -573,13 +573,13 @@ function goLogin() {
 }
 
 .tools-section .nav-section-links a.active {
-  background-color: #ccfbf1;
-  color: #0f766e;
+  background-color: #fee2e2;
+  color: #b91c1c;
   text-shadow: 0 0 0.25px currentColor, 0 0 0.5px currentColor;
 }
 
 .tools-section .nav-section-links a:active {
-  background-color: #99f6e4;
+  background-color: #fecaca;
 }
 
 .nav-end {
@@ -641,7 +641,7 @@ function goLogin() {
 }
 
 .drawer-section-label.tools {
-  color: #2dd4bf;
+  color: #f87171;
 }
 
 .drawer-links {
@@ -665,7 +665,7 @@ function goLogin() {
 }
 
 .drawer-links.tools-section {
-  border-left-color: #14b8a6;
+  border-left-color: #ef4444;
 }
 
 .drawer-links a {
@@ -700,7 +700,7 @@ function goLogin() {
 }
 
 .drawer-links.tools-section a.active {
-  background-color: #ccfbf1;
-  color: #0f766e;
+  background-color: #fee2e2;
+  color: #b91c1c;
 }
 </style>

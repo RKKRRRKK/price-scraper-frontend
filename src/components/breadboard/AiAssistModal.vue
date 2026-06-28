@@ -227,7 +227,7 @@ function submitBuild() {
   border-top: 1px solid var(--bb-border-soft, #eeede9);
 }
 .add-btn {
-  background: var(--bb-accent, #14b8a6);
+  background: var(--bb-accent, #ef4444);
   color: #fff;
   border: none;
   border-radius: 0.55rem;

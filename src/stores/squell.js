@@ -16,6 +16,7 @@ const AI_WEBHOOK = import.meta.env.VITE_SQUELL_AI_WEBHOOK || ''
 
 export const useSquellStore = defineStore('squell', () => {
   const queries = ref([])              // squell_queries rows (catalogue)
+  const folders = ref([])              // squell_folders rows
   const versionsByQuery = ref({})      // { [query_id]: version[] } ordered by version_number
   const activeQueryId = ref(null)
   const loading = ref(false)
@@ -53,6 +54,87 @@ export const useSquellStore = defineStore('squell', () => {
     } finally {
       loading.value = false
     }
+    // Folders are optional; a failure here (e.g. table not yet created) must not
+    // break the catalogue, so load them separately and swallow errors.
+    await fetchFolders()
+  }
+
+  async function fetchFolders() {
+    const auth = useAuthStore()
+    if (!auth.user) return
+    try {
+      const { data, error: err } = await supabase
+        .from('squell_folders')
+        .select('*')
+        .eq('user_id', auth.user.id)
+        .order('name', { ascending: true })
+      if (err) throw err
+      folders.value = data || []
+    } catch (e) {
+      console.error('[Squell] fetchFolders error:', e)
+    }
+  }
+
+  async function createFolder(name) {
+    const auth = useAuthStore()
+    if (!auth.user || !name.trim()) return
+    error.value = null
+    try {
+      const { data, error: err } = await supabase
+        .from('squell_folders')
+        .insert({ user_id: auth.user.id, name: name.trim() })
+        .select('*')
+        .single()
+      if (err) throw err
+      folders.value = [...folders.value, data].sort((a, b) => a.name.localeCompare(b.name))
+      return data
+    } catch (e) {
+      console.error('[Squell] createFolder error:', e)
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function renameFolder(id, name) {
+    if (!name.trim()) return
+    error.value = null
+    try {
+      const { data, error: err } = await supabase
+        .from('squell_folders')
+        .update({ name: name.trim(), updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (err) throw err
+      const idx = folders.value.findIndex(f => f.id === id)
+      if (idx !== -1) folders.value[idx] = data
+      folders.value = [...folders.value].sort((a, b) => a.name.localeCompare(b.name))
+      return data
+    } catch (e) {
+      console.error('[Squell] renameFolder error:', e)
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function deleteFolder(id) {
+    error.value = null
+    try {
+      // queries.folder_id is set to null server-side via the FK (on delete set null)
+      const { error: err } = await supabase.from('squell_folders').delete().eq('id', id)
+      if (err) throw err
+      folders.value = folders.value.filter(f => f.id !== id)
+      queries.value = queries.value.map(q => (q.folder_id === id ? { ...q, folder_id: null } : q))
+    } catch (e) {
+      console.error('[Squell] deleteFolder error:', e)
+      error.value = e.message
+      throw e
+    }
+  }
+
+  // Assign a query to a folder (or null to ungroup).
+  function moveQueryToFolder(queryId, folderId) {
+    return updateQuery(queryId, { folder_id: folderId })
   }
 
   async function fetchVersions(queryId) {
@@ -76,7 +158,7 @@ export const useSquellStore = defineStore('squell', () => {
   }
 
   // Create a new named query with its first one or two versions.
-  async function createQuery({ name, dialect, sqlV1, sqlV2 }) {
+  async function createQuery({ name, dialect, sqlV1, sqlV2, folderId = null }) {
     const auth = useAuthStore()
     if (!auth.user) return
 
@@ -89,6 +171,7 @@ export const useSquellStore = defineStore('squell', () => {
           name: name.trim(),
           dialect: dialect || 'bigquery',
           description: null,
+          folder_id: folderId,
         })
         .select('*')
         .single()
@@ -303,6 +386,7 @@ export const useSquellStore = defineStore('squell', () => {
 
   function reset() {
     queries.value = []
+    folders.value = []
     versionsByQuery.value = {}
     activeQueryId.value = null
     loaded.value = false
@@ -312,6 +396,7 @@ export const useSquellStore = defineStore('squell', () => {
 
   return {
     queries,
+    folders,
     versionsByQuery,
     activeQueryId,
     activeQuery,
@@ -321,6 +406,11 @@ export const useSquellStore = defineStore('squell', () => {
     error,
     aiConfigured,
     fetchQueries,
+    fetchFolders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveQueryToFolder,
     fetchVersions,
     createQuery,
     addVersion,

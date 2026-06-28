@@ -587,7 +587,7 @@ defineExpose({ fit })
 }
 .hover-ring {
   fill: none;
-  stroke: #14b8a6;
+  stroke: #ef4444;
   stroke-width: 2px;
   opacity: 0.7;
 }

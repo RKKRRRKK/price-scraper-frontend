@@ -286,7 +286,7 @@ function create() {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 .swatch.on {
-  border-color: #14b8a6;
+  border-color: #ef4444;
 }
 .icon-grid {
   display: grid;
@@ -310,11 +310,11 @@ function create() {
   object-fit: contain;
 }
 .icon-pick:hover {
-  border-color: #14b8a6;
+  border-color: #ef4444;
 }
 .icon-pick.on {
-  border-color: #14b8a6;
-  background: #ccfbf1;
+  border-color: #ef4444;
+  background: #fee2e2;
 }
 .warn {
   font-size: 0.76rem;
@@ -328,7 +328,7 @@ function create() {
   border-top: 1px solid #eeede9;
 }
 .add-btn {
-  background: #14b8a6;
+  background: #ef4444;
   color: #fff;
   border: none;
   border-radius: 0.55rem;
