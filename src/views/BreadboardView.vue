@@ -98,7 +98,6 @@
               :sheet-id="store.activeSheetId"
               :selected-id="selectedId"
               :selected-wire-id="selectedWire"
-              :net-info="netInfo"
               :tool="tool"
               :wire-color="wireColor"
               @add="onAdd"
@@ -137,6 +136,7 @@
             @set-pincount="setPinCount"
             @delete="deleteItem"
             @duplicate="duplicateItem"
+            @set-placement="setPlacement"
             @set-wire-color="setWireColor"
             @flip-wire-arc="flipWireArc"
             @delete-wire="deleteWire"
@@ -238,7 +238,7 @@ import PartCreatorModal from '@/components/breadboard/PartCreatorModal.vue'
 import PartLibraryModal from '@/components/breadboard/PartLibraryModal.vue'
 import {
   makeItem, resetLabelCounters, BREADBOARD_LIST,
-  listBuiltinParts, listCustomParts,
+  listBuiltinParts, listCustomParts, getTemplate,
 } from '@/lib/breadboard/templates'
 import { getBreadboardLayout, PITCH, pinEndpointId } from '@/lib/breadboard/geometry'
 import { computeNets } from '@/lib/breadboard/nets'
@@ -436,6 +436,27 @@ function deleteItem() {
   data.value.wires = data.value.wires.filter((w) => !endpoints.has(w.from) && !endpoints.has(w.to))
   data.value.items = data.value.items.filter((i) => i.id !== it.id)
   selectedId.value = null
+  persist()
+}
+// Switch a part between plugging into the grid and sitting off-board (wired to
+// its pins). Existing wires reference stable pin endpoints, so they survive.
+function setPlacement(mode) {
+  const it = selectedItem.value
+  if (!it) return
+  const current = it.placement || getTemplate(it.kind)?.placement || 'inline'
+  if (mode === current) return
+  it.pins = it.pins.map((p) => ({ ...p, hole: null })) // unplug; pins become wire endpoints
+  it.placement = mode
+  if (mode === 'standalone') {
+    const lay = primaryLayout.value
+    if (lay) {
+      const others = data.value.items.filter(
+        (i) => i.id !== it.id && (i.placement || getTemplate(i.kind)?.placement) === 'standalone',
+      ).length
+      it.x = lay.x0 + lay.width + 60
+      it.y = lay.y0 + others * 120
+    }
+  }
   persist()
 }
 function duplicateItem() {

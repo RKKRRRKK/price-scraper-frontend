@@ -87,7 +87,7 @@ import { PART_SHAPES, ICON_FILES, iconUrl } from '@/lib/breadboard/templates'
 // Default icon per shape; applied until the user picks one explicitly.
 const DEFAULT_ICON = {
   breakout: 'microchip.svg', to92: 'transistor.svg', resistor: 'resistor.svg',
-  led: 'led_display.svg', dip: 'microchip.svg', board: 'circuit_board_general.svg',
+  led: 'led_lamp.svg', dip: 'microchip.svg', board: 'circuit_board_general.svg',
 }
 
 const props = defineProps({

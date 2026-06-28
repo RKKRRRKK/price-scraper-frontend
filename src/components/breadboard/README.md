@@ -139,8 +139,10 @@ duplicates like Pi `GND`, mapping rail tokens, and auto-positioning boards.
 }
 ```
 - **Holes:** `<col><row>` (`10A`); **rails:** `+T` `-T` `+B` `-B`.
-- **Wire points:** a hole, or a board pin `<id>:<pin>` (`Pi1:GPIO17`, or by number `Pi1:6`).
-- Give inline parts `"pins"` (leg → hole); give boards their pins through `"wires"`.
+- **Wire points:** a hole, or a board/module pin `<id>:<pin>` (`Pi1:GPIO17`, or by number `Pi1:6`).
+- Give inline (thru-hole) parts `"pins"` (leg → hole). Boards **and breakout modules**
+  (BME280, sensors, displays, relays, drivers…) are *off-board*: reach their pins through
+  `"wires"`, or map a module pin to a hole in `"pins"` and it becomes a jumper automatically.
 - **`color`** (optional hex): convention is `#dc2626` RED for + power, `#000000` BLACK for
   GND/−, and a distinct color per component's signal wiring (`#16a34a` green, `#2563eb` blue,
   `#f59e0b` amber, `#9333ea` purple).

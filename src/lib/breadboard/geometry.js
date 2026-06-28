@@ -189,8 +189,15 @@ export function itemBounds(layout, item, boardLayout) {
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
   const maxY = Math.max(...ys)
-  const padTop = 30 // body is drawn above the pin row
-  return { x: minX - 14, y: minY - padTop, w: maxX - minX + 28, h: maxY - minY + padTop + 14 }
+  // The body is drawn perpendicular to the pin line, so pad that axis on both
+  // sides (the body can land either way once a part is rotated). For a horizontal
+  // pin row the body is above/below; for a vertical row it's left/right.
+  const reach = 30
+  const along = 14
+  if (maxX - minX >= maxY - minY) {
+    return { x: minX - along, y: minY - reach, w: maxX - minX + along * 2, h: maxY - minY + reach * 2 }
+  }
+  return { x: minX - reach, y: minY - along, w: maxX - minX + reach * 2, h: maxY - minY + along * 2 }
 }
 
 // Nearest hole to a point, ignoring the snap radius (used while dragging).
@@ -213,9 +220,23 @@ const BOARD_PIN_PITCH = PITCH * 0.9
 const BOARD_COL_GAP = PITCH * 4.6 // horizontal gap between the two pin columns
 const BOARD_HEADER = PITCH * 1.4 // header strip height above the first pin
 
+const MODULE_LABEL_W = PITCH * 3.4 // room for a single-row module's pin labels
+
 // Returns { rect:{x,y,w,h}, pins:[{...pin, x, y, side}] } for a standalone board.
 export function getBoardLayout(item) {
   const pins = item.pins || []
+  // Breakout modules have a single header row (no L/R sides): lay them out as one
+  // column of pads with labels to the right, like a small breakout PCB.
+  if (!pins.some((p) => p.side === 'R')) {
+    const x0 = item.x || 0
+    const y0 = item.y || 0
+    const colX = x0 + BOARD_PAD
+    const firstY = y0 + BOARD_HEADER + BOARD_PAD
+    const out = pins.map((p, i) => ({ ...p, side: 'L', x: colX, y: firstY + i * BOARD_PIN_PITCH }))
+    const w = BOARD_PAD + MODULE_LABEL_W
+    const h = firstY + Math.max(pins.length, 1) * BOARD_PIN_PITCH + BOARD_PAD - y0
+    return { rect: { x: x0, y: y0, w, h }, pins: out, leftX: colX, rightX: colX, firstY }
+  }
   const left = pins.filter((p) => p.side === 'L').sort((a, b) => a.order - b.order)
   const right = pins.filter((p) => p.side === 'R').sort((a, b) => a.order - b.order)
   const rows = Math.max(left.length, right.length, 1)

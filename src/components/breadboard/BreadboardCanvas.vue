@@ -64,7 +64,7 @@ import BreadboardSurface from './BreadboardSurface.vue'
 import ComponentSprite from './ComponentSprite.vue'
 import {
   getBreadboardLayout, getBoardLayout, nearestHole, nearestHoleUnbounded,
-  placeInlineItem, itemBounds, endpointXY, pinEndpointId, SNAP_R,
+  placeInlineItem, itemBounds, endpointXY, pinEndpointId, isPinEndpoint, SNAP_R,
 } from '@/lib/breadboard/geometry'
 import { getTemplate, makeItem } from '@/lib/breadboard/templates'
 
@@ -73,7 +73,6 @@ const props = defineProps({
   sheetId: { type: String, default: '' },
   selectedId: { type: String, default: null },
   selectedWireId: { type: String, default: null },
-  netInfo: { type: Object, default: () => ({ nets: [] }) },
   tool: { type: Object, default: null },
   wireColor: { type: String, default: '#16a34a' },
 })
@@ -201,60 +200,79 @@ const activeFocus = computed(() => {
   if (props.selectedId) return { type: 'item', id: props.selectedId }
   return null
 })
-function ownerOf(endpointId) {
+// Local connectivity maps. We deliberately stop at the breadboard *strip* level
+// (a column-half or rail segment) and never merge strips through wires — so a
+// part lights up only the cables on its own strips and the part one hop away,
+// rather than the whole power/ground network.
+const connectivity = computed(() => {
+  const holesById = sceneLayout.value?.holesById || {}
+  const epOwner = new Map() // pin endpoint id → item id
+  const epGroup = new Map() // pin endpoint id → strip group
+  const groupParts = new Map() // strip group → Set(item id)
   for (const it of props.data.items || []) {
     for (const pin of it.pins || []) {
-      if (pinEndpointId(it, pin) === endpointId) return it.id
+      const ep = pinEndpointId(it, pin)
+      epOwner.set(ep, it.id)
+      const g = pin.hole ? holesById[pin.hole]?.group : null
+      if (g) {
+        epGroup.set(ep, g)
+        if (!groupParts.has(g)) groupParts.set(g, new Set())
+        groupParts.get(g).add(it.id)
+      }
     }
   }
-  return null
-}
-// endpoint id (pin or hole) → electrical net id, derived from the computed nets.
-const endpointNet = computed(() => {
-  const m = new Map()
-  for (const net of props.netInfo?.nets || []) {
-    for (const p of net.pins) m.set(p.endpointId, net.id)
-    for (const h of net.holeRefs || []) m.set(h.id, net.id)
-  }
-  return m
+  return { holesById, epOwner, epGroup, groupParts }
 })
-// Set of { items, wires } to keep lit; null ⇒ dim nothing. Connectivity follows
-// electrical nets (through breadboard strips), so a part's legs light up the cables
-// wired to the same strip even though they don't share a literal endpoint id.
+function groupOfEndpoint(ep) {
+  const c = connectivity.value
+  if (isPinEndpoint(ep)) return c.epGroup.get(ep) || null
+  return c.holesById[ep]?.group || null
+}
+// Add the part(s) directly attached to a wire endpoint (its pin owner, or any
+// part plugged into that hole's strip). Rails carry no parts, so they end here.
+function addEndpointParts(ep, out) {
+  const c = connectivity.value
+  if (isPinEndpoint(ep)) {
+    const o = c.epOwner.get(ep); if (o) out.add(o)
+  } else {
+    const g = c.holesById[ep]?.group
+    if (g && c.groupParts.has(g)) for (const id of c.groupParts.get(g)) out.add(id)
+  }
+}
+// Set of { items, wires } to keep lit; null ⇒ dim nothing.
 const highlight = computed(() => {
   const f = activeFocus.value
   if (!f) return null
-  const en = endpointNet.value
+  const c = connectivity.value
+  const wlist = props.data.wires || []
   const items = new Set()
   const wires = new Set()
-  const focusNets = new Set()
-  const wlist = props.data.wires || []
-  const ilist = props.data.items || []
   if (f.type === 'wire') {
     const w = wlist.find((x) => x.id === f.id)
     if (!w) return null
     wires.add(w.id)
-    for (const ep of [w.from, w.to]) {
-      const nid = en.get(ep); if (nid) focusNets.add(nid)
-      const o = ownerOf(ep); if (o) items.add(o)
-    }
+    addEndpointParts(w.from, items)
+    addEndpointParts(w.to, items)
   } else {
+    const it = (props.data.items || []).find((x) => x.id === f.id)
     items.add(f.id)
-    const it = ilist.find((x) => x.id === f.id)
-    for (const pin of it?.pins || []) {
-      const nid = en.get(pinEndpointId(it, pin)); if (nid) focusNets.add(nid)
-    }
-  }
-  if (focusNets.size) {
-    for (const w of wlist) {
-      const a = en.get(w.from)
-      const b = en.get(w.to)
-      if ((a && focusNets.has(a)) || (b && focusNets.has(b))) wires.add(w.id)
-    }
-    for (const it of ilist) {
+    if (it) {
+      const focusEps = new Set()
+      const focusGroups = new Set()
       for (const pin of it.pins || []) {
-        const nid = en.get(pinEndpointId(it, pin))
-        if (nid && focusNets.has(nid)) { items.add(it.id); break }
+        const ep = pinEndpointId(it, pin)
+        focusEps.add(ep)
+        const g = c.epGroup.get(ep); if (g) focusGroups.add(g)
+      }
+      // parts sharing a strip with this one (directly bridged, no wire)
+      for (const g of focusGroups) for (const id of c.groupParts.get(g) || []) items.add(id)
+      // cables landing on this part's strips/pins + the part one hop away
+      for (const w of wlist) {
+        const fromHit = focusEps.has(w.from) || focusGroups.has(groupOfEndpoint(w.from))
+        const toHit = focusEps.has(w.to) || focusGroups.has(groupOfEndpoint(w.to))
+        if (!fromHit && !toHit) continue
+        wires.add(w.id)
+        addEndpointParts(fromHit ? w.to : w.from, items)
       }
     }
   }

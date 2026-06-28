@@ -1,8 +1,3 @@
-<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M26 14V20 M32 14V20 M38 14V20" stroke="#94A3B8" stroke-width="3" stroke-linecap="round"/>
-  <path d="M26 44V50 M32 44V50 M38 44V50" stroke="#94A3B8" stroke-width="3" stroke-linecap="round"/>
-  <path d="M14 26H20 M14 32H20 M14 38H20" stroke="#94A3B8" stroke-width="3" stroke-linecap="round"/>
-  <path d="M44 26H50 M44 32H50 M44 38H50" stroke="#94A3B8" stroke-width="3" stroke-linecap="round"/>
-  <rect x="20" y="20" width="24" height="24" rx="3" fill="#1E293B"/>
-  <circle cx="25" cy="25" r="1.5" fill="#64748B"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+<g fill="#a9a395"><rect x="8" y="20" width="8" height="4" rx="1"></rect><rect x="48" y="20" width="8" height="4" rx="1"></rect><rect x="8" y="28" width="8" height="4" rx="1"></rect><rect x="48" y="28" width="8" height="4" rx="1"></rect><rect x="8" y="36" width="8" height="4" rx="1"></rect><rect x="48" y="36" width="8" height="4" rx="1"></rect><rect x="8" y="44" width="8" height="4" rx="1"></rect><rect x="48" y="44" width="8" height="4" rx="1"></rect></g><rect x="16" y="16" width="32" height="34" rx="4" fill="#26252a" stroke="#34302b" stroke-width="2.6"></rect><path d="M27 16a5 5 0 0 0 10 0" fill="none" stroke="#5a5a62" stroke-width="2"></path><circle cx="23" cy="44" r="2.3" fill="#5a5a62"></circle>
 </svg>

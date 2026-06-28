@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#faf9f7;color:#26241f;font-family:'Space Grotesk',ui-sans-serif,system-ui;padding:48px 56px 80px;">
+<svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><symbol id="ic-resistor" viewBox="0 0 64 64" fill="none">
+<path d="M6 32h13" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M45 32h13" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><rect x="18" y="21" width="28" height="22" rx="11" fill="#e6cb9b" stroke="#34302b" stroke-width="2.6"></rect><g stroke-width="3" stroke-linecap="butt"><path d="M25 23v18" stroke="#7c4a24"></path><path d="M31 23v18" stroke="#23262b"></path><path d="M37 23v18" stroke="#e23b2e"></path><path d="M43 23v18" stroke="#c9a23b"></path></g>
+</symbol><symbol id="ic-led_lamp" viewBox="0 0 64 64" fill="none">
+<path d="M27 42v15" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M37 38v19" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M22 30a10 10 0 0 1 20 0v9a3 3 0 0 1-3 3H25a3 3 0 0 1-3-3z" fill="#e5463d" stroke="#34302b" stroke-width="2.6"></path><rect x="20" y="40" width="24" height="5" rx="2" fill="#c43a33" stroke="#34302b" stroke-width="2.6"></rect><path d="M27 22c-2 1.5-3.5 4-3.8 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity="0.5"></path>
+</symbol><symbol id="ic-led_display" viewBox="0 0 64 64" fill="none">
+<rect x="9" y="16" width="46" height="32" rx="4" fill="#1b1b20" stroke="#34302b" stroke-width="2.6"></rect><g stroke="#e5463d" stroke-width="3" stroke-linecap="round"><path d="M18 23h7"></path><path d="M18 39h7"></path><path d="M18 31h7"></path><path d="M17 24v6"></path><path d="M26 24v6"></path><path d="M17 32v6"></path><path d="M26 32v6"></path></g><g stroke="#e5463d" stroke-width="3" stroke-linecap="round"><path d="M33 23h7"></path><path d="M33 39h7"></path><path d="M33 31h7"></path><path d="M32 24v6"></path><path d="M41 24v6"></path><path d="M32 32v6"></path><path d="M41 32v6"></path></g><circle cx="49" cy="44" r="2" fill="#e5463d"></circle>
+</symbol><symbol id="ic-capacitor_ceramic" viewBox="0 0 64 64" fill="none">
+<path d="M24 42v15" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M40 42v15" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M19 40c-1-13 6-22 13-22s14 9 13 22z" fill="#2f6fae" stroke="#34302b" stroke-width="2.6"></path><text x="32" y="35" font-family="monospace" font-size="9" font-weight="700" fill="#d8e6f5" text-anchor="middle">104</text>
+</symbol><symbol id="ic-capacitor_electrolytic" viewBox="0 0 64 64" fill="none">
+<path d="M28 44v13" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M36 44v13" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><rect x="22" y="12" width="20" height="33" rx="4" fill="#23314a" stroke="#34302b" stroke-width="2.6"></rect><ellipse cx="32" cy="13" rx="9" ry="3.2" fill="#34466a" stroke="#34302b" stroke-width="2"></ellipse><path d="M25 22v14" stroke="#cdd6e2" stroke-width="3.2" stroke-linecap="round"></path><path d="M25 26h-0.1M25 31h-0.1" stroke="#23314a" stroke-width="1.6"></path>
+</symbol><symbol id="ic-inductor" viewBox="0 0 64 64" fill="none">
+<g stroke="#b5762f" stroke-width="3.2" stroke-linecap="round"><path d="M6 34h7"></path><path d="M51 34h7"></path></g><path d="M13 34a6 6 0 0 1 12 0 6 6 0 0 1 12 0 6 6 0 0 1 12 0" fill="none" stroke="#cf8a3a" stroke-width="4" stroke-linecap="round"></path><path d="M13 34a6 6 0 0 1 12 0 6 6 0 0 1 12 0 6 6 0 0 1 12 0" fill="none" stroke="#34302b" stroke-width="1" opacity="0.25"></path>
+</symbol><symbol id="ic-diode" viewBox="0 0 64 64" fill="none">
+<path d="M6 32h16" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M42 32h16" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><rect x="22" y="25" width="20" height="14" rx="2.5" fill="#26252a" stroke="#34302b" stroke-width="2.6"></rect><rect x="36.5" y="25" width="3.2" height="14" fill="#e6e6e6"></rect>
+</symbol><symbol id="ic-transistor" viewBox="0 0 64 64" fill="none">
+<path d="M24 42v15" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M32 44v13" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M40 42v15" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M20 43V30a12 12 0 0 1 24 0v13z" fill="#26252a" stroke="#34302b" stroke-width="2.6"></path><path d="M21 43h22" stroke="#4a4a52" stroke-width="2"></path>
+</symbol><symbol id="ic-microchip" viewBox="0 0 64 64" fill="none">
+<g fill="#a9a395"><rect x="8" y="20" width="8" height="4" rx="1"></rect><rect x="48" y="20" width="8" height="4" rx="1"></rect><rect x="8" y="28" width="8" height="4" rx="1"></rect><rect x="48" y="28" width="8" height="4" rx="1"></rect><rect x="8" y="36" width="8" height="4" rx="1"></rect><rect x="48" y="36" width="8" height="4" rx="1"></rect><rect x="8" y="44" width="8" height="4" rx="1"></rect><rect x="48" y="44" width="8" height="4" rx="1"></rect></g><rect x="16" y="16" width="32" height="34" rx="4" fill="#26252a" stroke="#34302b" stroke-width="2.6"></rect><path d="M27 16a5 5 0 0 0 10 0" fill="none" stroke="#5a5a62" stroke-width="2"></path><circle cx="23" cy="44" r="2.3" fill="#5a5a62"></circle>
+</symbol><symbol id="ic-push_button" viewBox="0 0 64 64" fill="none">
+<g stroke="#a9a395" stroke-width="3" stroke-linecap="round"><path d="M18 44v9"></path><path d="M46 44v9"></path><path d="M18 20v-9"></path><path d="M46 20v-9"></path></g><rect x="16" y="18" width="32" height="28" rx="4" fill="#3a4252" stroke="#34302b" stroke-width="2.6"></rect><circle cx="32" cy="32" r="9" fill="#cf4a44" stroke="#34302b" stroke-width="2.6"></circle><circle cx="29" cy="29" r="2.4" fill="#fff" opacity="0.4"></circle>
+</symbol><symbol id="ic-dial_knob" viewBox="0 0 64 64" fill="none">
+<g stroke="#a9a395" stroke-width="3" stroke-linecap="round"><path d="M22 46v9"></path><path d="M32 46v9"></path><path d="M42 46v9"></path></g><rect x="18" y="38" width="28" height="10" rx="2" fill="#2f6fae" stroke="#34302b" stroke-width="2.6"></rect><circle cx="32" cy="26" r="14" fill="#d8dde4" stroke="#34302b" stroke-width="2.6"></circle><path d="M32 26V14" stroke="#3a4252" stroke-width="3" stroke-linecap="round"></path>
+</symbol><symbol id="ic-breadboard" viewBox="0 0 64 64" fill="none">
+<rect x="8" y="10" width="48" height="44" rx="4" fill="#f6f4ef" stroke="#34302b" stroke-width="2.6"></rect><path d="M14 16v32" stroke="#e23b2e" stroke-width="2" stroke-linecap="round"></path><path d="M50 16v32" stroke="#2f6fdb" stroke-width="2" stroke-linecap="round"></path><g fill="#9a958c"><circle cx="22" cy="20" r="1.8"></circle><circle cx="22" cy="28" r="1.8"></circle><circle cx="22" cy="36" r="1.8"></circle><circle cx="22" cy="44" r="1.8"></circle><circle cx="32" cy="20" r="1.8"></circle><circle cx="32" cy="28" r="1.8"></circle><circle cx="32" cy="36" r="1.8"></circle><circle cx="32" cy="44" r="1.8"></circle><circle cx="42" cy="20" r="1.8"></circle><circle cx="42" cy="28" r="1.8"></circle><circle cx="42" cy="36" r="1.8"></circle><circle cx="42" cy="44" r="1.8"></circle></g>
+</symbol><symbol id="ic-dupont_header" viewBox="0 0 64 64" fill="none">
+<g stroke="#d7b24c" stroke-width="3.4" stroke-linecap="round"><path d="M18 30V12"></path><path d="M26 30V12"></path><path d="M34 30V12"></path><path d="M42 30V12"></path><path d="M50 30V12"></path></g><rect x="12" y="30" width="44" height="16" rx="2.5" fill="#1f1f24" stroke="#34302b" stroke-width="2.6"></rect><g stroke="#b88f33" stroke-width="1" opacity="0.5"><path d="M18 30V12"></path><path d="M26 30V12"></path><path d="M34 30V12"></path><path d="M42 30V12"></path><path d="M50 30V12"></path></g>
+</symbol><symbol id="ic-electric_wire" viewBox="0 0 64 64" fill="none">
+<path d="M16 46c10 0 6-28 16-28s6 28 16 28" fill="none" stroke="#e23b2e" stroke-width="4" stroke-linecap="round"></path><g fill="#1f1f24" stroke="#34302b" stroke-width="2"><rect x="10" y="42" width="11" height="9" rx="2"></rect><rect x="43" y="42" width="11" height="9" rx="2"></rect></g><g stroke="#a9a395" stroke-width="3" stroke-linecap="round"><path d="M15 51v4"></path><path d="M48 51v4"></path></g>
+</symbol><symbol id="ic-circuit_board_general" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="10" width="40" height="44" rx="4" fill="#15532f" stroke="#34302b" stroke-width="2.6"></rect><g fill="#d7b24c"><rect x="13" y="16" width="5" height="3.4" rx="1"></rect><rect x="46" y="16" width="5" height="3.4" rx="1"></rect><rect x="13" y="24" width="5" height="3.4" rx="1"></rect><rect x="46" y="24" width="5" height="3.4" rx="1"></rect><rect x="13" y="32" width="5" height="3.4" rx="1"></rect><rect x="46" y="32" width="5" height="3.4" rx="1"></rect><rect x="13" y="40" width="5" height="3.4" rx="1"></rect><rect x="46" y="40" width="5" height="3.4" rx="1"></rect><rect x="13" y="48" width="5" height="3.4" rx="1"></rect><rect x="46" y="48" width="5" height="3.4" rx="1"></rect></g><rect x="24" y="24" width="16" height="16" rx="2" fill="#26252a"></rect><rect x="26" y="11" width="12" height="7" rx="1.5" fill="#b9bdc4" stroke="#34302b" stroke-width="1.6"></rect>
+</symbol><symbol id="ic-environment_sensor" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="12" width="40" height="35" rx="5" fill="#2a3140" stroke="#34302b" stroke-width="2.6"></rect><rect x="13.3" y="13.3" width="37.4" height="9" rx="3" fill="#39414f"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="17.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="25.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="33.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="41.6" y="47" width="4.8" height="8" rx="1.3"></rect></g><g stroke="#37b88f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M26 19v10"></path></g><circle cx="26" cy="33" r="4" fill="#37b88f"></circle><path d="M26 24v8" stroke="#37b88f" stroke-width="2.6" stroke-linecap="round"></path><path d="M39 21c3.2 4 4.6 6.4 4.6 8.6a4.6 4.6 0 0 1-9.2 0c0-2.2 1.4-4.6 4.6-8.6z" fill="#37b88f"></path>
+</symbol><symbol id="ic-light_sensor" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="12" width="40" height="35" rx="5" fill="#2a3140" stroke="#34302b" stroke-width="2.6"></rect><rect x="13.3" y="13.3" width="37.4" height="9" rx="3" fill="#39414f"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="17.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="25.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="33.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="41.6" y="47" width="4.8" height="8" rx="1.3"></rect></g><circle cx="32" cy="29" r="6" fill="none" stroke="#f1c33f" stroke-width="2.6"></circle><g stroke="#f1c33f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M32 17v3.5"></path><path d="M32 37.5V41"></path><path d="M20 29h3.5"></path><path d="M40.5 29H44"></path><path d="M23.5 20.5l2.4 2.4"></path><path d="M38.1 35.1l2.4 2.4"></path><path d="M40.5 20.5l-2.4 2.4"></path><path d="M25.9 35.1l-2.4 2.4"></path></g>
+</symbol><symbol id="ic-heart_soundwave" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="12" width="40" height="35" rx="5" fill="#2a3140" stroke="#34302b" stroke-width="2.6"></rect><rect x="13.3" y="13.3" width="37.4" height="9" rx="3" fill="#39414f"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="17.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="25.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="33.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="41.6" y="47" width="4.8" height="8" rx="1.3"></rect></g><g stroke="#ff5d6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M16 29h6l3-7 4 13 4-9 2 3h13"></path></g>
+</symbol><symbol id="ic-wireless_antenna" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="12" width="40" height="35" rx="5" fill="#2a3140" stroke="#34302b" stroke-width="2.6"></rect><rect x="13.3" y="13.3" width="37.4" height="9" rx="3" fill="#39414f"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="17.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="25.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="33.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="41.6" y="47" width="4.8" height="8" rx="1.3"></rect></g><g stroke="#5b9bf2" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M32 40V24"></path><path d="M27 22a7 7 0 0 1 10 0"></path><path d="M23 18a13 13 0 0 1 18 0"></path></g><circle cx="32" cy="40" r="2.4" fill="#5b9bf2"></circle>
+</symbol><symbol id="ic-power_supply_plug" viewBox="0 0 64 64" fill="none">
+<g stroke="#a9a395" stroke-width="3.4" stroke-linecap="round"><path d="M26 12v9"></path><path d="M38 12v9"></path></g><rect x="20" y="21" width="24" height="16" rx="4" fill="#3a4252" stroke="#34302b" stroke-width="2.6"></rect><path d="M32 37v7a7 7 0 0 1-7 7h-7" fill="none" stroke="#1f1f24" stroke-width="4" stroke-linecap="round"></path>
+</symbol><symbol id="ic-aa_battery" viewBox="0 0 64 64" fill="none">
+<rect x="20" y="10" width="24" height="44" rx="4" fill="#3a8f5a" stroke="#34302b" stroke-width="2.6"></rect><rect x="27" y="6" width="10" height="5" rx="1.5" fill="#a9a395" stroke="#34302b" stroke-width="2"></rect><rect x="20" y="34" width="24" height="20" rx="4" fill="#2a6e44"></rect><rect x="20" y="34" width="24" height="20" rx="4" fill="none" stroke="#34302b" stroke-width="2.6"></rect><path d="M32 18l-4 8h7l-4 8" fill="none" stroke="#f1c33f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+</symbol><symbol id="ic-relay_switch" viewBox="0 0 64 64" fill="none">
+<rect x="8" y="30" width="48" height="22" rx="3" fill="#15532f" stroke="#34302b" stroke-width="2.6"></rect><rect x="14" y="14" width="28" height="24" rx="2.5" fill="#2f6fdb" stroke="#34302b" stroke-width="2.6"></rect><path d="M19 20h18M19 25h12" stroke="#cfe0fb" stroke-width="2" stroke-linecap="round"></path><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="44" y="22" width="7" height="6" rx="1.3"></rect><rect x="44" y="30" width="7" height="6" rx="1.3"></rect></g><g fill="#a9a395"><circle cx="14" cy="48" r="2"></circle><circle cx="24" cy="48" r="2"></circle><circle cx="34" cy="48" r="2"></circle></g>
+</symbol><symbol id="ic-motor_shaft" viewBox="0 0 64 64" fill="none">
+<rect x="14" y="18" width="32" height="28" rx="6" fill="#b9bdc4" stroke="#34302b" stroke-width="2.6"></rect><path d="M22 18v28M38 18v28" stroke="#8d929b" stroke-width="2"></path><rect x="46" y="27" width="9" height="10" rx="2" fill="#8d929b" stroke="#34302b" stroke-width="2"></rect><path d="M55 32h4" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><g stroke="#a9a395" stroke-width="3" stroke-linecap="round"><path d="M24 46v8"></path><path d="M36 46v8"></path></g>
+</symbol><symbol id="ic-buzzer" viewBox="0 0 64 64" fill="none">
+<path d="M27 46v11" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><path d="M37 46v11" stroke="#a9a395" stroke-width="3" stroke-linecap="round"></path><rect x="16" y="14" width="32" height="32" rx="6" fill="#1f1f24" stroke="#34302b" stroke-width="2.6"></rect><circle cx="32" cy="30" r="3.4" fill="none" stroke="#6a6a72" stroke-width="2.4"></circle><circle cx="32" cy="30" r="11" fill="none" stroke="#3a3a42" stroke-width="2"></circle>
+</symbol><symbol id="ic-radar_distance_waves" viewBox="0 0 64 64" fill="none">
+<rect x="6" y="16" width="52" height="30" rx="4" fill="#15532f" stroke="#34302b" stroke-width="2.6"></rect><g><circle cx="21" cy="30" r="9.5" fill="#3a4150" stroke="#34302b" stroke-width="2.6"></circle><circle cx="21" cy="30" r="5.5" fill="#272c36"></circle><circle cx="21" cy="30" r="1.6" fill="#5b6470"></circle><circle cx="43" cy="30" r="9.5" fill="#3a4150" stroke="#34302b" stroke-width="2.6"></circle><circle cx="43" cy="30" r="5.5" fill="#272c36"></circle><circle cx="43" cy="30" r="1.6" fill="#5b6470"></circle></g><rect x="29" y="25" width="6" height="10" rx="1.5" fill="#cfd6e0" stroke="#34302b" stroke-width="1.4"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="21.6" y="46" width="4.8" height="8" rx="1.3"></rect><rect x="29.6" y="46" width="4.8" height="8" rx="1.3"></rect><rect x="37.6" y="46" width="4.8" height="8" rx="1.3"></rect></g>
+</symbol><symbol id="ic-rfid_card" viewBox="0 0 64 64" fill="none">
+<rect x="10" y="16" width="34" height="32" rx="4" fill="#2f6fdb" stroke="#34302b" stroke-width="2.6"></rect><rect x="16" y="24" width="9" height="8" rx="1.5" fill="#d7b24c" stroke="#b88f33" stroke-width="1"></rect><path d="M16 40h14" stroke="#cfe0fb" stroke-width="2.4" stroke-linecap="round"></path><g stroke="#9fc0f6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M44 22a12 12 0 0 1 0 20"></path><path d="M48 17a18 18 0 0 1 0 30"></path></g>
+</symbol><symbol id="ic-old-transistor" viewBox="0 0 100 100" fill="none">
+  <path d="M 22,62 L 82,62 L 82,47 C 82,27 22,27 22,47 Z" fill="#BDC3C7"></path>
+  
+  <g stroke="#2C3E50" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M 30,60 L 30,90"></path>
+    <path d="M 50,60 L 50,90"></path>
+    <path d="M 70,60 L 70,90"></path>
+    
+    <path d="M 20,60 L 80,60 L 80,45 C 80,25 20,25 20,45 Z" fill="#ECF0F1"></path>
+  </g>
+</symbol><symbol id="ic-old-electric_wire" viewBox="0 0 64 64" fill="none">
+  <path d="M42 22L52 12" stroke="#F59E0B" stroke-width="4" stroke-linecap="round"></path>
+  <path d="M14 50L42 22" stroke="#3B82F6" stroke-width="10" stroke-linecap="round"></path>
+  <path d="M38 26L46 18" stroke="#1E293B" stroke-width="2" stroke-linecap="round"></path>
+</symbol><symbol id="ic-old-diode" viewBox="0 0 100 60" fill="none">
+  <line x1="10" y1="30" x2="35" y2="30" stroke="#2C3E50" stroke-width="4"></line>
+  <line x1="65" y1="30" x2="90" y2="30" stroke="#2C3E50" stroke-width="4"></line>
+  
+  <polygon points="35,10 35,50 60,30" fill="#2C3E50"></polygon>
+  
+  <line x1="65" y1="10" x2="65" y2="50" stroke="#2C3E50" stroke-width="4"></line>
+</symbol><symbol id="ic-old-radar_distance_waves" viewBox="0 0 64 64" fill="none">
+  <circle cx="14" cy="50" r="4" fill="#1E293B"></circle>
+  <path d="M14 38A12 12 0 0 1 26 50 M14 26A24 24 0 0 1 38 50 M14 14A36 36 0 0 1 50 50" stroke="#10B981" stroke-width="3" stroke-linecap="round"></path>
+</symbol><symbol id="ic-old-heart_soundwave" viewBox="0 0 64 64" fill="none">
+  <path d="M32 52C32 52 10 37 10 23C10 16.5 15.5 12 21 12C25.5 12 29.5 14.5 32 18C34.5 14.5 38.5 12 43 12C48.5 12 54 16.5 54 23C54 37 32 52 32 52Z" stroke="#EF4444" stroke-width="3" stroke-linejoin="round"></path>
+  <path d="M6 32H18L22 20L28 44L34 24L38 32H58" stroke="#1E293B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+</symbol><symbol id="ic-old-relay_switch" viewBox="0 0 64 64" fill="none">
+  <rect x="8" y="12" width="48" height="40" rx="4" fill="#F8FAFC" stroke="#1E293B" stroke-width="3"></rect>
+  <path d="M20 22V42 M16 26H24 M16 32H24 M16 38H24" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"></path>
+  <circle cx="44" cy="24" r="2" fill="#1E293B"></circle>
+  <circle cx="44" cy="40" r="2" fill="#1E293B"></circle>
+  <path d="M44 40L36 26" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"></path>
+</symbol></svg>
+
+  <header style="max-width:1180px;margin:0 auto 40px;border-bottom:1px solid #e7e4dd;padding-bottom:26px;">
+    <div style="display:flex;align-items:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#0f766e;font-weight:600;">
+      <span style="width:8px;height:8px;border-radius:2px;background:#14b8a6;display:inline-block;"></span>
+      Breadboard · component art
+    </div>
+    <h1 style="font-size:40px;line-height:1.05;font-weight:700;margin:14px 0 10px;letter-spacing:-0.02em;">A unified icon &amp; part set</h1>
+    <p style="font-size:16px;line-height:1.5;color:#6b665d;max-width:640px;margin:0;">One family: clean ink outlines filled with real-component colours, so a palette tile and the part you drop on the board read as the same object. {{ iconCount }} SVGs, every one legible at the {{ chipPx }}px palette size.</p>
+  </header>
+
+  <div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:46px;">
+
+    <!-- ░░ The set ░░ -->
+    <section>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:20px;">
+        <h2 style="font-size:13px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#9a948a;font-weight:600;margin:0;">The set</h2>
+        <div style="flex:1;height:1px;background:#ececE7;"></div>
+      </div>
+
+      <sc-for list="{{ groups }}" as="group" hint-placeholder-count="5">
+        <div style="margin-bottom:30px;">
+          <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:#0f766e;letter-spacing:0.04em;margin-bottom:14px;">{{ group.label }}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;">
+            <sc-for list="{{ group.items }}" as="it" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:13px;background:#fff;border:1px solid #ebe8e1;border-radius:12px;padding:12px 14px;">
+                <div style="width:46px;height:46px;flex:none;border-radius:8px;background:#f3f2f0;display:flex;align-items:center;justify-content:center;">
+                  <svg viewBox="0 0 64 64" style="width:34px;height:34px;display:block;" aria-hidden="true"><use href="#ic-{{ it.file }}"></use></svg>
+                </div>
+                <div style="min-width:0;">
+                  <div style="font-size:13.5px;font-weight:600;line-height:1.15;">{{ it.name }}</div>
+                  <div style="font-size:11px;color:#9a948a;line-height:1.3;margin-top:2px;">{{ it.use }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+
+    <!-- ░░ Before / after ░░ -->
+    <section>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:20px;">
+        <h2 style="font-size:13px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#9a948a;font-weight:600;margin:0;">Before · after</h2>
+        <div style="flex:1;height:1px;background:#ecece7;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;">
+        <sc-for list="{{ beforeAfter }}" as="ba" hint-placeholder-count="6">
+          <div style="background:#fff;border:1px solid #ebe8e1;border-radius:14px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:center;gap:14px;">
+              <div style="text-align:center;">
+                <div style="width:62px;height:62px;border-radius:10px;background:#f5f1ea;display:flex;align-items:center;justify-content:center;opacity:0.85;">
+                  <svg style="width:42px;height:42px;filter:grayscale(0.15);" aria-hidden="true"><use href="#ic-old-{{ ba.file }}"></use></svg>
+                </div>
+                <div style="font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:#b3ada2;margin-top:6px;letter-spacing:0.08em;">OLD</div>
+              </div>
+              <div style="color:#cfc8bb;font-size:20px;">&rarr;</div>
+              <div style="text-align:center;">
+                <div style="width:62px;height:62px;border-radius:10px;background:#f3f2f0;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #14b8a6;">
+                  <svg style="width:42px;height:42px;" aria-hidden="true"><use href="#ic-{{ ba.file }}"></use></svg>
+                </div>
+                <div style="font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:#0f766e;margin-top:6px;letter-spacing:0.08em;font-weight:600;">NEW</div>
+              </div>
+            </div>
+            <div style="font-size:12px;color:#7a756b;line-height:1.35;margin-top:13px;text-align:center;">{{ ba.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- ░░ On the canvas ░░ -->
+    <section>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:20px;">
+        <h2 style="font-size:13px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#9a948a;font-weight:600;margin:0;">On the canvas</h2>
+        <div style="flex:1;height:1px;background:#ecece7;"></div>
+      </div>
+      <p style="font-size:14px;color:#6b665d;line-height:1.5;max-width:620px;margin:0 0 18px;">The placed parts get the same treatment — cream resistor body with real colour bands, domed LED with a rim flange, D-shaped TO-92, notched DIP, and breakout modules with a header strip and gold pads.</p>
+      <div style="background:#fff;border:1px solid #ebe8e1;border-radius:16px;padding:22px;display:flex;justify-content:center;">
+        <img src="canvas_scene.svg" alt="Refreshed parts on a breadboard" style="width:100%;max-width:680px;display:block;" />
+      </div>
+    </section>
+
+    <!-- ░░ Generic vs bespoke ░░ -->
+    <section>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:20px;">
+        <h2 style="font-size:13px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#9a948a;font-weight:600;margin:0;">Generic vs bespoke</h2>
+        <div style="flex:1;height:1px;background:#ecece7;"></div>
+      </div>
+      <p style="font-size:14px;color:#6b665d;line-height:1.5;max-width:640px;margin:0 0 20px;">Most parts share a generic body on purpose — a DIP chip really is a black chip, and an off-board module is a small PCB you wire to by pin name. Seven <em>inline</em> discretes were the problem: they borrowed the wrong shape entirely. Those get real bodies; everything else stays generic (off-board cards now also carry their icon).</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+        <div style="background:#fff;border:1px solid #ebe8e1;border-radius:14px;padding:18px 20px;">
+          <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:#7a756b;margin-bottom:12px;">STAYS GENERIC — already right</div>
+          <sc-for list="{{ generic }}" as="row" hint-placeholder-count="5">
+            <div style="display:flex;gap:8px;padding:6px 0;border-top:1px solid #f1efe9;font-size:13px;line-height:1.4;">
+              <span style="color:#0f766e;font-weight:600;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:11.5px;">{{ row.body }}</span>
+              <span style="color:#8a857b;">{{ row.parts }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:#fff;border:1px solid #ebe8e1;border-radius:14px;padding:18px 20px;">
+          <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:#a84a3a;margin-bottom:12px;">NEW BESPOKE BODY — was mis-drawn</div>
+          <sc-for list="{{ bespoke }}" as="row" hint-placeholder-count="7">
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #f1efe9;font-size:13px;line-height:1.4;">
+              <span style="font-weight:600;white-space:nowrap;">{{ row.part }}</span>
+              <span style="color:#cfc8bb;">←</span>
+              <span style="color:#b3000020;color:#a06a5a;font-size:12px;">was {{ row.was }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #ebe8e1;border-radius:16px;padding:22px;">
+        <img src="canvas_scene2.svg" alt="New bespoke canvas bodies and standalone module cards" style="width:100%;display:block;" />
+      </div>
+    </section>
+
+    <footer style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#b3ada2;letter-spacing:0.04em;border-top:1px solid #e7e4dd;padding-top:20px;">
+      drop the SVGs into <span style="color:#0f766e;">public/icons/</span> · the new caps / LED-lamp / inductor / buzzer files need a one-line icon map update in <span style="color:#0f766e;">templates.js</span>
+    </footer>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const groups = [
+      { label: 'Core & passives', items: [
+        { file: 'resistor', name: 'Resistor', use: 'axial · colour bands' },
+        { file: 'led_lamp', name: 'LED', use: '5mm domed lamp' },
+        { file: 'led_display', name: '7-seg / display', use: 'OLED · matrix · 7-seg' },
+        { file: 'capacitor_ceramic', name: 'Ceramic cap', use: 'disc · 104' },
+        { file: 'capacitor_electrolytic', name: 'Electrolytic cap', use: 'polarised can' },
+        { file: 'inductor', name: 'Inductor', use: 'coil' },
+        { file: 'diode', name: 'Diode', use: 'rectifier · signal · zener' },
+        { file: 'push_button', name: 'Push-button', use: 'tactile · DIP switch' },
+        { file: 'electric_wire', name: 'Jumper wire', use: 'M-M · M-F · F-F' },
+      ]},
+      { label: 'Semiconductors', items: [
+        { file: 'transistor', name: 'Transistor', use: 'TO-92 BJT · MOSFET' },
+        { file: 'microchip', name: 'IC / DIP', use: '555 · logic · op-amp' },
+        { file: 'dial_knob', name: 'Potentiometer', use: 'pot · trimpot · encoder' },
+      ]},
+      { label: 'Sensor modules', items: [
+        { file: 'environment_sensor', name: 'Environment', use: 'temp · humidity · gas' },
+        { file: 'light_sensor', name: 'Light / colour', use: 'LDR · lux · colour' },
+        { file: 'radar_distance_waves', name: 'Distance / motion', use: 'HC-SR04 · ToF · PIR' },
+        { file: 'heart_soundwave', name: 'Bio / audio', use: 'heart-rate · mic · load cell' },
+        { file: 'rfid_card', name: 'RFID / NFC', use: 'RC522 · PN532' },
+      ]},
+      { label: 'Comms & actuators', items: [
+        { file: 'wireless_antenna', name: 'Wireless', use: 'BT · RF · LoRa · CAN' },
+        { file: 'relay_switch', name: 'Relay', use: 'mechanical · SSR' },
+        { file: 'motor_shaft', name: 'Motor', use: 'DC · servo · stepper' },
+        { file: 'buzzer', name: 'Buzzer', use: 'active · passive' },
+      ]},
+      { label: 'Power & prototyping', items: [
+        { file: 'power_supply_plug', name: 'Power', use: 'regulator · converter · PSU' },
+        { file: 'aa_battery', name: 'Battery', use: 'AA · 18650 · CR2032' },
+        { file: 'breadboard', name: 'Breadboard', use: '830 · 400 · 170 pt' },
+        { file: 'dupont_header', name: 'Headers', use: 'pin header · ribbon' },
+        { file: 'circuit_board_general', name: 'MCU / board', use: 'Pi · ESP32 · Nano' },
+      ]},
+    ];
+    groups.forEach((g) => g.items.forEach((it) => { it.src = `icons/${it.file}.svg`; }));
+    const iconCount = groups.reduce((n, g) => n + g.items.length, 0);
+    const beforeAfter = [
+      { file: 'transistor', note: 'Shapeless grey blob → a real TO-92 with three legs.' },
+      { file: 'electric_wire', note: 'Read as a screwdriver → an actual jumper with Dupont ends.' },
+      { file: 'diode', note: 'Thin schematic symbol → the black glass body it really is.' },
+      { file: 'radar_distance_waves', note: 'Generic wifi waves → the HC-SR04’s twin transducers.' },
+      { file: 'heart_soundwave', note: 'Floating red heart → an ECG trace on a sensor board.' },
+      { file: 'relay_switch', note: 'Abstract lines → the blue relay cube everyone knows.' },
+    ];
+    beforeAfter.forEach((b) => { b.oldSrc = `current/${b.file}.svg`; b.newSrc = `icons/${b.file}.svg`; });
+    const generic = [
+      { body: 'dip', parts: 'every through-hole IC — 555, logic gates, op-amps, ADCs, I/O expanders' },
+      { body: 'card', parts: 'off-board breakouts, sensors, comms & driver modules (wire to named pins)' },
+      { body: 'resistor', parts: 'resistor · LDR' },
+      { body: 'led', parts: 'LED · IR emitter · RGB · NeoPixel' },
+      { body: 'to92', parts: 'transistor · MOSFET · regulator · DS18B20' },
+      { body: 'pot', parts: 'potentiometer · rotary encoder' },
+      { body: 'button', parts: 'push-button · DIP switch' },
+    ];
+    const bespoke = [
+      { part: 'Electrolytic cap', was: 'an LED' },
+      { part: 'Buzzer', was: 'an LED' },
+      { part: 'DC motor', was: 'an LED' },
+      { part: 'Inductor', was: 'a resistor' },
+      { part: 'Reed switch', was: 'a resistor' },
+      { part: 'Trimpot', was: 'a pot' },
+      { part: '7-segment', was: 'a blank DIP' },
+    ];
+    return { groups, beforeAfter, generic, bespoke, iconCount, chipPx: 31 };
+  }
+}
+</script>
+</body>
+</html>

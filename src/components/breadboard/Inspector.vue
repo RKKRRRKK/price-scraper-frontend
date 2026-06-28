@@ -46,6 +46,16 @@
       <div class="insp-kind">{{ kindLabel }}</div>
       <div v-if="partNumber" class="insp-pn">Part #{{ partNumber }}</div>
 
+      <!-- ── placement: plug into the grid, or sit off-board and wire to pins ── -->
+      <div v-if="canToggle" class="seg">
+        <button class="seg-btn" :class="{ on: !isStandalone }" @click="$emit('set-placement', 'inline')">
+          On breadboard
+        </button>
+        <button class="seg-btn" :class="{ on: isStandalone }" @click="$emit('set-placement', 'standalone')">
+          Off-board
+        </button>
+      </div>
+
       <!-- ── props ── -->
       <div v-if="item.kind === 'resistor'" class="field">
         <label>Resistance</label>
@@ -138,7 +148,7 @@ const props = defineProps({
 })
 const emit = defineEmits([
   'rename', 'update-prop', 'set-pin', 'set-pincount', 'delete', 'duplicate',
-  'set-wire-color', 'flip-wire-arc', 'delete-wire',
+  'set-wire-color', 'flip-wire-arc', 'delete-wire', 'set-placement',
 ])
 
 const RES_PRESETS = [1, 10, 22, 47, 100, 150, 220, 330, 470, 680, 1000, 2200, 4700, 10000, 22000, 47000, 100000, 220000, 470000, 1000000]
@@ -147,6 +157,12 @@ const LED_COLORS = ['red', 'green', 'blue', 'yellow', 'white', 'orange']
 
 const tpl = computed(() => getTemplate(props.item?.kind))
 const isStandalone = computed(() => (props.item?.placement || tpl.value?.placement) === 'standalone')
+// Dedicated boards (Pi/ESP/custom board) are always off-board; everything else
+// (modules + discretes) can switch between plugging in and sitting off-board.
+const canToggle = computed(() => {
+  const t = tpl.value
+  return !!t && !!t.body && t.body !== 'board' && t.kind !== 'wire'
+})
 const kindLabel = computed(() => tpl.value?.label || props.item?.kind)
 const partNumber = computed(() => props.item?.props?.partNumber || tpl.value?.partNumber || '')
 const maxCol = computed(() => props.layout?.cfg?.cols || 63)
@@ -284,6 +300,29 @@ function netLabel(pin) {
   color: #0f766e;
   font-weight: 600;
   margin-top: -0.4rem;
+}
+.seg {
+  display: flex;
+  border: 1px solid var(--bb-border, #e5e4e1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1;
+  border: none;
+  background: #fff;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--bb-text-dim, #5c5c5c);
+}
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--bb-border, #e5e4e1);
+}
+.seg-btn.on {
+  background: #14b8a6;
+  color: #fff;
 }
 .field {
   display: flex;

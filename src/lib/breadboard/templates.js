@@ -75,9 +75,12 @@ export const BREADBOARD_LIST = Object.values(BREADBOARDS)
 function comp(t) {
   return { group: 'core', placement: 'inline', polar: false, span: 4, defaultProps: {}, icon: 'circuit_board_general.svg', ...t }
 }
-// Breakout/module helper: pins sit in a single row, plugs in inline.
+// Breakout/module helper: a small PCB with a header row. Defaults to off-board
+// (standalone) — placed beside the breadboard and reached with jumper wires,
+// which is how these are usually wired. Pass `placement: 'inline'` to override
+// for thru-hole multi-pin parts (e.g. an RGB LED) that plug into the grid.
 function mod(t) {
-  return comp({ body: 'breakout', span: 1, ...t })
+  return comp({ body: 'breakout', span: 1, placement: 'standalone', ...t })
 }
 // DIP chip helper: straddles the ravine, pins down both sides.
 function dip(t) {
@@ -95,13 +98,13 @@ export const COMPONENTS = {
     body: 'resistor',
   }),
   led: comp({
-    kind: 'led', label: 'LED', group: 'core', polar: true, icon: 'led_display.svg',
+    kind: 'led', label: 'LED', group: 'core', polar: true, icon: 'led_lamp.svg',
     pins: [{ id: 'a', name: 'anode (+)' }, { id: 'k', name: 'cathode (−)' }],
     span: 2, defaultProps: { color: 'red' },
     body: 'led',
   }),
   cap_104: comp({
-    kind: 'cap_104', label: 'Ceramic cap 100nF (104)', group: 'core', icon: 'resistor.svg',
+    kind: 'cap_104', label: 'Ceramic cap 100nF (104)', group: 'core', icon: 'capacitor_ceramic.svg',
     pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
     span: 2, defaultProps: { value: '100nF', code: '104' },
     body: 'ceramic-cap',
@@ -140,7 +143,7 @@ export const COMPONENTS = {
 
   // ── User's go-to parts ──
   ir_led_tsal6400: comp({
-    kind: 'ir_led_tsal6400', label: 'TSAL6400 IR emitter', group: 'mine', polar: true, icon: 'led_display.svg',
+    kind: 'ir_led_tsal6400', label: 'TSAL6400 IR emitter', group: 'mine', polar: true, icon: 'led_lamp.svg',
     pins: [{ id: 'a', name: 'anode (+)' }, { id: 'k', name: 'cathode (−)' }],
     span: 2, defaultProps: { wavelength: '940nm' }, body: 'led', irEmitter: true,
   }),
@@ -160,7 +163,7 @@ export const COMPONENTS = {
       { id: 'vcc', name: 'VCC' }, { id: 'gnd', name: 'GND' },
       { id: 'scl', name: 'SCL' }, { id: 'sda', name: 'SDA' }, { id: 'int', name: 'INT' },
     ],
-    span: 1, defaultProps: { iface: 'I²C', addr: '0x10' }, body: 'breakout', accent: '#1e8f6e',
+    span: 1, defaultProps: { iface: 'I²C', addr: '0x10' }, body: 'breakout', placement: 'standalone', accent: '#1e8f6e',
   }),
   bme280: comp({
     kind: 'bme280', label: 'BME280 3.3V', group: 'mine', icon: 'environment_sensor.svg',
@@ -169,7 +172,7 @@ export const COMPONENTS = {
       { id: 'scl', name: 'SCL' }, { id: 'sda', name: 'SDA' },
       { id: 'csb', name: 'CSB' }, { id: 'sdo', name: 'SDO' },
     ],
-    span: 1, defaultProps: { iface: 'I²C/SPI', addr: '0x76' }, body: 'breakout', accent: '#5a4fb0',
+    span: 1, defaultProps: { iface: 'I²C/SPI', addr: '0x76' }, body: 'breakout', placement: 'standalone', accent: '#5a4fb0',
   }),
 
   // ── Semiconductors & ICs ──
@@ -396,10 +399,11 @@ export const COMPONENTS = {
   seg7: dip({
     kind: 'seg7', label: '7-segment display', group: 'displays', icon: 'led_display.svg', labelPrefix: 'DISP',
     pins: pinsFrom(['G', 'F', 'COM1', 'A', 'B', 'E', 'D', 'COM2', 'C', 'DP']),
+    body: 'seg7',
   }),
   rgb_led: mod({
     kind: 'rgb_led', label: 'RGB LED', group: 'displays', icon: 'led_display.svg', labelPrefix: 'LED',
-    accent: '#8b5cf6',
+    accent: '#8b5cf6', placement: 'inline', // thru-hole 4-leg part, plugs into the grid
     pins: [{ id: 'r', name: 'R' }, { id: 'com', name: 'common' }, { id: 'g', name: 'G' }, { id: 'b', name: 'B' }],
     defaultProps: { color: 'rgb' },
   }),
@@ -412,7 +416,7 @@ export const COMPONENTS = {
   }),
   dc_motor: comp({
     kind: 'dc_motor', label: 'DC motor', group: 'actuators', icon: 'motor_shaft.svg', labelPrefix: 'M',
-    body: 'led', span: 4, polar: true,
+    body: 'dc-motor', span: 4, polar: true,
     pins: [{ id: 'a', name: '+' }, { id: 'b', name: '−' }],
   }),
   stepper_28byj48: mod({
@@ -446,8 +450,8 @@ export const COMPONENTS = {
     pins: pinsFrom(['IN+', 'IN-', 'L', 'N']),
   }),
   buzzer: comp({
-    kind: 'buzzer', label: 'Buzzer', group: 'actuators', icon: 'heart_soundwave.svg', labelPrefix: 'BZ',
-    body: 'led', span: 2, polar: true,
+    kind: 'buzzer', label: 'Buzzer', group: 'actuators', icon: 'buzzer.svg', labelPrefix: 'BZ',
+    body: 'buzzer', span: 2, polar: true,
     pins: [{ id: 'a', name: '+' }, { id: 'b', name: '−' }],
   }),
 
@@ -512,7 +516,7 @@ export const COMPONENTS = {
   }),
   reed_switch: comp({
     kind: 'reed_switch', label: 'Reed switch', group: 'switches', icon: 'push_button.svg', labelPrefix: 'SW',
-    body: 'resistor', span: 4,
+    body: 'reed', span: 4,
     pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
   }),
   limit_switch: mod({
@@ -545,19 +549,19 @@ export const COMPONENTS = {
 
   // ── Passives & protection (placeable) ──
   inductor: comp({
-    kind: 'inductor', label: 'Inductor', group: 'passives', icon: 'resistor.svg', labelPrefix: 'L',
-    body: 'resistor', span: 4,
+    kind: 'inductor', label: 'Inductor', group: 'passives', icon: 'inductor.svg', labelPrefix: 'L',
+    body: 'inductor', span: 4,
     pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
   }),
   electrolytic_cap: comp({
-    kind: 'electrolytic_cap', label: 'Electrolytic capacitor', group: 'passives', icon: 'resistor.svg', labelPrefix: 'C',
-    body: 'led', span: 2, polar: true,
+    kind: 'electrolytic_cap', label: 'Electrolytic capacitor', group: 'passives', icon: 'capacitor_electrolytic.svg', labelPrefix: 'C',
+    body: 'electrolytic-cap', span: 2, polar: true,
     pins: [{ id: 'a', name: '+' }, { id: 'k', name: '−' }],
     defaultProps: { value: '10µF' },
   }),
   trimpot: comp({
     kind: 'trimpot', label: 'Trimpot', group: 'passives', icon: 'dial_knob.svg', labelPrefix: 'RV',
-    body: 'pot', span: 2,
+    body: 'trimpot', span: 2,
     pins: [{ id: '1', name: '1' }, { id: 'w', name: 'wiper' }, { id: '3', name: '3' }],
     defaultProps: { ohms: 10000 },
   }),
@@ -676,9 +680,9 @@ export const CONSUMABLES = [
   { kind: 'breadboard_psu', label: 'Breadboard PSU (3.3V/5V)', group: 'power', icon: 'power_supply_plug.svg' },
   { kind: 'battery_holder', label: 'Battery holders (AA/18650/CR2032)', group: 'power', icon: 'aa_battery.svg' },
   { kind: 'resistor_kit', label: 'Resistor assortment (1/4W)', group: 'passives', icon: 'resistor.svg' },
-  { kind: 'ceramic_cap_kit', label: 'Ceramic capacitor kit', group: 'passives', icon: 'resistor.svg' },
-  { kind: 'electrolytic_cap_kit', label: 'Electrolytic capacitor kit', group: 'passives', icon: 'resistor.svg' },
-  { kind: 'inductor_kit', label: 'Inductor assortment', group: 'passives', icon: 'resistor.svg' },
+  { kind: 'ceramic_cap_kit', label: 'Ceramic capacitor kit', group: 'passives', icon: 'capacitor_ceramic.svg' },
+  { kind: 'electrolytic_cap_kit', label: 'Electrolytic capacitor kit', group: 'passives', icon: 'capacitor_electrolytic.svg' },
+  { kind: 'inductor_kit', label: 'Inductor assortment', group: 'passives', icon: 'inductor.svg' },
   { kind: 'diode_kit', label: 'Diode kit (1N4007/4148/Schottky/Zener)', group: 'passives', icon: 'diode.svg' },
   { kind: 'fuses', label: 'Fuses (PTC / glass)', group: 'passives', icon: 'diode.svg' },
 ].map((c) => ({ ...c, partNumber: c.partNumber || '', placement: 'inline', pins: [], stockOnly: true }))
@@ -713,7 +717,9 @@ export const PALETTE_GROUPS = (() => {
 // The icon set bundled in public/icons (offered in the part creator's picker).
 export const ICON_FILES = [
   'circuit_board_general.svg', 'microchip.svg', 'resistor.svg', 'diode.svg', 'transistor.svg',
-  'led_display.svg', 'push_button.svg', 'dial_knob.svg', 'relay_switch.svg', 'motor_shaft.svg',
+  'led_lamp.svg', 'led_display.svg', 'capacitor_ceramic.svg', 'capacitor_electrolytic.svg',
+  'inductor.svg', 'buzzer.svg',
+  'push_button.svg', 'dial_knob.svg', 'relay_switch.svg', 'motor_shaft.svg',
   'environment_sensor.svg', 'light_sensor.svg', 'radar_distance_waves.svg', 'heart_soundwave.svg',
   'rfid_card.svg', 'wireless_antenna.svg', 'power_supply_plug.svg', 'aa_battery.svg',
   'breadboard.svg', 'electric_wire.svg', 'dupont_header.svg',
@@ -790,7 +796,7 @@ export function buildCustomTemplate(def) {
 // Sensible default icon when a custom part doesn't specify one, keyed by body.
 const DEFAULT_ICON_FOR_SHAPE = {
   breakout: 'microchip.svg', to92: 'transistor.svg', resistor: 'resistor.svg',
-  led: 'led_display.svg', dip: 'microchip.svg', board: 'circuit_board_general.svg',
+  led: 'led_lamp.svg', dip: 'microchip.svg', board: 'circuit_board_general.svg',
 }
 
 // Replace the whole custom registry from the store's stored definitions.

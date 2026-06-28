@@ -237,7 +237,8 @@ function specPartLine(kind) {
   if (kind === 'ic') return '- `ic` — pins `1`..`N` — prop `pinCount`'
   const names = tpl.pins.map((p) => p.name.replace(/\s*\(.*?\)/g, '')).join(', ')
   const prop = PROP_HINT[kind] ? ` — prop \`${PROP_HINT[kind]}\`` : ''
-  return `- \`${kind}\` — pins: ${names}${prop}`
+  const offBoard = tpl.placement === 'standalone' ? ' — *off-board module, wire to its pins*' : ''
+  return `- \`${kind}\` — pins: ${names}${prop}${offBoard}`
 }
 
 export function buildSpecSection(customParts = []) {
@@ -269,10 +270,16 @@ export function buildSpecSection(customParts = []) {
   L.push('bottom; within a column A–E form one electrical strip and F–J another. **Power rails:**')
   L.push('`+T`/`-T` (top +/−) and `+B`/`-B` (bottom). **Sizes:** `full` (63 cols), `half` (30), `mini` (17, no rails).')
   L.push('')
-  L.push('**Wires** connect two points — each is a hole (`10A`, `-T`) or a board pin')
-  L.push('`<id>:<pin>` (e.g. `Pi1:GPIO17`). Components only join nets through shared strips or')
-  L.push('wires, so use wires to reach the rails and boards. Give a part `"pins"` to plug its')
-  L.push('legs into holes; give a board pins only via wires.')
+  L.push('**Wires** connect two points — each is a hole (`10A`, `-T`) or a board/module pin')
+  L.push('`<id>:<pin>` (e.g. `Pi1:GPIO17`, `ENV1:SDA`). Components only join nets through shared')
+  L.push('strips or wires, so use wires to reach the rails, boards and modules.')
+  L.push('')
+  L.push('**Inline parts vs off-board modules.** Discrete parts (resistor, LED, diode, TO-92')
+  L.push('transistor/sensor, DIP IC, pot…) plug into the grid — give them `"pins"` mapping each')
+  L.push('leg to a hole. **Breakout modules** (sensors like BME280, displays, relays, drivers,')
+  L.push('radios — any line marked *off-board*) sit beside the board and are reached with jumpers:')
+  L.push('reference their pins from `"wires"`, or map a module pin straight to a hole in `"pins"`')
+  L.push('(it becomes a jumper automatically). Standalone boards (Pi/ESP32) work the same way.')
   L.push('')
   L.push('**Wire colors** — set `"color"` (hex). Follow this convention so the board reads')
   L.push('clearly:')

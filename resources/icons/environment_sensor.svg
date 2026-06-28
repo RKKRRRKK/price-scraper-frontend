@@ -1,33 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
-  <path d="M 25 75 
-           A 20 20 0 0 1 25 35 
-           A 30 30 0 0 1 75 35 
-           A 20 20 0 0 1 75 75 
-           Z" 
-        fill="#F8F9FA" stroke="#2C3E50" stroke-width="3" stroke-linejoin="round"/>
-        
-  <g transform="translate(35, 34)">
-     <path d="M -4 4 
-              A 4 4 0 0 1 4 4 
-              L 4 17.5 
-              A 6 6 0 1 1 -4 17.5 
-              Z" 
-           fill="#FFFFFF" stroke="#2C3E50" stroke-width="2" stroke-linejoin="round"/>
-           
-     <circle cx="0" cy="22" r="3.5" fill="#E74C3C"/>
-     
-     <rect x="-1.5" y="10" width="3" height="12" rx="1.5" fill="#E74C3C"/>
-     
-     <line x1="1" y1="6" x2="3" y2="6" stroke="#2C3E50" stroke-width="1.2" stroke-linecap="round"/>
-     <line x1="1" y1="10" x2="3" y2="10" stroke="#2C3E50" stroke-width="1.2" stroke-linecap="round"/>
-     <line x1="1" y1="14" x2="3" y2="14" stroke="#2C3E50" stroke-width="1.2" stroke-linecap="round"/>
-  </g>
-  
-  <path d="M 65 37
-           C 65 37, 73 49, 73 56
-           A 8 8 0 0 1 57 56
-           C 57 49, 65 37, 65 37 Z" 
-        fill="#3498DB" stroke="#2C3E50" stroke-width="2" stroke-linejoin="round"/>
-        
-  <circle cx="61" cy="53" r="1.5" fill="#FFFFFF" opacity="0.8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+<rect x="12" y="12" width="40" height="35" rx="5" fill="#2a3140" stroke="#34302b" stroke-width="2.6"></rect><rect x="13.3" y="13.3" width="37.4" height="9" rx="3" fill="#39414f"></rect><g fill="#d7b24c" stroke="#b88f33" stroke-width="0.8"><rect x="17.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="25.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="33.6" y="47" width="4.8" height="8" rx="1.3"></rect><rect x="41.6" y="47" width="4.8" height="8" rx="1.3"></rect></g><g stroke="#37b88f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M26 19v10"></path></g><circle cx="26" cy="33" r="4" fill="#37b88f"></circle><path d="M26 24v8" stroke="#37b88f" stroke-width="2.6" stroke-linecap="round"></path><path d="M39 21c3.2 4 4.6 6.4 4.6 8.6a4.6 4.6 0 0 1-9.2 0c0-2.2 1.4-4.6 4.6-8.6z" fill="#37b88f"></path>
 </svg>
