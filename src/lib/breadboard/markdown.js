@@ -72,7 +72,10 @@ export function describeItem(item) {
   }
 }
 
-export function buildSheetMarkdown(sheet) {
+// Build the "what's on the board" portion (header, boards, components, nets,
+// bridges, unconnected pins) as an array of lines. Shared by the state-only
+// export and the full instruction export.
+function buildStateLines(sheet) {
   const data = sheet?.data || {}
   const items = data.items || []
   const breadboards = data.breadboards || []
@@ -184,17 +187,33 @@ export function buildSheetMarkdown(sheet) {
     L.push('')
   }
 
-  L.push(buildInventorySection(sheet.library))
-  L.push(buildSpecSection(sheet.library?.customParts))
+  return L
+}
 
-  return L.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
+const finish = (L) => L.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
+
+// State only — a paste-ready snapshot of how the board is currently wired, with
+// no instructions, inventory or build spec. Useful for asking an assistant
+// questions about the existing circuit.
+export function buildStateMarkdown(sheet) {
+  return finish(buildStateLines(sheet))
+}
+
+// Full instruction export: board state + parts inventory + AI build spec.
+// `inStockOnly` limits the inventory and the listed part types to parts the user
+// has marked as in stock, so the assistant designs only with parts on hand.
+export function buildSheetMarkdown(sheet, { inStockOnly = false } = {}) {
+  const L = buildStateLines(sheet)
+  L.push(buildInventorySection(sheet.library, { inStockOnly }))
+  L.push(buildSpecSection(sheet.library, { inStockOnly }))
+  return finish(L)
 }
 
 // ── Parts inventory ──────────────────────────────────────────────────────────
 // Tells the assistant which parts the user has configured and which they
 // physically have in stock, so a design prefers parts on hand. `library` is
 // { parts: [{ kind, label, partNumber, placement, pins:[names], inStock, custom }] }.
-export function buildInventorySection(library) {
+export function buildInventorySection(library, { inStockOnly = false } = {}) {
   const parts = library?.parts || []
   if (!parts.length) return ''
   const fmt = (p) => {
@@ -212,15 +231,20 @@ export function buildInventorySection(library) {
   L.push('')
   L.push('## Parts inventory & library')
   L.push('')
-  L.push('The user maintains a parts library. **Prefer parts that are in stock.** Parts not')
-  L.push('in stock are known/configured but not currently owned — use them only if needed,')
-  L.push('and call out anything the user would have to buy.')
+  if (inStockOnly) {
+    L.push('These are the parts the user currently has in stock. **Design only with these')
+    L.push('parts** — do not use anything not listed here.')
+  } else {
+    L.push('The user maintains a parts library. **Prefer parts that are in stock.** Parts not')
+    L.push('in stock are known/configured but not currently owned — use them only if needed,')
+    L.push('and call out anything the user would have to buy.')
+  }
   L.push('')
   L.push(`### In stock (${inStock.length})`)
   if (inStock.length) inStock.forEach((p) => L.push(fmt(p)))
   else L.push('_Nothing marked in stock._')
   L.push('')
-  if (notStock.length) {
+  if (!inStockOnly && notStock.length) {
     L.push(`### Configured but not in stock (${notStock.length})`)
     notStock.forEach((p) => L.push(fmt(p)))
     L.push('')
@@ -252,7 +276,12 @@ function specPartLine(kind) {
   return `- \`${kind}\` — pins: ${names}${prop}${offBoard}`
 }
 
-export function buildSpecSection(customParts = []) {
+export function buildSpecSection(library = {}, { inStockOnly = false } = {}) {
+  const customParts = library?.customParts || []
+  // Kinds the user has in stock (built-in kinds plus `lib_`-prefixed customs).
+  const inStockKinds = new Set((library?.parts || []).filter((p) => p.inStock).map((p) => p.kind))
+  // `custom` is the board-builder capability, not a physical part — always keep it.
+  const keepKind = (kind) => !inStockOnly || kind === 'custom' || inStockKinds.has(kind)
   const L = []
   L.push('---')
   L.push('')
@@ -308,6 +337,7 @@ export function buildSpecSection(customParts = []) {
   for (const g of PALETTE_GROUPS) {
     for (const kind of g.kinds) {
       if (kind === 'wire') continue
+      if (!keepKind(kind)) continue
       if (kind === 'raspi40') { L.push('- `raspi40` — Raspberry Pi 40-pin; wire by GPIO name or pin number (`Pi1:GPIO17`, `Pi1:6`)'); continue }
       if (kind === 'esp32devkit') { L.push('- `esp32devkit` — ESP32 DevKitC; wire by GPIO name (`ESP1:GPIO23`)'); continue }
       if (kind === 'custom') { L.push('- `custom` — your own board: give `"pinNames": ["VCC","GND",…]` (wire by those names)'); continue }
@@ -315,10 +345,11 @@ export function buildSpecSection(customParts = []) {
       if (line) L.push(line)
     }
   }
-  if (customParts && customParts.length) {
+  const customsToList = customParts.filter((p) => keepKind(p.kind))
+  if (customsToList.length) {
     L.push('')
     L.push('**Custom library parts** (use the `type` shown; pin names as listed):')
-    for (const p of customParts) {
+    for (const p of customsToList) {
       const type = String(p.kind || '').replace(/^lib_/, '')
       const names = (p.pins || []).join(', ')
       const tag = p.placement === 'standalone' ? ' (standalone board — wire to its pins)' : ''

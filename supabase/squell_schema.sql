@@ -19,9 +19,13 @@ create table if not exists public.squell_versions (
   user_id        uuid not null references auth.users (id) on delete cascade,
   version_number int not null,
   sql_text       text not null,
-  note           text,
+  note           text,           -- user-written note
+  ai_note        text,           -- AI-generated note (kept distinct from the user's)
   created_at     timestamptz not null default now()
 );
+
+-- Migration for existing installs: add the distinct AI note column. Safe to re-run.
+alter table public.squell_versions add column if not exists ai_note text;
 
 create index if not exists squell_queries_user_idx
   on public.squell_queries (user_id, updated_at desc);

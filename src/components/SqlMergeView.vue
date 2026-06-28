@@ -25,6 +25,7 @@ const props = defineProps({
   modelValue: { type: String, default: '' }, // right / candidate (b)
   dialect: { type: String, default: 'bigquery' },
   readonly: { type: Boolean, default: false }, // when true, right side is read-only too
+  scrollLock: { type: Boolean, default: true }, // when true, scrolling one pane scrolls the other
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -33,6 +34,24 @@ let view = null
 const langA = new Compartment()
 const langB = new Compartment()
 const editB = new Compartment()
+
+// ── Scroll locking ──
+// MergeView doesn't sync scroll position between its two editors. When the lock
+// is on we mirror scrollTop/scrollLeft from the pane being scrolled to the other,
+// guarded by a reentrancy flag so the mirrored write doesn't echo back.
+let scrollers = null
+let onScrollA = null
+let onScrollB = null
+let syncing = false
+function makeSync(from, to) {
+  return () => {
+    if (!props.scrollLock || syncing) return
+    syncing = true
+    to.scrollTop = from.scrollTop
+    to.scrollLeft = from.scrollLeft
+    requestAnimationFrame(() => { syncing = false })
+  }
+}
 
 const DIALECTS = {
   bigquery: StandardSQL,
@@ -82,9 +101,22 @@ onMounted(() => {
       ],
     },
   })
+
+  const aScroller = view.a.scrollDOM
+  const bScroller = view.b.scrollDOM
+  onScrollA = makeSync(aScroller, bScroller)
+  onScrollB = makeSync(bScroller, aScroller)
+  aScroller.addEventListener('scroll', onScrollA, { passive: true })
+  bScroller.addEventListener('scroll', onScrollB, { passive: true })
+  scrollers = { aScroller, bScroller }
 })
 
 onBeforeUnmount(() => {
+  if (scrollers) {
+    scrollers.aScroller.removeEventListener('scroll', onScrollA)
+    scrollers.bScroller.removeEventListener('scroll', onScrollB)
+    scrollers = null
+  }
   view?.destroy()
   view = null
 })
@@ -134,17 +166,36 @@ watch(
   overflow: hidden;
   background: #fff;
   font-size: 0.9375rem;
+  /* Taller default, plus a native drag handle (bottom-right) to resize on the go. */
+  height: 30rem;
+  min-height: 14rem;
+  max-height: 85vh;
+  resize: vertical;
+  display: flex;
+  flex-direction: column;
 }
-.sql-merge :deep(.cm-mergeView),
+/* By default MergeView forces each editor to height:auto / overflow:visible and
+   scrolls both panes as one via the outer .cm-mergeView. We instead give each
+   editor its OWN scroller (overriding those !important base rules) so the two
+   panes can scroll independently; the scroll-lock JS mirrors them when locked. */
+.sql-merge :deep(.cm-mergeView) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
 .sql-merge :deep(.cm-mergeViewEditors) {
   height: 100%;
+  min-height: 0;
 }
 .sql-merge :deep(.cm-editor) {
-  min-height: 9rem;
-  max-height: 34rem;
+  height: 100% !important;
+  min-height: 0 !important;
 }
 .sql-merge :deep(.cm-editor.cm-focused) { outline: none; }
-.sql-merge :deep(.cm-scroller) {
+.sql-merge :deep(.cm-editor .cm-scroller) {
+  overflow-y: auto !important;
+  min-height: 0;
   font-family: 'SF Mono', 'Cascadia Code', Menlo, Consolas, 'Liberation Mono', monospace;
   line-height: 1.6;
 }

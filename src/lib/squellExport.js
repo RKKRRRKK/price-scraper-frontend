@@ -34,6 +34,10 @@ export function buildQueryMarkdown(query, versions = []) {
     lines.push('```')
     lines.push('')
     lines.push('**Note:** ' + (v.note?.trim() || '_(none)_'))
+    if (v.ai_note?.trim()) {
+      lines.push('')
+      lines.push('**AI note:** ' + v.ai_note.trim())
+    }
     lines.push('')
   }
   return lines.join('\n')

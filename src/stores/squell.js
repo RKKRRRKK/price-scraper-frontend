@@ -124,7 +124,7 @@ export const useSquellStore = defineStore('squell', () => {
   }
 
   // Append a new version to an existing query.
-  async function addVersion(queryId, { sql_text, note }) {
+  async function addVersion(queryId, { sql_text, note, ai_note }) {
     const auth = useAuthStore()
     if (!auth.user) return
 
@@ -141,6 +141,7 @@ export const useSquellStore = defineStore('squell', () => {
           version_number: nextNumber,
           sql_text,
           note: note || null,
+          ai_note: ai_note || null,
         })
         .select('*')
         .single()
@@ -205,12 +206,13 @@ export const useSquellStore = defineStore('squell', () => {
     return updateQuery(id, { description })
   }
 
-  async function updateVersionNote(id, note) {
+  // Patch fields on an existing version (note, ai_note, …) and sync local state.
+  async function updateVersion(id, updates) {
     error.value = null
     try {
       const { data, error: err } = await supabase
         .from('squell_versions')
-        .update({ note })
+        .update(updates)
         .eq('id', id)
         .select('*')
         .single()
@@ -226,11 +228,12 @@ export const useSquellStore = defineStore('squell', () => {
       }
       return data
     } catch (e) {
-      console.error('[Squell] updateVersionNote error:', e)
+      console.error('[Squell] updateVersion error:', e)
       error.value = e.message
       throw e
     }
   }
+  const updateVersionNote = (id, note) => updateVersion(id, { note })
 
   async function deleteVersion(id) {
     error.value = null
@@ -323,6 +326,7 @@ export const useSquellStore = defineStore('squell', () => {
     addVersion,
     updateQuery,
     updateQueryDescription,
+    updateVersion,
     updateVersionNote,
     deleteVersion,
     deleteQuery,

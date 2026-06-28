@@ -81,11 +81,6 @@
             <i class="pi pi-camera mr-2" />Documents
           </a>
         </router-link>
-        <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-database mr-2" />Squell
-          </a>
-        </router-link>
       </div>
     </div>
 
@@ -95,6 +90,11 @@
         <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }">
             <i class="pi pi-microchip mr-2" />Breadboard
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-database mr-2" />Squell
           </a>
         </router-link>
       </div>
@@ -193,11 +193,6 @@
               <i class="pi pi-camera mr-2" />Documents
             </a>
           </router-link>
-          <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
-            <a :href="href" @click="navigate" :class="{ active: isActive }">
-              <i class="pi pi-database mr-2" />Squell
-            </a>
-          </router-link>
         </div>
       </AccordionContent>
     </AccordionPanel>
@@ -211,6 +206,11 @@
           <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
             <a :href="href" @click="navigate" :class="{ active: isActive }">
               <i class="pi pi-microchip mr-2" />Breadboard
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-database mr-2" />Squell
             </a>
           </router-link>
         </div>

@@ -4,7 +4,6 @@
     <aside class="rail" :class="{ open: railOpen }">
       <div class="rail-head">
         <div>
-          <div class="eyebrow">Productivity</div>
           <h1 class="rail-title">Squell</h1>
         </div>
         <button class="icon-btn rail-close mobile-only" @click="railOpen = false" title="Close">
@@ -130,13 +129,24 @@
           <div class="compare-head">
             <span class="pane-title half">{{ leftTitle }}</span>
             <span class="pane-title half right-half">
-              {{ rightTitle }}
-              <button
-                v-if="mode === 'edit'"
-                class="link-btn"
-                @click="candidateSql = leftSql"
-                title="Reset to baseline"
-              >reset</button>
+              <span class="pane-title-text">{{ rightTitle }}</span>
+              <span class="pane-tools">
+                <button
+                  v-if="mode === 'edit'"
+                  class="link-btn"
+                  @click="candidateSql = leftSql"
+                  title="Reset to baseline"
+                >reset</button>
+                <button
+                  class="lock-toggle"
+                  :class="{ on: scrollLock }"
+                  @click="scrollLock = !scrollLock"
+                  :title="scrollLock ? 'Scroll lock on — both panes scroll together. Click to unlock.' : 'Scroll lock off — panes scroll independently. Click to lock.'"
+                >
+                  <i :class="scrollLock ? 'pi pi-lock' : 'pi pi-lock-open'" style="font-size: 0.6875rem;"></i>
+                  {{ scrollLock ? 'Scroll locked' : 'Scroll unlocked' }}
+                </button>
+              </span>
             </span>
           </div>
           <SqlMergeView
@@ -145,33 +155,52 @@
             :model-value="mergeRight"
             :dialect="dialectDraft"
             :readonly="mode === 'review'"
+            :scroll-lock="scrollLock"
             @update:model-value="onMergeInput"
           />
         </section>
 
-        <!-- Note -->
+        <!-- Notes — distinct user-written and AI-written, both editable -->
         <section class="card">
-          <div class="card-head">
-            <label class="card-label">Note — what changed in this revision</label>
-            <button
-              v-if="mode === 'edit'"
-              class="ai-btn"
-              :disabled="genNote || !canGenerateNote"
-              :title="store.aiConfigured ? 'Generate with AI' : aiOffTitle"
-              @click="generateNote"
-            >
-              <i :class="genNote ? 'pi pi-spin pi-spinner' : 'pi pi-sparkles'" style="font-size: 0.8125rem;"></i>
-              {{ genNote ? 'Generating…' : 'Generate' }}
-            </button>
+          <div class="note-block">
+            <div class="card-head">
+              <label class="card-label">
+                <i class="pi pi-user" style="font-size: 0.6875rem;"></i> Your note — what changed in this revision
+              </label>
+              <span v-if="noteSaving" class="save-hint"><i class="pi pi-spin pi-spinner" style="font-size: 0.6875rem;"></i> Saving…</span>
+            </div>
+            <textarea
+              class="ta"
+              v-model="userNoteModel"
+              @change="onUserNoteChange"
+              rows="3"
+              placeholder="Describe the change from the baseline, in your own words."
+            ></textarea>
           </div>
-          <textarea
-            v-if="mode === 'edit'"
-            class="ta"
-            v-model="candidateNote"
-            rows="3"
-            placeholder="Describe the change from the baseline (or generate it with AI)."
-          ></textarea>
-          <div v-else class="note-readonly">{{ reviewNote || '— no note —' }}</div>
+
+          <div class="note-block note-block-ai">
+            <div class="card-head">
+              <label class="card-label">
+                <i class="pi pi-sparkles" style="font-size: 0.6875rem;"></i> AI note
+              </label>
+              <button
+                class="ai-btn"
+                :disabled="genNote || !canGenerateNote"
+                :title="store.aiConfigured ? 'Generate with AI' : aiOffTitle"
+                @click="generateNote"
+              >
+                <i :class="genNote ? 'pi pi-spin pi-spinner' : 'pi pi-sparkles'" style="font-size: 0.8125rem;"></i>
+                {{ genNote ? 'Generating…' : aiNoteModel ? 'Regenerate' : 'Generate' }}
+              </button>
+            </div>
+            <textarea
+              class="ta ta-ai"
+              v-model="aiNoteModel"
+              @change="onAiNoteChange"
+              rows="3"
+              placeholder="Generate an AI summary of the change — or write one here."
+            ></textarea>
+          </div>
         </section>
 
         <!-- Save bar (edit mode) -->
@@ -258,13 +287,18 @@ const aiOffTitle = 'AI webhook not configured (set VITE_SQUELL_AI_WEBHOOK)'
 const mode = ref('edit')          // 'edit' | 'review'
 const reviewIndex = ref(0)        // index into versions (the "after" of a review pair)
 const candidateSql = ref('')
-const candidateNote = ref('')
+const candidateNote = ref('')     // user note for the in-progress (edit-mode) version
+const candidateAiNote = ref('')   // AI note for the in-progress version
+const reviewNoteDraft = ref('')   // editable user note for the reviewed version
+const reviewAiNoteDraft = ref('') // editable AI note for the reviewed version
 const nameDraft = ref('')
 const descriptionDraft = ref('')
 const dialectDraft = ref('bigquery')
 
 const railOpen = ref(false)
+const scrollLock = ref(true)       // lock both diff panes to scroll together
 const saving = ref(false)
+const noteSaving = ref(false)
 const genDesc = ref(false)
 const genNote = ref(false)
 const actionError = ref('')
@@ -293,6 +327,7 @@ function syncFromActive() {
   const q = store.activeQuery
   actionError.value = ''
   candidateNote.value = ''
+  candidateAiNote.value = ''
   if (!q) {
     mode.value = 'edit'
     nameDraft.value = ''
@@ -313,7 +348,16 @@ function syncFromActive() {
   } else {
     mode.value = 'edit'
   }
+  syncReviewNotes()
 }
+
+// Pull the reviewed version's stored notes into the editable drafts.
+function syncReviewNotes() {
+  const v = versions.value[reviewIndex.value]
+  reviewNoteDraft.value = v?.note || ''
+  reviewAiNoteDraft.value = v?.ai_note || ''
+}
+watch(reviewIndex, syncReviewNotes)
 
 async function selectQuery(id) {
   railOpen.value = false
@@ -333,7 +377,7 @@ const rightSql = computed(() => {
 const leftTitle = computed(() => {
   if (mode.value === 'review') {
     const prev = versions.value[reviewIndex.value - 1]
-    return prev ? `v${prev.version_number} (baseline)` : 'empty (no prior version)'
+    return prev ? `v${prev.version_number} (baseline)` : 'v1 (baseline)'
   }
   return latest.value ? `v${latest.value.version_number} (baseline)` : 'no baseline yet'
 })
@@ -344,7 +388,39 @@ const rightTitle = computed(() => {
   }
   return `v${nextVersionNumber.value} (candidate)`
 })
-const reviewNote = computed(() => versions.value[reviewIndex.value]?.note || '')
+// Note models route to edit-mode candidate drafts or the reviewed version's
+// drafts depending on mode. In review mode, changes persist on blur/change.
+const userNoteModel = computed({
+  get: () => (mode.value === 'edit' ? candidateNote.value : reviewNoteDraft.value),
+  set: (v) => { if (mode.value === 'edit') candidateNote.value = v; else reviewNoteDraft.value = v },
+})
+const aiNoteModel = computed({
+  get: () => (mode.value === 'edit' ? candidateAiNote.value : reviewAiNoteDraft.value),
+  set: (v) => { if (mode.value === 'edit') candidateAiNote.value = v; else reviewAiNoteDraft.value = v },
+})
+
+async function onUserNoteChange() {
+  if (mode.value !== 'review') return // edit-mode notes persist when the version is saved
+  const v = versions.value[reviewIndex.value]
+  if (!v) return
+  const note = reviewNoteDraft.value.trim() || null
+  if (note === (v.note || null)) return
+  await persistVersionNote(v.id, { note })
+}
+async function onAiNoteChange() {
+  if (mode.value !== 'review') return
+  const v = versions.value[reviewIndex.value]
+  if (!v) return
+  const ai_note = reviewAiNoteDraft.value.trim() || null
+  if (ai_note === (v.ai_note || null)) return
+  await persistVersionNote(v.id, { ai_note })
+}
+async function persistVersionNote(id, updates) {
+  noteSaving.value = true
+  try { await store.updateVersion(id, updates) }
+  catch (e) { actionError.value = e.message || 'Failed to save note.' }
+  finally { noteSaving.value = false }
+}
 
 // The right-hand doc for the merge view: live candidate while editing, or the
 // selected version while reviewing.
@@ -359,19 +435,23 @@ const mergeKey = computed(
 )
 
 function isChipActive(i) {
-  if (mode.value === 'review') return i === reviewIndex.value
+  // Highlight both members of the compared pair (baseline + candidate).
+  if (mode.value === 'review') return i === reviewIndex.value || i === reviewIndex.value - 1
   return i === versions.value.length - 1
 }
 function reviewVersion(i) {
   // Clicking the latest chip in edit mode is a no-op; otherwise enter review.
   if (mode.value === 'edit' && i === versions.value.length - 1) return
   mode.value = 'review'
-  reviewIndex.value = i
+  // The oldest version has no predecessor, so pair it forward (v1 → v2) instead
+  // of showing an empty "no prior version" baseline on the left.
+  reviewIndex.value = Math.max(i, 1)
 }
 function enterEditMode() {
   mode.value = 'edit'
   candidateSql.value = latest.value?.sql_text || ''
   candidateNote.value = ''
+  candidateAiNote.value = ''
 }
 
 // ── Save / mutate ──
@@ -389,9 +469,11 @@ async function saveVersion() {
     await store.addVersion(store.activeQueryId, {
       sql_text: candidateSql.value,
       note: candidateNote.value.trim() || null,
+      ai_note: candidateAiNote.value.trim() || null,
     })
     // baseline shifts to the just-saved version; candidate seeds from it.
     candidateNote.value = ''
+    candidateAiNote.value = ''
     candidateSql.value = latest.value?.sql_text || ''
     mode.value = 'edit'
   } catch (e) {
@@ -425,7 +507,12 @@ async function removeQuery() {
 
 // ── AI generation ──
 const canGenerateDesc = computed(() => store.aiConfigured && !!latest.value)
-const canGenerateNote = computed(() => store.aiConfigured && canSave.value)
+const canGenerateNote = computed(() => {
+  if (!store.aiConfigured) return false
+  // Edit mode: need a real change to describe. Review mode: need a current version.
+  if (mode.value === 'edit') return canSave.value
+  return !!versions.value[reviewIndex.value]
+})
 
 async function generateDescription() {
   if (!canGenerateDesc.value) return
@@ -451,13 +538,22 @@ async function generateNote() {
   genNote.value = true
   actionError.value = ''
   try {
+    let previousSql, currentSql
+    if (mode.value === 'edit') {
+      previousSql = latest.value?.sql_text || ''
+      currentSql = candidateSql.value
+    } else {
+      previousSql = versions.value[reviewIndex.value - 1]?.sql_text || ''
+      currentSql = versions.value[reviewIndex.value]?.sql_text || ''
+    }
     const text = await store.generateAi('diff_note', {
       dialect: dialectDraft.value,
       query_name: nameDraft.value,
-      previous_sql: latest.value?.sql_text || '',
-      current_sql: candidateSql.value,
+      previous_sql: previousSql,
+      current_sql: currentSql,
     })
-    candidateNote.value = text
+    aiNoteModel.value = text
+    if (mode.value === 'review') await onAiNoteChange()
   } catch (e) {
     actionError.value = e.message || 'AI generation failed.'
   } finally {
@@ -519,12 +615,12 @@ function formatDate(ts) {
 
 <style scoped>
 .squell-app {
-  --accent-hue: 295;
-  --accent-500: oklch(0.56 0.18 var(--accent-hue));
-  --accent-600: oklch(0.50 0.18 var(--accent-hue));
-  --accent-400: oklch(0.68 0.14 var(--accent-hue));
-  --accent-100: oklch(0.96 0.025 var(--accent-hue));
-  --accent-050: oklch(0.985 0.012 var(--accent-hue));
+  --accent-hue: 182.5; /* teal — matches the Tools nav section */
+  --accent-500: oklch(0.56 0.10 var(--accent-hue));
+  --accent-600: oklch(0.50 0.095 var(--accent-hue));
+  --accent-400: oklch(0.68 0.13 var(--accent-hue));
+  --accent-100: oklch(0.96 0.045 var(--accent-hue));
+  --accent-050: oklch(0.985 0.014 var(--accent-hue));
 
   --bg-card:     #ffffff;
   --bg-sunken:   #f3f2f0;
@@ -564,10 +660,6 @@ function formatDate(ts) {
   background: var(--bg-card);
 }
 .rail-head { display: flex; justify-content: space-between; align-items: flex-start; }
-.eyebrow {
-  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em;
-  color: var(--accent-600); text-transform: uppercase; margin-bottom: 0.25rem;
-}
 .rail-title { font-size: 1.625rem; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
 .rail-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.25rem; min-height: 4rem; }
 .rail-loading, .rail-empty { padding: 1rem 0.5rem; color: var(--text-faint); font-size: 0.875rem; text-align: center; }
@@ -625,7 +717,11 @@ function formatDate(ts) {
   resize: vertical; outline: none; font-family: inherit; background: #fff;
 }
 .ta:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
-.note-readonly { font-size: 0.9375rem; color: var(--text-dim); white-space: pre-wrap; }
+.ta-ai { background: var(--accent-050); }
+.ta-ai:focus { background: #fff; }
+.note-block + .note-block { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-soft); }
+.note-block .card-label { display: inline-flex; align-items: center; gap: 0.375rem; }
+.note-block-ai .card-label { color: var(--accent-600); }
 
 /* ── Timeline ── */
 .timeline { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
@@ -645,6 +741,18 @@ function formatDate(ts) {
 .pane-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-dim); }
 .pane-title.half { flex: 1; min-width: 0; }
 .pane-title.right-half { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-left: 0.75rem; }
+.pane-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-tools { display: inline-flex; align-items: center; gap: 0.625rem; flex-shrink: 0; }
+.lock-toggle {
+  display: inline-flex; align-items: center; gap: 0.3125rem;
+  padding: 0.1875rem 0.5rem; border-radius: 999px;
+  font-size: 0.6875rem; font-weight: 600;
+  color: var(--text-faint); border: 1px solid var(--border); background: #fff;
+  transition: all 120ms;
+}
+.lock-toggle:hover { border-color: var(--text-faint); color: var(--text-dim); }
+.lock-toggle.on { color: var(--accent-600); border-color: var(--accent-100); background: var(--accent-050); }
+.lock-toggle.on:hover { border-color: var(--accent-400); }
 
 /* ── Buttons (shared with reminders idiom) ── */
 .squell-app .add-btn {

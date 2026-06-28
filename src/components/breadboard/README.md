@@ -29,7 +29,7 @@ as Squell). Until they're run the UI works but sheets / library won't save/load.
 | `src/lib/breadboard/templates.js` | Pure data: breadboard sizes, component/module/board templates, resistor colour-band maths, the `makeItem()` factory. |
 | `src/lib/breadboard/geometry.js` | Hole coordinates, snapping (`nearestHole`), inline-pin placement, standalone-board layout, item bounds, endpoint↔coordinate resolution. |
 | `src/lib/breadboard/nets.js` | `computeNets(data)` — union-find net engine. |
-| `src/lib/breadboard/markdown.js` | `buildSheetMarkdown()` (state + AI build spec), `copyToClipboard()`, re-exports Squell's `downloadTextFile`/`slugify`. |
+| `src/lib/breadboard/markdown.js` | `buildSheetMarkdown(sheet, {inStockOnly})` (state + inventory + AI build spec), `buildStateMarkdown()` (current wiring only, no instructions), `copyToClipboard()`, re-exports Squell's `downloadTextFile`/`slugify`. |
 | `src/lib/breadboard/importBuild.js` | `parseBuild(text)` — turns an LLM `BreadboardBuild` JSON into a sheet `data` object. |
 | `src/stores/breadboard.js` | Pinia store: Supabase CRUD, debounced autosave, sheet catalogue. Mirrors `stores/squell.js`. |
 | `src/stores/breadboardLibrary.js` | Pinia store: user's custom parts + stock list (one Supabase row). On load registers custom parts into `templates.js` so they behave like built-ins. |
@@ -42,6 +42,7 @@ as Squell). Until they're run the UI works but sheets / library won't save/load.
 | `src/components/breadboard/CustomBoardModal.vue` | Define a one-off custom board on the current sheet (name + pin labels). |
 | `src/components/breadboard/PartCreatorModal.vue` | Define a **reusable** library part (name, part number, shape, pins). |
 | `src/components/breadboard/PartLibraryModal.vue` | Browse every part, toggle **in stock**, create/edit/delete custom parts, place onto the sheet. |
+| `src/components/breadboard/AiAssistModal.vue` | One **AI assist** dialog: copy the design prompt / board-only state, download `.md`, in-stock-only toggle, and build the sheet from a pasted reply. |
 
 Wired in: `src/router/index.js` (`/breadboard` route) and `src/App.vue` (teal **Tools** nav
 section in navbar + drawer; store `fetchSheets()`/`reset()` in the login/logout lifecycle).
@@ -176,6 +177,15 @@ Beyond that, the palette has **Create** and **Library** buttons:
 (`buildInventorySection`) listing in-stock vs. configured-not-stock parts, and `buildSpecSection`
 lists custom parts as usable `type`s. `parseBuild` resolves those via `findCustomKind` (by kind,
 slug, label or part number), so library parts round-trip through **AI build**.
+
+The toolbar's **AI assist** button opens `AiAssistModal.vue`, which bundles every AI exchange in
+one place: **Copy design prompt** (`buildSheetMarkdown` — full prompt), **Copy board only**
+(`buildStateMarkdown` — just the current wiring, no instructions/inventory, for asking about the
+existing circuit), **Download .md**, an **only use parts in stock** toggle (`{inStockOnly:true}`,
+limiting both the inventory list and the listed part `type`s to parts marked in stock — the
+`custom` board-builder is always kept), and the paste-a-reply **Build** box. The modal emits
+`build(text)`; the view parses it with `parseBuild` (which resolves custom parts via
+`findCustomKind` by kind, slug, label or part number) and applies it to the sheet.
 
 ## Extending
 

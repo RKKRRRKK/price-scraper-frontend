@@ -65,16 +65,30 @@
             ></button>
           </div>
 
+          <button
+            class="btn-ghost btn-sm lock-btn"
+            :class="{ on: locked }"
+            @click="toggleLock"
+            :title="locked ? 'Board locked — parts can\'t be moved. Click to unlock.' : 'Lock the board so parts can\'t be moved by accident'"
+          >
+            <i :class="locked ? 'pi pi-lock' : 'pi pi-lock-open'" style="font-size: 0.75rem"></i>
+            {{ locked ? 'Locked' : 'Lock' }}
+          </button>
+
+          <div class="depth-ctrl" title="On hover, how many connections out from a part to highlight">
+            <i class="pi pi-sitemap" style="font-size: 0.72rem"></i>
+            <button class="step" :disabled="highlightDepth <= 0" @click="highlightDepth = Math.max(0, highlightDepth - 1)">−</button>
+            <span class="depth-val">{{ highlightDepth }}</span>
+            <button class="step" :disabled="highlightDepth >= 6" @click="highlightDepth = Math.min(6, highlightDepth + 1)">+</button>
+          </div>
+
           <div class="toolbar-spacer"></div>
 
           <span v-if="store.saving" class="save-dot"><i class="pi pi-spin pi-spinner" style="font-size: 0.7rem"></i> saving…</span>
 
           <button class="btn-ghost btn-sm" @click="fitView" title="Fit to view"><i class="pi pi-window-maximize" style="font-size: 0.75rem"></i></button>
-          <button class="btn-ghost btn-sm" @click="openImport" title="Build from an AI reply"><i class="pi pi-sparkles" style="font-size: 0.75rem"></i> AI build</button>
-          <button class="btn-ghost btn-sm" @click="downloadMd" title="Download .md"><i class="pi pi-download" style="font-size: 0.75rem"></i> .md</button>
-          <button class="btn-primary btn-sm" @click="copyMd">
-            <i :class="copied ? 'pi pi-check' : 'pi pi-copy'" style="font-size: 0.75rem"></i>
-            {{ copied ? 'Copied!' : 'Copy as MD' }}
+          <button class="btn-primary btn-sm" @click="openAi" title="Copy a prompt for an AI assistant, or build the board from its reply">
+            <i class="pi pi-sparkles" style="font-size: 0.75rem"></i> AI assist
           </button>
           <button class="icon-btn danger" @click="removeSheet" title="Delete sheet"><i class="pi pi-trash" style="font-size: 0.8rem"></i></button>
         </div>
@@ -102,6 +116,8 @@
               :wire-color="wireColor"
               :wire-gauge="wireGauge"
               :wire-type="wireType"
+              :locked="locked"
+              :highlight-depth="highlightDepth"
               @add="onAdd"
               @move="onMove"
               @select="onSelect"
@@ -177,34 +193,14 @@
       </div>
     </div>
 
-    <!-- ── AI build (import) modal ── -->
-    <div v-if="importOpen" class="modal-backdrop" @click.self="importOpen = false">
-      <div class="modal modal-wide">
-        <div class="modal-head">
-          <span class="modal-title">Build from an AI reply</span>
-          <button class="modal-close" @click="importOpen = false"><i class="pi pi-times" style="font-size: 0.85rem"></i></button>
-        </div>
-        <div class="modal-body">
-          <p class="hint">
-            Copy this sheet as MD, ask an assistant to design something, then paste its reply
-            here. The app reads the <code>json</code> build block and constructs the layout.
-          </p>
-          <textarea
-            v-model="importText"
-            rows="10"
-            class="import-area"
-            placeholder='Paste the assistant&apos;s reply (it should contain a ```json build block)…'
-          ></textarea>
-          <p v-if="importError" class="import-error">{{ importError }}</p>
-        </div>
-        <div class="modal-foot">
-          <button class="add-btn" :disabled="!importText.trim()" @click="buildFromText">
-            <i class="pi pi-bolt" style="font-size: 0.8rem"></i> Build
-          </button>
-          <button class="btn-ghost" @click="importOpen = false">Cancel</button>
-        </div>
-      </div>
-    </div>
+    <!-- ── AI assist modal (copy prompt / build from reply) ── -->
+    <AiAssistModal
+      :open="aiOpen"
+      :sheet="aiSheet"
+      :build-error="importError"
+      @build="buildFromText"
+      @close="aiOpen = false"
+    />
 
     <!-- ── Custom board modal ── -->
     <CustomBoardModal :open="customOpen" @close="customOpen = false" @create="addCustomBoard" />
@@ -240,13 +236,13 @@ import Inspector from '@/components/breadboard/Inspector.vue'
 import CustomBoardModal from '@/components/breadboard/CustomBoardModal.vue'
 import PartCreatorModal from '@/components/breadboard/PartCreatorModal.vue'
 import PartLibraryModal from '@/components/breadboard/PartLibraryModal.vue'
+import AiAssistModal from '@/components/breadboard/AiAssistModal.vue'
 import {
   makeItem, resetLabelCounters, BREADBOARD_LIST,
   listBuiltinParts, listCustomParts, getTemplate,
 } from '@/lib/breadboard/templates'
 import { getBreadboardLayout, PITCH, pinEndpointId } from '@/lib/breadboard/geometry'
 import { computeNets } from '@/lib/breadboard/nets'
-import { buildSheetMarkdown, copyToClipboard, downloadTextFile, slugify } from '@/lib/breadboard/markdown'
 import { parseBuild } from '@/lib/breadboard/importBuild'
 
 const store = useBreadboardStore()
@@ -259,7 +255,6 @@ const creatorOpen = ref(false)
 const libraryOpen = ref(false)
 const editingPart = ref(null)
 const creating = ref(false)
-const copied = ref(false)
 
 const selectedId = ref(null)
 const selectedWire = ref(null)
@@ -267,10 +262,11 @@ const tool = ref(null)
 const wireColor = ref('#16a34a')
 const wireGauge = ref(22)
 const wireType = ref('M-M')
+const locked = ref(false)
+const highlightDepth = ref(1) // hover-highlight reach, in wire hops
 const canvasRef = ref(null)
 
-const importOpen = ref(false)
-const importText = ref('')
+const aiOpen = ref(false)
 const importError = ref('')
 const importWarnings = ref([])
 
@@ -360,6 +356,10 @@ function changeSize(type) {
 }
 function fitView() {
   canvasRef.value?.fit()
+}
+function toggleLock() {
+  locked.value = !locked.value
+  if (locked.value) tool.value = null // drop any place/wire tool while locked
 }
 
 // ── canvas ops ──
@@ -554,7 +554,7 @@ function placeFromLibrary(kind) {
   libraryOpen.value = false
 }
 
-// ── markdown ──
+// ── AI assist ──
 // Catalogue passed to the exporter: every library part plus what's in stock, so
 // the assistant designs with parts the user actually has.
 function libraryCatalog() {
@@ -565,34 +565,21 @@ function libraryCatalog() {
   }))
   return { parts, customParts: customs }
 }
-function currentSheet() {
-  return {
-    name: store.activeSheet?.name,
-    data: data.value,
-    updated_at: store.activeSheet?.updated_at,
-    library: libraryCatalog(),
-  }
-}
-async function copyMd() {
-  const ok = await copyToClipboard(buildSheetMarkdown(currentSheet()))
-  if (ok) {
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1600)
-  }
-}
-function downloadMd() {
-  downloadTextFile(`${slugify(store.activeSheet?.name || 'breadboard')}.md`, buildSheetMarkdown(currentSheet()), 'text/markdown')
-}
-
-// ── AI build (import) ──
-function openImport() {
+// Snapshot handed to AiAssistModal for building the markdown prompt/export.
+const aiSheet = computed(() => ({
+  name: store.activeSheet?.name,
+  data: data.value,
+  updated_at: store.activeSheet?.updated_at,
+  library: libraryCatalog(),
+}))
+function openAi() {
   importError.value = ''
-  importText.value = ''
-  importOpen.value = true
+  aiOpen.value = true
 }
-function buildFromText() {
+// Build the board from an assistant's reply (the modal emits the pasted text).
+function buildFromText(text) {
   importError.value = ''
-  const res = parseBuild(importText.value)
+  const res = parseBuild(text)
   if (!res.ok) { importError.value = res.error; return }
   if (data.value && data.value.items.length && !window.confirm('Replace the current sheet with this build?')) return
   const d = res.data
@@ -606,8 +593,7 @@ function buildFromText() {
   resetLabelCounters(d.items)
   persist()
   importWarnings.value = res.warnings || []
-  importOpen.value = false
-  importText.value = ''
+  aiOpen.value = false
   nextTick(() => canvasRef.value?.fit())
 }
 </script>
@@ -792,6 +778,50 @@ function buildFromText() {
   align-items: center;
   gap: 0.25rem;
 }
+.lock-btn.on {
+  background: var(--bb-accent-050);
+  border-color: var(--bb-accent);
+  color: var(--bb-accent-600);
+  font-weight: 600;
+}
+.depth-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border: 1px solid var(--bb-border);
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.3rem;
+  background: #fff;
+  color: var(--bb-text-faint);
+}
+.depth-ctrl .step {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 1.15rem;
+  height: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 0.3rem;
+  color: var(--bb-text-dim);
+}
+.depth-ctrl .step:hover:not(:disabled) {
+  background: var(--bb-sunken);
+}
+.depth-ctrl .step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.depth-val {
+  min-width: 0.9rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bb-text);
+}
 
 .workspace {
   flex: 1;
@@ -950,34 +980,6 @@ function buildFromText() {
   gap: 0.5rem;
   padding: 0.9rem 1.1rem;
   border-top: 1px solid var(--bb-border-soft);
-}
-.modal-wide {
-  width: min(40rem, 94vw);
-}
-.hint {
-  font-size: 0.78rem;
-  color: var(--bb-text-dim);
-  margin: 0;
-}
-.hint code {
-  background: var(--bb-sunken);
-  padding: 0.05rem 0.3rem;
-  border-radius: 0.3rem;
-  font-size: 0.92em;
-}
-.import-area {
-  width: 100%;
-  border: 1px solid var(--bb-border);
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.65rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
-  resize: vertical;
-}
-.import-error {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #b91c1c;
 }
 
 /* ── import warning banner ── */

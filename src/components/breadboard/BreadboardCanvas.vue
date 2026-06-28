@@ -77,6 +77,8 @@ const props = defineProps({
   wireColor: { type: String, default: '#16a34a' },
   wireGauge: { type: Number, default: 22 },
   wireType: { type: String, default: 'M-M' },
+  locked: { type: Boolean, default: false },
+  highlightDepth: { type: Number, default: 1 },
 })
 const emit = defineEmits(['add', 'move', 'select', 'add-wire', 'remove-wire', 'delete-selected', 'placed', 'cancel'])
 
@@ -202,44 +204,47 @@ const activeFocus = computed(() => {
   if (props.selectedId) return { type: 'item', id: props.selectedId }
   return null
 })
-// Local connectivity maps. We deliberately stop at the breadboard *strip* level
-// (a column-half or rail segment) and never merge strips through wires — so a
-// part lights up only the cables on its own strips and the part one hop away,
-// rather than the whole power/ground network.
+// Local connectivity maps. We expand outward from the focused element by
+// "hops" — each hop crosses one jumper wire. Parts sharing a copper strip
+// (a column-half or rail segment, no wire between them) are always lit together
+// as one region; the highlight-depth control governs how many wire-hops further
+// we keep lit, rather than always stopping at the single part one hop away.
+//
+// A "terminal" is the unit a wire actually lands on: a strip group, or — for a
+// standalone part wired straight to its pins — a bare pin endpoint.
 const connectivity = computed(() => {
   const holesById = sceneLayout.value?.holesById || {}
   const epOwner = new Map() // pin endpoint id → item id
-  const epGroup = new Map() // pin endpoint id → strip group
+  const epGroup = new Map() // pin endpoint id → strip group (when plugged in)
   const groupParts = new Map() // strip group → Set(item id)
+  const termParts = new Map() // terminal id → Set(item id)
+  const itemTerminals = new Map() // item id → Set(terminal id)
+  const addTo = (map, key, val) => {
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key).add(val)
+  }
   for (const it of props.data.items || []) {
     for (const pin of it.pins || []) {
       const ep = pinEndpointId(it, pin)
       epOwner.set(ep, it.id)
       const g = pin.hole ? holesById[pin.hole]?.group : null
-      if (g) {
-        epGroup.set(ep, g)
-        if (!groupParts.has(g)) groupParts.set(g, new Set())
-        groupParts.get(g).add(it.id)
-      }
+      const term = g ? `grp:${g}` : `pin:${ep}`
+      if (g) { epGroup.set(ep, g); addTo(groupParts, g, it.id) }
+      addTo(termParts, term, it.id)
+      addTo(itemTerminals, it.id, term)
     }
   }
-  return { holesById, epOwner, epGroup, groupParts }
+  return { holesById, epOwner, epGroup, groupParts, termParts, itemTerminals }
 })
-function groupOfEndpoint(ep) {
-  const c = connectivity.value
-  if (isPinEndpoint(ep)) return c.epGroup.get(ep) || null
-  return c.holesById[ep]?.group || null
-}
-// Add the part(s) directly attached to a wire endpoint (its pin owner, or any
-// part plugged into that hole's strip). Rails carry no parts, so they end here.
-function addEndpointParts(ep, out) {
+// Resolve a wire endpoint (a hole id, or a pin endpoint) to its terminal key.
+function terminalOf(ep) {
   const c = connectivity.value
   if (isPinEndpoint(ep)) {
-    const o = c.epOwner.get(ep); if (o) out.add(o)
-  } else {
-    const g = c.holesById[ep]?.group
-    if (g && c.groupParts.has(g)) for (const id of c.groupParts.get(g)) out.add(id)
+    const g = c.epGroup.get(ep)
+    return g ? `grp:${g}` : `pin:${ep}`
   }
+  const g = c.holesById[ep]?.group
+  return g ? `grp:${g}` : null
 }
 // Set of { items, wires } to keep lit; null ⇒ dim nothing.
 const highlight = computed(() => {
@@ -247,36 +252,53 @@ const highlight = computed(() => {
   if (!f) return null
   const c = connectivity.value
   const wlist = props.data.wires || []
+  const depth = Math.max(0, props.highlightDepth ?? 1)
+
   const items = new Set()
   const wires = new Set()
+  const terminals = new Set()
+
+  // Pull in a part together with every strip it bridges and the other parts on
+  // those strips — transitively, all without crossing a wire (one copper region).
+  function reachItem(id) {
+    if (items.has(id)) return
+    items.add(id)
+    for (const t of c.itemTerminals.get(id) || []) reachTerminal(t)
+  }
+  function reachTerminal(t) {
+    if (!t || terminals.has(t)) return
+    terminals.add(t)
+    for (const pid of c.termParts.get(t) || []) reachItem(pid)
+  }
+
+  // Seed level 0 (the copper region touching the focus).
+  let hops = depth
   if (f.type === 'wire') {
     const w = wlist.find((x) => x.id === f.id)
     if (!w) return null
     wires.add(w.id)
-    addEndpointParts(w.from, items)
-    addEndpointParts(w.to, items)
+    reachTerminal(terminalOf(w.from))
+    reachTerminal(terminalOf(w.to))
+    hops = depth - 1 // the focused wire itself spends the first hop
   } else {
-    const it = (props.data.items || []).find((x) => x.id === f.id)
-    items.add(f.id)
-    if (it) {
-      const focusEps = new Set()
-      const focusGroups = new Set()
-      for (const pin of it.pins || []) {
-        const ep = pinEndpointId(it, pin)
-        focusEps.add(ep)
-        const g = c.epGroup.get(ep); if (g) focusGroups.add(g)
-      }
-      // parts sharing a strip with this one (directly bridged, no wire)
-      for (const g of focusGroups) for (const id of c.groupParts.get(g) || []) items.add(id)
-      // cables landing on this part's strips/pins + the part one hop away
-      for (const w of wlist) {
-        const fromHit = focusEps.has(w.from) || focusGroups.has(groupOfEndpoint(w.from))
-        const toHit = focusEps.has(w.to) || focusGroups.has(groupOfEndpoint(w.to))
-        if (!fromHit && !toHit) continue
-        wires.add(w.id)
-        addEndpointParts(fromHit ? w.to : w.from, items)
-      }
+    reachItem(f.id)
+  }
+
+  // Each hop lights up one more layer of jumper wires and what they reach.
+  for (let i = 0; i < hops; i++) {
+    const next = new Set()
+    for (const w of wlist) {
+      const tf = terminalOf(w.from)
+      const tt = terminalOf(w.to)
+      const fHit = tf && terminals.has(tf)
+      const tHit = tt && terminals.has(tt)
+      if (!fHit && !tHit) continue
+      wires.add(w.id)
+      if (fHit && tt && !terminals.has(tt)) next.add(tt)
+      if (tHit && tf && !terminals.has(tf)) next.add(tf)
     }
+    if (!next.size) break
+    for (const t of next) reachTerminal(t)
   }
   return { items, wires }
 })
@@ -339,8 +361,10 @@ function placeAt(kind, p) {
 // ── pointer handlers ──
 function onDown(e) {
   const p = toSvg(e)
-  if (props.tool?.type === 'place') { placeAt(props.tool.kind, p); return }
-  if (props.tool?.type === 'wire') {
+  // a locked board still selects + pans for inspection, but never places,
+  // wires, or moves anything — so the layout can't be nudged by accident.
+  if (!props.locked && props.tool?.type === 'place') { placeAt(props.tool.kind, p); return }
+  if (!props.locked && props.tool?.type === 'wire') {
     const ep = nearestEndpoint(p)
     if (!ep) return
     if (!wireStart.value) wireStart.value = ep
@@ -368,6 +392,7 @@ function onDown(e) {
     const hit = itemsById.value[picked.id]
     emit('select', { type: 'item', id: hit.id })
     hover.value = null
+    if (props.locked) return // selected for inspection, but no dragging
     const standalone = (hit.placement || getTemplate(hit.kind)?.placement) === 'standalone'
     const anchor = standalone
       ? { x: hit.x, y: hit.y }
@@ -474,6 +499,7 @@ function onKey(e) {
     e.preventDefault()
     panMode.value = true
   } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (props.locked) return // no destructive edits while locked
     e.preventDefault()
     emit('delete-selected')
   }
