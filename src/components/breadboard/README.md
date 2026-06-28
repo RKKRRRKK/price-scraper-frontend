@@ -198,9 +198,9 @@ offers `ICON_FILES` in a picker. Missing icon → `circuit_board_general.svg` fa
 **Add a board:** add to `BOARDS` in `templates.js` with `pins` carrying `{ id, name, side, order }`
 (side `L`/`R`) and an `icon`; it renders via `getBoardLayout()` automatically.
 
-**Add a stock-only consumable:** append to `CONSUMABLES` in `templates.js`
-(`{ kind, label, group, icon }`). These have no pins/body — they appear in the Library
-(toggle in stock) and the AI inventory, but can't be placed on a sheet (`stockOnly: true`).
+**Stock / inventory:** every catalogue part is placeable. The star in the Library marks a
+part "in stock" (stored per-user in `breadboard_library.stock`); that drives the AI "Parts
+inventory" section so designs prefer parts on hand. There is no separate non-placeable tier.
 
 ---
 

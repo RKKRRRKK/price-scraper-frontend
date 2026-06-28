@@ -104,9 +104,9 @@ export const COMPONENTS = {
     body: 'led',
   }),
   cap_104: comp({
-    kind: 'cap_104', label: 'Ceramic cap 100nF (104)', group: 'core', icon: 'capacitor_ceramic.svg',
+    kind: 'cap_104', label: 'Ceramic capacitor', group: 'core', icon: 'capacitor_ceramic.svg',
     pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
-    span: 2, defaultProps: { value: '100nF', code: '104' },
+    span: 2, defaultProps: { value: '100nF' },
     body: 'ceramic-cap',
   }),
   button: comp({
@@ -546,11 +546,26 @@ export const COMPONENTS = {
     accent: '#ca8a04',
     pins: pinsFrom(['VBUS', 'D-', 'D+', 'ID', 'GND']),
   }),
+  breadboard_psu: mod({
+    kind: 'breadboard_psu', label: 'Breadboard PSU (3.3V/5V)', group: 'power', icon: 'power_supply_plug.svg', labelPrefix: 'PWR',
+    accent: '#ca8a04',
+    pins: pinsFrom(['VIN', '+5V', '+3.3V', 'GND']),
+  }),
+  battery_holder: mod({
+    kind: 'battery_holder', label: 'Battery holder', group: 'power', icon: 'aa_battery.svg', labelPrefix: 'BAT',
+    accent: '#ca8a04',
+    pins: [{ id: 'pos', name: '+' }, { id: 'neg', name: '−' }],
+  }),
 
   // ── Passives & protection (placeable) ──
   inductor: comp({
     kind: 'inductor', label: 'Inductor', group: 'passives', icon: 'inductor.svg', labelPrefix: 'L',
-    body: 'inductor', span: 4,
+    body: 'inductor', span: 4, defaultProps: { value: '100µH' },
+    pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
+  }),
+  fuse: comp({
+    kind: 'fuse', label: 'Fuse', group: 'passives', icon: 'diode.svg', labelPrefix: 'F',
+    body: 'fuse', span: 3, defaultProps: { rating: '500mA' },
     pins: [{ id: 'a', name: '1' }, { id: 'b', name: '2' }],
   }),
   electrolytic_cap: comp({
@@ -663,30 +678,6 @@ export const BOARDS = {
 }
 export const BOARD_LIST = Object.values(BOARDS)
 
-// ── Stock-only consumables ───────────────────────────────────────────────────
-// Catalogue entries the user can mark in stock (so the AI inventory is complete)
-// but which have no meaningful breadboard pin layout — never placed on a sheet.
-export const CONSUMABLES = [
-  { kind: 'breadboard_830', label: 'Breadboard 830-pt', group: 'power', icon: 'breadboard.svg' },
-  { kind: 'breadboard_400', label: 'Breadboard 400-pt', group: 'power', icon: 'breadboard.svg' },
-  { kind: 'breadboard_170', label: 'Breadboard 170-pt', group: 'power', icon: 'breadboard.svg' },
-  { kind: 'jumper_wires', label: 'Jumper wires (M-M/M-F/F-F)', group: 'power', icon: 'electric_wire.svg' },
-  { kind: 'solid_core_wire', label: 'Solid core wire (22 AWG)', group: 'power', icon: 'electric_wire.svg' },
-  { kind: 'test_leads', label: 'Alligator test leads', group: 'power', icon: 'electric_wire.svg' },
-  { kind: 'ribbon_cable', label: '40-pin ribbon cable', group: 'power', icon: 'dupont_header.svg' },
-  { kind: 'pin_headers', label: 'Pin headers (2.54mm)', group: 'power', icon: 'dupont_header.svg' },
-  { kind: 'screw_terminals', label: 'Screw terminals', group: 'power', icon: 'dupont_header.svg' },
-  { kind: 'jst_connectors', label: 'JST connectors', group: 'power', icon: 'dupont_header.svg' },
-  { kind: 'breadboard_psu', label: 'Breadboard PSU (3.3V/5V)', group: 'power', icon: 'power_supply_plug.svg' },
-  { kind: 'battery_holder', label: 'Battery holders (AA/18650/CR2032)', group: 'power', icon: 'aa_battery.svg' },
-  { kind: 'resistor_kit', label: 'Resistor assortment (1/4W)', group: 'passives', icon: 'resistor.svg' },
-  { kind: 'ceramic_cap_kit', label: 'Ceramic capacitor kit', group: 'passives', icon: 'capacitor_ceramic.svg' },
-  { kind: 'electrolytic_cap_kit', label: 'Electrolytic capacitor kit', group: 'passives', icon: 'capacitor_electrolytic.svg' },
-  { kind: 'inductor_kit', label: 'Inductor assortment', group: 'passives', icon: 'inductor.svg' },
-  { kind: 'diode_kit', label: 'Diode kit (1N4007/4148/Schottky/Zener)', group: 'passives', icon: 'diode.svg' },
-  { kind: 'fuses', label: 'Fuses (PTC / glass)', group: 'passives', icon: 'diode.svg' },
-].map((c) => ({ ...c, partNumber: c.partNumber || '', placement: 'inline', pins: [], stockOnly: true }))
-
 // ── Palette / library grouping ───────────────────────────────────────────────
 // Single source of truth for group labels + order, shared by the library modal
 // and the AI build-spec. Built from the template data so new parts appear
@@ -728,9 +719,7 @@ export const ICON_FILES = [
 // Resolve a part's icon to a served URL. Falls back to a generic board icon.
 const ICON_BASE = import.meta.env.BASE_URL + 'icons/'
 export function iconUrl(kindOrTpl) {
-  const tpl = typeof kindOrTpl === 'string'
-    ? (getTemplate(kindOrTpl) || CONSUMABLES.find((c) => c.kind === kindOrTpl))
-    : kindOrTpl
+  const tpl = typeof kindOrTpl === 'string' ? getTemplate(kindOrTpl) : kindOrTpl
   return ICON_BASE + (tpl?.icon || 'circuit_board_general.svg')
 }
 
@@ -843,7 +832,6 @@ function partMeta(tpl) {
     placement: tpl.placement || 'inline',
     pins: (tpl.pins || []).map((p) => (typeof p === 'string' ? p : p.name)),
     icon: tpl.icon || '',
-    stockOnly: !!tpl.stockOnly,
     custom: !!tpl.custom,
   }
 }
@@ -851,7 +839,6 @@ export function listBuiltinParts() {
   const out = []
   for (const c of COMPONENT_LIST) if (c.kind !== 'wire') out.push(partMeta(c))
   for (const b of BOARD_LIST) out.push(partMeta(b))
-  for (const c of CONSUMABLES) out.push(partMeta(c))
   return out
 }
 export function listCustomParts() {

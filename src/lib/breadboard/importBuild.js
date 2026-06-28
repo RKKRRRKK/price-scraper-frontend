@@ -27,6 +27,9 @@ const KIND_ALIASES = {
   resistor: 'resistor', res: 'resistor', r: 'resistor',
   led: 'led', diode_led: 'led',
   cap: 'cap_104', capacitor: 'cap_104', cap_104: 'cap_104', ceramic_capacitor: 'cap_104', ceramiccap: 'cap_104',
+  electrolytic_cap: 'electrolytic_cap', electrolytic: 'electrolytic_cap', ecap: 'electrolytic_cap',
+  inductor: 'inductor', coil: 'inductor', choke: 'inductor',
+  fuse: 'fuse',
   button: 'button', pushbutton: 'button', switch: 'button',
   diode: 'diode',
   transistor: 'transistor', npn: 'transistor', pnp: 'transistor', bjt: 'transistor',
@@ -68,6 +71,10 @@ function extractProps(kind, part) {
   }
   if (kind === 'led' && part.color) p.color = String(part.color)
   if ((kind === 'diode' || kind === 'transistor' || kind === 'ic') && part.part) p.part = String(part.part)
+  if ((kind === 'cap_104' || kind === 'electrolytic_cap' || kind === 'inductor') && (part.value ?? part.capacitance ?? part.inductance) != null) {
+    p.value = String(part.value ?? part.capacitance ?? part.inductance)
+  }
+  if (kind === 'fuse' && (part.rating ?? part.value) != null) p.rating = String(part.rating ?? part.value)
   return p
 }
 

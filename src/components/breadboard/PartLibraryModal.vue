@@ -55,13 +55,12 @@
                 <span class="part-label">{{ p.label }}</span>
                 <span class="part-meta">
                   <span v-if="p.partNumber" class="part-pn">{{ p.partNumber }}</span>
-                  <span v-if="p.stockOnly" class="part-pins">stock item</span>
-                  <span v-else class="part-pins">{{ p.pins.length }} pin{{ p.pins.length === 1 ? '' : 's' }}</span>
-                  <span v-if="p.placement === 'standalone' && !p.stockOnly" class="part-pins">board</span>
+                  <span class="part-pins">{{ p.pins.length }} pin{{ p.pins.length === 1 ? '' : 's' }}</span>
+                  <span v-if="p.placement === 'standalone'" class="part-pins">board</span>
                 </span>
               </div>
               <span v-if="usedSet.has(p.kind)" class="badge">on sheet</span>
-              <button v-if="!p.stockOnly" class="link-btn" title="Place on sheet" @click="$emit('place', p.kind)">place</button>
+              <button class="link-btn" title="Place on sheet" @click="$emit('place', p.kind)">place</button>
               <template v-if="p.custom">
                 <button class="icon-btn" title="Edit" @click="$emit('edit', p.kind)">
                   <i class="pi pi-pencil" style="font-size: 0.72rem"></i>

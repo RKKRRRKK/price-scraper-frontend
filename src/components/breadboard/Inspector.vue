@@ -23,6 +23,20 @@
       </div>
 
       <div class="field">
+        <label>Type</label>
+        <select :value="wire.type || 'M-M'" @change="$emit('set-wire-type', $event.target.value)">
+          <option v-for="t in WIRE_TYPES" :key="t" :value="t">{{ t }}</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Gauge (AWG)</label>
+        <select :value="String(wire.gauge || 22)" @change="$emit('set-wire-gauge', Number($event.target.value))">
+          <option v-for="g in WIRE_GAUGES" :key="g" :value="String(g)">{{ g }} AWG</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label>Arc</label>
         <button class="dup-btn" @click="$emit('flip-wire-arc')">
           <i class="pi pi-sync" style="font-size: 0.75rem"></i>
@@ -77,6 +91,41 @@
         </select>
       </div>
 
+      <div v-else-if="item.kind === 'cap_104'" class="field">
+        <label>Capacitance</label>
+        <select :value="item.props.value" @change="prop('value', $event.target.value)">
+          <option v-for="v in CERAMIC_CAP_PRESETS" :key="v" :value="v">{{ v }}</option>
+        </select>
+      </div>
+
+      <div v-else-if="item.kind === 'electrolytic_cap'" class="field">
+        <label>Capacitance</label>
+        <select :value="item.props.value" @change="prop('value', $event.target.value)">
+          <option v-for="v in ELECTROLYTIC_CAP_PRESETS" :key="v" :value="v">{{ v }}</option>
+        </select>
+      </div>
+
+      <div v-else-if="item.kind === 'inductor'" class="field">
+        <label>Inductance</label>
+        <select :value="item.props.value" @change="prop('value', $event.target.value)">
+          <option v-for="v in INDUCTOR_PRESETS" :key="v" :value="v">{{ v }}</option>
+        </select>
+      </div>
+
+      <div v-else-if="item.kind === 'diode'" class="field">
+        <label>Type</label>
+        <select :value="item.props.part" @change="prop('part', $event.target.value)">
+          <option v-for="d in DIODE_TYPES" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </div>
+
+      <div v-else-if="item.kind === 'fuse'" class="field">
+        <label>Rating</label>
+        <select :value="item.props.rating" @change="prop('rating', $event.target.value)">
+          <option v-for="r in FUSE_RATINGS" :key="r" :value="r">{{ r }}</option>
+        </select>
+      </div>
+
       <div v-else-if="item.kind === 'ic'" class="field">
         <label>Pin count</label>
         <input
@@ -87,7 +136,7 @@
         <input :value="item.props.part || ''" placeholder="e.g. NE555" @change="prop('part', $event.target.value)" />
       </div>
 
-      <div v-else-if="item.kind === 'transistor' || item.kind === 'diode'" class="field">
+      <div v-else-if="item.kind === 'transistor'" class="field">
         <label>Part</label>
         <input :value="item.props.part || ''" @change="prop('part', $event.target.value)" />
       </div>
@@ -148,12 +197,19 @@ const props = defineProps({
 })
 const emit = defineEmits([
   'rename', 'update-prop', 'set-pin', 'set-pincount', 'delete', 'duplicate',
-  'set-wire-color', 'flip-wire-arc', 'delete-wire', 'set-placement',
+  'set-wire-color', 'set-wire-type', 'set-wire-gauge', 'flip-wire-arc', 'delete-wire', 'set-placement',
 ])
 
 const RES_PRESETS = [1, 10, 22, 47, 100, 150, 220, 330, 470, 680, 1000, 2200, 4700, 10000, 22000, 47000, 100000, 220000, 470000, 1000000]
 const POT_PRESETS = [1000, 5000, 10000, 50000, 100000]
 const LED_COLORS = ['red', 'green', 'blue', 'yellow', 'white', 'orange']
+const CERAMIC_CAP_PRESETS = ['10pF', '22pF', '100pF', '1nF', '10nF', '100nF', '220nF', '1µF']
+const ELECTROLYTIC_CAP_PRESETS = ['1µF', '4.7µF', '10µF', '22µF', '47µF', '100µF', '220µF', '470µF', '1000µF']
+const INDUCTOR_PRESETS = ['1µH', '10µH', '47µH', '100µH', '220µH', '470µH', '1mH', '10mH']
+const DIODE_TYPES = ['1N4148', '1N4001', '1N4007', '1N5819 (Schottky)', '1N5408', '1N4733 (Zener)']
+const FUSE_RATINGS = ['100mA', '200mA', '500mA', '1A', '2A', '3A', '5A']
+const WIRE_TYPES = ['M-M', 'M-F', 'F-F', 'solid core']
+const WIRE_GAUGES = [30, 28, 26, 24, 22, 20]
 
 const tpl = computed(() => getTemplate(props.item?.kind))
 const isStandalone = computed(() => (props.item?.placement || tpl.value?.placement) === 'standalone')

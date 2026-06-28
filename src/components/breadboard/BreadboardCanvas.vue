@@ -75,6 +75,8 @@ const props = defineProps({
   selectedWireId: { type: String, default: null },
   tool: { type: Object, default: null },
   wireColor: { type: String, default: '#16a34a' },
+  wireGauge: { type: Number, default: 22 },
+  wireType: { type: String, default: 'M-M' },
 })
 const emit = defineEmits(['add', 'move', 'select', 'add-wire', 'remove-wire', 'delete-selected', 'placed', 'cancel'])
 
@@ -343,7 +345,7 @@ function onDown(e) {
     if (!ep) return
     if (!wireStart.value) wireStart.value = ep
     else if (ep.id !== wireStart.value.id) {
-      emit('add-wire', { id: uuid(), from: wireStart.value.id, to: ep.id, color: props.wireColor })
+      emit('add-wire', { id: uuid(), from: wireStart.value.id, to: ep.id, color: props.wireColor, gauge: props.wireGauge, type: props.wireType })
       wireStart.value = null
     }
     return

@@ -28,7 +28,13 @@ export function describeItem(item) {
     case 'led':
       return `LED (${p.color || 'red'})`
     case 'cap_104':
-      return 'Ceramic capacitor 100 nF (104)'
+      return `Ceramic capacitor ${p.value || '100nF'}`
+    case 'electrolytic_cap':
+      return `Electrolytic capacitor ${p.value || '10µF'} (polarised)`
+    case 'inductor':
+      return `Inductor ${p.value || ''}`.trim()
+    case 'fuse':
+      return `Fuse ${p.rating || ''}`.trim()
     case 'button':
       return 'Push-button (open until pressed; side 1 ↔ side 2 when down)'
     case 'diode':
@@ -229,11 +235,16 @@ const PROP_HINT = {
   resistor: 'ohms (e.g. 220 or "4.7k")',
   potentiometer: 'ohms',
   led: 'color (red/green/blue/yellow/white/orange)',
+  cap_104: 'value (e.g. "100nF")',
+  electrolytic_cap: 'value (e.g. "10µF")',
+  inductor: 'value (e.g. "100µH")',
+  diode: 'part (e.g. "1N4007")',
+  fuse: 'rating (e.g. "500mA")',
   ic: 'pinCount',
 }
 function specPartLine(kind) {
   const tpl = getTemplate(kind)
-  if (!tpl || tpl.stockOnly) return null
+  if (!tpl) return null
   if (kind === 'ic') return '- `ic` — pins `1`..`N` — prop `pinCount`'
   const names = tpl.pins.map((p) => p.name.replace(/\s*\(.*?\)/g, '')).join(', ')
   const prop = PROP_HINT[kind] ? ` — prop \`${PROP_HINT[kind]}\`` : ''

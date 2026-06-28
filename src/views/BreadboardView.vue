@@ -100,6 +100,8 @@
               :selected-wire-id="selectedWire"
               :tool="tool"
               :wire-color="wireColor"
+              :wire-gauge="wireGauge"
+              :wire-type="wireType"
               @add="onAdd"
               @move="onMove"
               @select="onSelect"
@@ -138,6 +140,8 @@
             @duplicate="duplicateItem"
             @set-placement="setPlacement"
             @set-wire-color="setWireColor"
+            @set-wire-type="setWireType"
+            @set-wire-gauge="setWireGauge"
             @flip-wire-arc="flipWireArc"
             @delete-wire="deleteWire"
           />
@@ -261,6 +265,8 @@ const selectedId = ref(null)
 const selectedWire = ref(null)
 const tool = ref(null)
 const wireColor = ref('#16a34a')
+const wireGauge = ref(22)
+const wireType = ref('M-M')
 const canvasRef = ref(null)
 
 const importOpen = ref(false)
@@ -394,6 +400,14 @@ function onDeleteSelected() {
 function setWireColor(color) {
   const w = selectedWireObj.value
   if (w) { w.color = color; persist() }
+}
+function setWireType(type) {
+  const w = selectedWireObj.value
+  if (w) { w.type = type; wireType.value = type; persist() }
+}
+function setWireGauge(gauge) {
+  const w = selectedWireObj.value
+  if (w) { w.gauge = gauge; wireGauge.value = gauge; persist() }
 }
 function flipWireArc() {
   const w = selectedWireObj.value

@@ -84,6 +84,16 @@
       <rect :x="-bodyHalf + 1.5" y="-5" width="3" height="10" class="diode-band" />
     </g>
 
+    <!-- ════ Fuse (glass cartridge) ════ -->
+    <g v-else-if="body === 'fuse'" :transform="axisTransform">
+      <line :x1="-axis.half" y1="0" :x2="-bodyHalf" y2="0" class="leg" />
+      <line :x1="bodyHalf" y1="0" :x2="axis.half" y2="0" class="leg" />
+      <rect :x="-bodyHalf" y="-6" :width="bodyHalf * 2" height="12" rx="4" class="fuse-glass" />
+      <rect :x="-bodyHalf" y="-6" width="4" height="12" rx="1.5" class="fuse-cap" />
+      <rect :x="bodyHalf - 4" y="-6" width="4" height="12" rx="1.5" class="fuse-cap" />
+      <path :d="`M ${-bodyHalf + 4} 0 L ${bodyHalf - 4} 0`" class="fuse-wire" />
+    </g>
+
     <!-- ════ Push-button ════ -->
     <g v-else-if="body === 'button'" :transform="axisTransform">
       <line :x1="-axis.half" y1="0" x2="-11" y2="0" class="leg" />
@@ -603,6 +613,21 @@ const tagW = computed(() => 12 + (props.item.label?.length || 1) * 6)
   fill: #26252a;
   stroke: #000;
   stroke-width: 0.5px;
+}
+.fuse-glass {
+  fill: rgba(200, 220, 235, 0.45);
+  stroke: #8a9bb0;
+  stroke-width: 1px;
+}
+.fuse-cap {
+  fill: #b8bcc2;
+  stroke: #8a8f96;
+  stroke-width: 0.5px;
+}
+.fuse-wire {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 1.4px;
 }
 .ecap-body {
   fill: #23314a;
