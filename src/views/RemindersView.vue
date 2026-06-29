@@ -30,57 +30,56 @@
         </div>
       </div>
 
-      <div v-else class="reminder-list">
-        <div
-          v-for="r in store.reminders" :key="r.id"
-          class="reminder-card"
-          :class="{ checked: r.checked, overdue: isOverdue(r) }"
-        >
-          <button
-            class="check-btn"
-            :class="{ checked: r.checked }"
-            @click="store.toggleChecked(r.id)"
-            :title="r.checked ? 'Uncheck' : 'Check off'"
-          >
-            <i v-if="r.checked" class="pi pi-check" style="font-size: 0.9375rem;"></i>
-          </button>
-
-          <div class="reminder-body">
-            <div class="reminder-content">{{ r.content }}</div>
-            <div class="reminder-meta">
-              <span class="meta-item">
-                <i class="pi pi-clock" style="font-size: 0.75rem;"></i>
-                Due {{ formatDateTime(r.remind_at) }}
-              </span>
-              <span class="meta-item meta-faint">
-                <i class="pi pi-plus-circle" style="font-size: 0.75rem;"></i>
-                Added {{ formatDateTime(r.created_at) }}
-              </span>
-              <span v-if="r.repeating" class="repeat-pill">
-                <i class="pi pi-refresh" style="font-size: 0.6875rem;"></i>
-                {{ formatRepeat(r.repeat_interval) }}
-              </span>
-            </div>
+      <div v-else class="reminder-columns">
+        <div class="reminder-column">
+          <div class="column-head column-head-overdue">
+            <i class="pi pi-exclamation-triangle" style="font-size: 0.8125rem;"></i>
+            <span>More than 24h overdue</span>
+            <span class="column-count">{{ overdueReminders.length }}</span>
           </div>
-
-          <div class="reminder-actions">
-            <button
-              class="switch"
-              :class="{ on: r.switch_receiver }"
-              role="switch"
-              :aria-checked="r.switch_receiver ? 'true' : 'false'"
-              @click="store.toggleSwitchReceiver(r.id)"
-              :title="r.switch_receiver ? 'Switch receiver: on' : 'Switch receiver: off'"
-            >
-              <span class="switch-knob"></span>
-            </button>
-            <button class="icon-btn" @click="openEditModal(r)" title="Edit">
-              <i class="pi pi-pencil" style="font-size: 0.875rem;"></i>
-            </button>
-            <button class="icon-btn icon-danger" @click="confirmDelete(r.id)" title="Delete">
-              <i class="pi pi-trash" style="font-size: 0.875rem;"></i>
-            </button>
+          <div v-if="overdueReminders.length" class="reminder-list">
+            <ReminderCard
+              v-for="r in overdueReminders" :key="r.id"
+              :reminder="r"
+              @edit="openEditModal"
+              @delete="confirmDelete"
+            />
           </div>
+          <div v-else class="column-empty">Nothing here</div>
+        </div>
+
+        <div class="reminder-column">
+          <div class="column-head">
+            <i class="pi pi-clock" style="font-size: 0.8125rem;"></i>
+            <span>Within 24h</span>
+            <span class="column-count">{{ dueSoonReminders.length }}</span>
+          </div>
+          <div v-if="dueSoonReminders.length" class="reminder-list">
+            <ReminderCard
+              v-for="r in dueSoonReminders" :key="r.id"
+              :reminder="r"
+              @edit="openEditModal"
+              @delete="confirmDelete"
+            />
+          </div>
+          <div v-else class="column-empty">Nothing here</div>
+        </div>
+
+        <div class="reminder-column">
+          <div class="column-head column-head-upcoming">
+            <i class="pi pi-calendar" style="font-size: 0.8125rem;"></i>
+            <span>Due in more than 24h</span>
+            <span class="column-count">{{ upcomingReminders.length }}</span>
+          </div>
+          <div v-if="upcomingReminders.length" class="reminder-list">
+            <ReminderCard
+              v-for="r in upcomingReminders" :key="r.id"
+              :reminder="r"
+              @edit="openEditModal"
+              @delete="confirmDelete"
+            />
+          </div>
+          <div v-else class="column-empty">Nothing here</div>
         </div>
       </div>
     </div>
@@ -113,6 +112,48 @@
               <input type="checkbox" v-model="form.repeating" />
               Repeating
             </label>
+          </div>
+
+          <div class="field toggle-row">
+            <div class="toggle-row-text">
+              <div class="toggle-row-title">
+                <i class="pi pi-arrow-right-arrow-left" style="font-size: 0.75rem;"></i>
+                Switch receiver
+              </div>
+              <div class="toggle-row-desc">Route this reminder to the alternate receiver instead of the default.</div>
+            </div>
+            <button
+              type="button"
+              class="switch"
+              :class="{ on: form.switch_receiver }"
+              role="switch"
+              :aria-checked="form.switch_receiver ? 'true' : 'false'"
+              aria-label="Switch receiver"
+              @click="form.switch_receiver = !form.switch_receiver"
+            >
+              <span class="switch-knob"></span>
+            </button>
+          </div>
+
+          <div class="field toggle-row">
+            <div class="toggle-row-text">
+              <div class="toggle-row-title">
+                <i class="pi pi-bolt" style="font-size: 0.75rem;"></i>
+                Trigger once
+              </div>
+              <div class="toggle-row-desc">Fire a single time, then stop. Turn off to keep it firing.</div>
+            </div>
+            <button
+              type="button"
+              class="switch"
+              :class="{ on: form.trigger_once }"
+              role="switch"
+              :aria-checked="form.trigger_once ? 'true' : 'false'"
+              aria-label="Trigger once"
+              @click="form.trigger_once = !form.trigger_once"
+            >
+              <span class="switch-knob"></span>
+            </button>
           </div>
 
           <div v-if="form.repeating" class="field">
@@ -155,10 +196,36 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRemindersStore } from '@/stores/reminders'
+import ReminderCard from '@/components/ReminderCard.vue'
 import dayjs from 'dayjs'
 
 const store = useRemindersStore()
 onMounted(() => store.fetchReminders())
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+const sortedReminders = computed(() =>
+  [...store.reminders].sort((a, b) => new Date(a.remind_at) - new Date(b.remind_at))
+)
+
+// Bucket by how far remind_at sits from "now", using a 24h window on either side.
+const overdueReminders = computed(() => {
+  const cutoff = Date.now() - DAY_MS
+  return sortedReminders.value.filter(r => new Date(r.remind_at).getTime() < cutoff)
+})
+
+const dueSoonReminders = computed(() => {
+  const now = Date.now()
+  return sortedReminders.value.filter(r => {
+    const t = new Date(r.remind_at).getTime()
+    return t >= now - DAY_MS && t <= now + DAY_MS
+  })
+})
+
+const upcomingReminders = computed(() => {
+  const cutoff = Date.now() + DAY_MS
+  return sortedReminders.value.filter(r => new Date(r.remind_at).getTime() > cutoff)
+})
 
 const modalOpen = ref(false)
 const modalMode = ref('add')
@@ -182,6 +249,8 @@ function emptyForm() {
     remind_at: '',
     repeating: false,
     days: [],
+    switch_receiver: false,
+    trigger_once: true,
   }
 }
 
@@ -199,19 +268,6 @@ function toggleDay(d) {
 }
 
 function setDays(days) { form.value.days = [...days] }
-
-function formatRepeat(intervalStr) {
-  const days = parseDays(intervalStr)
-  if (!days.length) return 'repeating'
-  if (days.length === 7) return 'Every day'
-  const weekdays = [1,2,3,4,5]
-  if (days.length === 5 && weekdays.every(d => days.includes(d))) return 'Weekdays'
-  if (days.length === 2 && days.includes(0) && days.includes(6)) return 'Weekends'
-  const order = [1,2,3,4,5,6,0]
-  return order.filter(d => days.includes(d))
-    .map(d => DAYS.find(x => x.value === d).label)
-    .join(', ')
-}
 
 const canSubmit = computed(() =>
   form.value.content.trim()
@@ -233,6 +289,8 @@ function openEditModal(r) {
     remind_at: dayjs(r.remind_at).format('YYYY-MM-DDTHH:mm'),
     repeating: !!r.repeating,
     days: parseDays(r.repeat_interval),
+    switch_receiver: !!r.switch_receiver,
+    trigger_once: r.trigger_once !== false,
   }
   modalOpen.value = true
 }
@@ -248,6 +306,8 @@ async function submitModal() {
       remind_at: new Date(form.value.remind_at).toISOString(),
       repeating: form.value.repeating,
       repeat_interval: form.value.repeating ? form.value.days.slice().sort().join(',') : null,
+      switch_receiver: form.value.switch_receiver,
+      trigger_once: form.value.trigger_once,
     }
     if (modalMode.value === 'add') {
       await store.addReminder(payload)
@@ -265,14 +325,6 @@ async function submitModal() {
 async function confirmDelete(id) {
   if (!confirm('Delete this reminder?')) return
   await store.deleteReminder(id)
-}
-
-function formatDateTime(ts) {
-  return ts ? dayjs(ts).format('MMM D, YYYY · h:mm A') : ''
-}
-
-function isOverdue(r) {
-  return !r.checked && r.remind_at && new Date(r.remind_at) < new Date()
 }
 </script>
 
@@ -312,8 +364,8 @@ function isOverdue(r) {
 .reminders-app input, .reminders-app select, .reminders-app textarea { font: inherit; color: inherit; }
 
 .reminders-main {
-  padding: 2.25rem 1.5rem 5rem;
-  max-width: 50rem;
+  padding: 2.25rem 2rem 5rem;
+  max-width: min(160rem, 96vw);
   margin: 0 auto;
   width: 100%;
 }
@@ -362,16 +414,6 @@ function isOverdue(r) {
 .reminders-app .btn-ghost:hover { border-color: var(--text-faint); color: var(--text); background: var(--bg-sunken); }
 .reminders-app .btn-ghost.btn-danger:hover { border-color: #f5c5c5; background: #fff0f0; color: #c33; }
 
-.reminders-app .icon-btn {
-  width: 2rem; height: 2rem;
-  border-radius: 0.5rem;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-faint);
-  transition: all 120ms;
-}
-.reminders-app .icon-btn:hover { background: var(--bg-sunken); color: var(--text); }
-.reminders-app .icon-danger:hover { background: #fff0f0; color: #c33; }
-
 .reminders-app .modal-close {
   width: 2rem; height: 2rem; border-radius: 0.5rem;
   display: flex; align-items: center; justify-content: center;
@@ -380,75 +422,55 @@ function isOverdue(r) {
 }
 .reminders-app .modal-close:hover { background: var(--bg-sunken); color: var(--text); }
 
+.reminder-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rem;
+  align-items: start;
+}
+
+.reminder-column {
+  display: flex; flex-direction: column; gap: 0.875rem;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.column-head {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8125rem; font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  padding: 0 0.25rem 0.625rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+.column-head .pi { color: var(--text-faint); }
+.column-head-overdue { color: oklch(0.55 0.18 25); }
+.column-head-overdue .pi { color: oklch(0.6 0.18 25); }
+.column-head-upcoming { color: var(--accent-600); }
+.column-head-upcoming .pi { color: var(--accent-500); }
+
+.column-count {
+  margin-left: auto;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 0.4375rem;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-size: 0.75rem; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.column-empty {
+  font-size: 0.8125rem; color: var(--text-faint);
+  text-align: center;
+  padding: 1.5rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
 .reminder-list {
   display: flex; flex-direction: column; gap: 0.875rem;
-}
-
-.reminder-card {
-  display: flex; align-items: flex-start; gap: 1rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.125rem 1.25rem;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 120ms, transform 120ms, box-shadow 120ms, opacity 120ms;
-}
-.reminder-card:hover {
-  border-color: var(--accent-400);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow);
-}
-.reminder-card.checked { opacity: 0.55; }
-.reminder-card.checked .reminder-content { text-decoration: line-through; color: var(--text-faint); }
-.reminder-card.overdue { border-left: 3px solid oklch(0.6 0.18 25); }
-
-.check-btn {
-  width: 1.625rem; height: 1.625rem;
-  border-radius: 50%;
-  border: 2px solid var(--border) !important;
-  background: #fff;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  transition: all 120ms;
-  margin-top: 0.125rem;
-}
-.check-btn:hover { border-color: var(--accent-400) !important; background: var(--accent-050); }
-.check-btn.checked {
-  background: var(--accent-500);
-  border-color: var(--accent-500) !important;
-  color: #fff;
-}
-
-.reminder-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.reminder-content {
-  font-size: 1rem; font-weight: 500; color: var(--text);
-  line-height: 1.45;
-  word-wrap: break-word;
-}
-
-.reminder-meta {
-  display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center;
-}
-.meta-item {
-  display: inline-flex; align-items: center; gap: 0.375rem;
-  font-size: 0.8125rem; color: var(--text-dim);
-}
-.meta-faint { color: var(--text-faint); }
-
-.repeat-pill {
-  display: inline-flex; align-items: center; gap: 0.375rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: capitalize;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  background: var(--accent-100);
-  color: var(--accent-600);
-}
-
-.reminder-actions {
-  display: flex; gap: 0.375rem; align-items: center;
-  flex-shrink: 0;
 }
 
 .reminders-app .switch {
@@ -458,7 +480,6 @@ function isOverdue(r) {
   position: relative;
   flex-shrink: 0;
   transition: background 140ms;
-  margin-right: 0.25rem;
 }
 .reminders-app .switch.on { background: var(--accent-500); }
 .switch-knob {
@@ -546,6 +567,24 @@ function isOverdue(r) {
 .toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; font-weight: 500; }
 .toggle input { accent-color: var(--accent-500); width: 1rem; height: 1rem; }
 
+.toggle-row {
+  flex-direction: row; align-items: center; justify-content: space-between;
+  gap: 1rem;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.625rem;
+  padding: 0.875rem 1rem;
+}
+.toggle-row-text { display: flex; flex-direction: column; gap: 0.1875rem; min-width: 0; }
+.toggle-row-title {
+  display: inline-flex; align-items: center; gap: 0.4375rem;
+  font-size: 0.875rem; font-weight: 600; color: var(--text);
+  text-transform: none; letter-spacing: normal;
+}
+.toggle-row-title .pi { color: var(--accent-600); }
+.toggle-row-desc { font-size: 0.8125rem; color: var(--text-dim); line-height: 1.4; }
+.toggle-row .switch { cursor: pointer; }
+
 .day-picker-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .day-quick { display: flex; gap: 0.75rem; }
 .reminders-app .link-btn {
@@ -594,20 +633,16 @@ function isOverdue(r) {
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop-in  { from { opacity: 0; transform: translateY(0.375rem) scale(0.97); } to { opacity: 1; transform: none; } }
 
+/* Stack the three buckets once they get too narrow to hold a card comfortably */
+@media (max-width: 61.99em) {
+  .reminder-columns { grid-template-columns: 1fr; gap: 1.75rem; }
+}
+
 @media (max-width: 47.99em) {
   .reminders-main { padding: 1.5rem 1rem 4rem; }
 
   .reminders-header { flex-direction: column; align-items: stretch; gap: 1rem; }
   .reminders-app .add-btn { width: 100%; }
-
-  /* Card collapses to: [check + text] on row 1, actions on row 2 */
-  .reminder-card { flex-wrap: wrap; padding: 1rem; gap: 0.875rem; }
-  .reminder-actions {
-    width: 100%;
-    justify-content: flex-end;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-soft);
-  }
 
   .day-quick { flex-wrap: wrap; gap: 0.5rem; }
 

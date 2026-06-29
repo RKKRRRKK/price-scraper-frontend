@@ -72,6 +72,8 @@ export const useRemindersStore = defineStore('reminders', () => {
         remind_at: r.remind_at,
         repeating: !!r.repeating,
         repeat_interval: r.repeating ? (r.repeat_interval || 'daily') : null,
+        switch_receiver: !!r.switch_receiver,
+        trigger_once: r.trigger_once !== false,
         checked: false,
         checked_at: null,
       }
@@ -141,6 +143,12 @@ export const useRemindersStore = defineStore('reminders', () => {
     return updateReminder(id, { switch_receiver: !r.switch_receiver })
   }
 
+  async function toggleTriggerOnce(id) {
+    const r = reminders.value.find(x => x.id === id)
+    if (!r) return
+    return updateReminder(id, { trigger_once: !r.trigger_once })
+  }
+
   function reset() {
     reminders.value = []
     loaded.value = false
@@ -159,6 +167,7 @@ export const useRemindersStore = defineStore('reminders', () => {
     deleteReminder,
     toggleChecked,
     toggleSwitchReceiver,
+    toggleTriggerOnce,
     reset,
   }
 })
