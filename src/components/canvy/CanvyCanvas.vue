@@ -8,6 +8,7 @@
     @pointerup="onPointerUp"
     @pointerleave="onPointerUp"
     @wheel.prevent="onWheel"
+    @mousedown.middle.prevent
     @contextmenu.prevent
   >
     <!-- World (panned + zoomed) -->
@@ -19,13 +20,17 @@
         :class="[
           'el-' + el.type,
           {
-            selected: selectedId === el.id,
+            selected: selectedIds.has(el.id),
             editing: editingId === el.id,
-            'arrow-src': arrowStart === el.id,
-            'arrow-target': tool === 'arrow' && arrowStart && arrowStart !== el.id,
+            'arrow-src': (tool === 'arrow' && arrowStart === el.id) || (connecting && connecting.fromId === el.id),
+            'arrow-target':
+              (tool === 'arrow' && arrowStart && arrowStart !== el.id) ||
+              (connecting && connectTargetId === el.id && connecting.fromId !== el.id),
           },
         ]"
         :style="elStyle(el)"
+        @pointerenter="hoverId = el.id"
+        @pointerleave="hoverId === el.id && (hoverId = null)"
         @pointerdown.stop="onElPointerDown($event, el)"
         @dblclick.stop="startEdit(el)"
       >
@@ -53,6 +58,19 @@
           class="resize-handle"
           @pointerdown.stop="onResizeDown($event, el)"
         ></div>
+
+        <!-- connection handles: drag from any side/corner to draw an arrow -->
+        <template v-if="showHandles(el)">
+          <div
+            v-for="h in CONNECT_POINTS"
+            :key="h.k"
+            class="connect-handle"
+            :class="'ch-' + h.k"
+            :style="{ left: h.x + '%', top: h.y + '%' }"
+            title="Drag to connect"
+            @pointerdown.stop="startConnect($event, el)"
+          ></div>
+        </template>
 
         <!-- per-element mini toolbar -->
         <div
@@ -118,6 +136,12 @@
         />
         <text v-if="a.label" class="arrow-label" :x="a.mx" :y="a.my">{{ a.label }}</text>
       </g>
+      <line
+        v-if="tempArrow"
+        class="arrow-line temp"
+        :x1="tempArrow.x1" :y1="tempArrow.y1" :x2="tempArrow.x2" :y2="tempArrow.y2"
+        marker-end="url(#canvy-arrowhead-on)"
+      />
     </svg>
 
     <!-- Comment pins (screen space) -->
@@ -130,30 +154,57 @@
       @pointerdown.stop="onPinPointerDown($event, c)"
     >
       <i class="pi pi-comment"></i>
+      <span v-if="messageCount(c)" class="comment-pin-badge">{{ messageCount(c) }}</span>
     </div>
 
-    <!-- Comment popover -->
+    <!-- Comment thread popover -->
     <div
       v-if="openComment"
       class="comment-pop"
       :style="popStyle(openComment)"
       @pointerdown.stop
     >
-      <textarea
-        ref="commentInput"
-        class="comment-ta"
-        v-model="openComment.text"
-        placeholder="Write a comment…"
-        rows="3"
-        @change="commit"
-      ></textarea>
-      <div class="comment-pop-foot">
-        <button class="comment-del" @click="removeComment(openComment.id)">
-          <i class="pi pi-trash"></i> Delete
+      <div class="comment-pop-head">
+        <span><i class="pi pi-comment"></i> Thread</span>
+        <button class="comment-head-del" title="Delete whole thread" @click="removeComment(openComment.id)">
+          <i class="pi pi-trash"></i>
         </button>
-        <button class="comment-done" @click="closeComment">Done</button>
+      </div>
+
+      <div class="comment-thread">
+        <div v-if="!openComment.messages.length" class="comment-empty">No messages yet — start the thread below.</div>
+        <div v-for="m in openComment.messages" :key="m.id" class="comment-msg">
+          <div class="comment-msg-body">{{ m.text }}</div>
+          <div class="comment-msg-meta">
+            <span class="comment-msg-time">{{ msgTime(m) }}</span>
+            <button class="comment-msg-del" title="Delete message" @click="deleteMessage(openComment.id, m.id)">
+              <i class="pi pi-times"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment-reply">
+        <textarea
+          ref="commentInput"
+          class="comment-ta"
+          v-model="replyDraft"
+          :placeholder="openComment.messages.length ? 'Reply… (Enter to send)' : 'Write a comment… (Enter to send)'"
+          rows="2"
+          @keydown.enter.exact.prevent="sendReply"
+        ></textarea>
+        <button class="comment-send" :disabled="!replyDraft.trim()" title="Send (Enter)" @click="sendReply">
+          <i class="pi pi-send"></i>
+        </button>
       </div>
     </div>
+
+    <!-- Rubber-band selection rectangle -->
+    <div
+      v-if="marqueeRect"
+      class="marquee"
+      :style="{ left: marqueeRect.x + 'px', top: marqueeRect.y + 'px', width: marqueeRect.w + 'px', height: marqueeRect.h + 'px' }"
+    ></div>
 
     <!-- Hint while a tool is active -->
     <div v-if="hint" class="canvas-hint">{{ hint }}</div>
@@ -171,13 +222,16 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { v4 as uuid } from 'uuid'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+dayjs.extend(relativeTime)
 
 const props = defineProps({
   boardId: { type: String, default: null },
   data: { type: Object, default: () => ({}) },
   tool: { type: String, default: null }, // 'sticky'|'text'|'shape-rect'|'shape-ellipse'|'shape-diamond'|'arrow'|'comment'|null
 })
-const emit = defineEmits(['update', 'tool-used'])
+const emit = defineEmits(['update', 'tool-used', 'set-tool'])
 
 // ── Sticky / shape colour palette ──
 const COLORS = {
@@ -189,6 +243,14 @@ const COLORS = {
   gray: { fill: '#ecebe7', stroke: '#cfccc5' },
 }
 const SWATCHES = Object.keys(COLORS)
+
+// Connection grab points (% of the element box): 4 sides + 4 corners.
+const CONNECT_POINTS = [
+  { k: 't', x: 50, y: 0 }, { k: 'b', x: 50, y: 100 },
+  { k: 'l', x: 0, y: 50 }, { k: 'r', x: 100, y: 50 },
+  { k: 'tl', x: 0, y: 0 }, { k: 'tr', x: 100, y: 0 },
+  { k: 'bl', x: 0, y: 100 }, { k: 'br', x: 100, y: 100 },
+]
 
 // ── Local working copy (mutated for instant feedback, emitted up to persist) ──
 const model = reactive({ elements: [], arrows: [], comments: [] })
@@ -205,29 +267,84 @@ function loadFromProps() {
   const d = props.data || {}
   model.elements = clone(d.elements || [])
   model.arrows = clone(d.arrows || [])
-  model.comments = clone(d.comments || [])
-  selectedId.value = null
+  model.comments = (clone(d.comments || [])).map(normalizeComment)
+  replyDraft.value = ''
+  clearSelection()
   editingId.value = null
   selectedArrowId.value = null
   openCommentId.value = null
   arrowStart.value = null
+  // reset undo/redo history for the freshly-loaded board
+  undoStack = []
+  redoStack = []
+  lastSnapshot = serialize()
 }
-function commit() {
+
+// ── Persist + undo/redo history ──
+let undoStack = []
+let redoStack = []
+let lastSnapshot = '{}'
+function serialize() {
+  return JSON.stringify({ elements: model.elements, arrows: model.arrows, comments: model.comments })
+}
+function emitUpdate() {
   emit('update', {
     elements: clone(model.elements),
     arrows: clone(model.arrows),
     comments: clone(model.comments),
   })
 }
+function commit() {
+  // Record the state *before* this change so it can be undone.
+  undoStack.push(lastSnapshot)
+  if (undoStack.length > 100) undoStack.shift()
+  redoStack = []
+  lastSnapshot = serialize()
+  emitUpdate()
+}
+function applySnapshot(s) {
+  const d = JSON.parse(s)
+  model.elements = d.elements || []
+  model.arrows = d.arrows || []
+  model.comments = d.comments || []
+  clearSelection()
+  editingId.value = null
+  selectedArrowId.value = null
+  openCommentId.value = null
+  replyDraft.value = ''
+}
+function undo() {
+  if (!undoStack.length) return
+  redoStack.push(serialize())
+  const prev = undoStack.pop()
+  applySnapshot(prev)
+  lastSnapshot = prev
+  emitUpdate()
+}
+function redo() {
+  if (!redoStack.length) return
+  undoStack.push(serialize())
+  const next = redoStack.pop()
+  applySnapshot(next)
+  lastSnapshot = next
+  emitUpdate()
+}
 
-watch(
-  () => props.boardId,
-  () => {
-    loadFromProps()
-    nextTick(fit)
-  },
-  { immediate: true },
-)
+// ── Clipboard (copy / paste of the selected element(s)) ──
+let clipboard = null // array of element snapshots
+function copySelected() {
+  const ids = selectedIds.value
+  if (!ids.size) return
+  clipboard = model.elements.filter((el) => ids.has(el.id)).map((el) => clone(el))
+}
+function pasteClipboard() {
+  if (!clipboard || !clipboard.length) return
+  const fresh = clipboard.map((el) => ({ ...clone(el), id: uuid(), x: (el.x || 0) + 24, y: (el.y || 0) + 24 }))
+  model.elements.push(...fresh)
+  selectedIds.value = new Set(fresh.map((el) => el.id))
+  clipboard = fresh.map((el) => clone(el)) // cascade repeated pastes
+  commit()
+}
 
 // ── Camera (CSS transform) ──
 const wrap = ref(null)
@@ -305,19 +422,30 @@ function fit() {
 }
 
 // ── Selection / interaction state ──
-const selectedId = ref(null)
+const selectedIds = ref(new Set())        // multi-select; replaced (not mutated) so it stays reactive
+const selectedId = computed(() => (selectedIds.value.size === 1 ? [...selectedIds.value][0] : null))
 const editingId = ref(null)
 const selectedArrowId = ref(null)
 const arrowStart = ref(null)
 const openCommentId = ref(null)
+const replyDraft = ref('')
 const panning = ref(false)
 const spaceDown = ref(false)
+const hoverId = ref(null)
+const connectTargetId = ref(null)
+const connecting = ref(null) // { fromId } while dragging a new arrow from a handle
+const connectEnd = reactive({ x: 0, y: 0 })
+const marqueeRect = ref(null) // { x, y, w, h } in screen px while rubber-band selecting
+
+function selectOnly(id) { selectedIds.value = new Set(id ? [id] : []) }
+function clearSelection() { selectedIds.value = new Set() }
 
 const openComment = computed(() => model.comments.find((c) => c.id === openCommentId.value) || null)
 
 let pan = null
 let drag = null
 let resize = null
+let marquee = null
 let pinDrag = null
 
 const hint = computed(() => {
@@ -370,18 +498,32 @@ function onBgPointerDown(e) {
     emit('tool-used')
     return
   }
-  // Otherwise: deselect + pan
-  deselectAll()
+  // Pan only with space held or the middle mouse button.
+  if (spaceDown.value || e.button === 1) { startPan(e); return }
+  // Plain left drag on empty canvas → rubber-band selection (no panning).
+  startMarquee(e)
+}
+
+function startPan(e) {
   pan = { sx: e.clientX, sy: e.clientY, camx: cam.x, camy: cam.y }
   panning.value = true
   capture(e)
 }
+function startMarquee(e) {
+  selectedArrowId.value = null
+  setOpenComment(null)
+  if (!e.shiftKey) clearSelection()
+  const r = wrap.value.getBoundingClientRect()
+  marquee = { sx: e.clientX, sy: e.clientY, additive: e.shiftKey, base: new Set(selectedIds.value) }
+  marqueeRect.value = { x: e.clientX - r.left, y: e.clientY - r.top, w: 0, h: 0 }
+  capture(e)
+}
 
 function deselectAll() {
-  selectedId.value = null
+  clearSelection()
   selectedArrowId.value = null
   if (editingId.value) editingId.value = null
-  openCommentId.value = null
+  setOpenComment(null)
 }
 
 function capture(e) {
@@ -390,24 +532,29 @@ function capture(e) {
 
 // ── Element pointer ──
 function onElPointerDown(e, el) {
-  if (spaceDown.value) {
-    pan = { sx: e.clientX, sy: e.clientY, camx: cam.x, camy: cam.y }
-    panning.value = true
-    capture(e)
-    return
-  }
+  if (spaceDown.value || e.button === 1) { startPan(e); return }
   if (props.tool === 'arrow') {
     handleArrowClick(el)
     return
   }
   selectedArrowId.value = null
-  openCommentId.value = null
-  selectedId.value = el.id
+  setOpenComment(null)
+  if (e.shiftKey) {
+    const next = new Set(selectedIds.value)
+    next.has(el.id) ? next.delete(el.id) : next.add(el.id)
+    selectedIds.value = next
+  } else if (!selectedIds.value.has(el.id)) {
+    selectOnly(el.id)
+  }
   if (editingId.value === el.id) return // editing — let the caret handle it
-  if (editingId.value) editingId.value = null
+  if (!selectedIds.value.has(el.id)) return // shift-click removed it from the selection
+  // Arm a (possibly group) drag, but don't capture yet — capturing here would
+  // swallow the follow-up click/dblclick (which is how you enter text-edit mode).
   const p = screenToWorld(e.clientX, e.clientY)
-  drag = { id: el.id, ox: p.x - el.x, oy: p.y - el.y, moved: false }
-  capture(e)
+  const items = [...selectedIds.value]
+    .map((id) => { const t = byId.value.get(id); return t ? { id, x0: t.x, y0: t.y } : null })
+    .filter(Boolean)
+  drag = { primary: el.id, items, ox: p.x, oy: p.y, moved: false, captured: false, sx: e.clientX, sy: e.clientY }
 }
 
 function onTextPointerDown(e, el) {
@@ -416,17 +563,51 @@ function onTextPointerDown(e, el) {
 }
 
 function onPointerMove(e) {
+  if (connecting.value) {
+    const p = screenToWorld(e.clientX, e.clientY)
+    connectEnd.x = p.x
+    connectEnd.y = p.y
+    const target = elementAt(p.x, p.y, connecting.value.fromId)
+    connectTargetId.value = target ? target.id : null
+    return
+  }
   if (pan) {
     cam.x = pan.camx + (e.clientX - pan.sx)
     cam.y = pan.camy + (e.clientY - pan.sy)
     return
   }
+  if (marquee) {
+    const r = wrap.value.getBoundingClientRect()
+    const x1 = marquee.sx, y1 = marquee.sy, x2 = e.clientX, y2 = e.clientY
+    marqueeRect.value = {
+      x: Math.min(x1, x2) - r.left, y: Math.min(y1, y2) - r.top,
+      w: Math.abs(x2 - x1), h: Math.abs(y2 - y1),
+    }
+    const a = screenToWorld(Math.min(x1, x2), Math.min(y1, y2))
+    const b = screenToWorld(Math.max(x1, x2), Math.max(y1, y2))
+    const hit = new Set(marquee.additive ? marquee.base : [])
+    for (const el of model.elements) {
+      if (el.x < b.x && el.x + el.w > a.x && el.y < b.y && el.y + el.h > a.y) hit.add(el.id)
+    }
+    selectedIds.value = hit
+    return
+  }
   if (drag) {
+    if (!drag.captured) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return
+      drag.captured = true
+      if (editingId.value) editingId.value = null
+      capture(e)
+    }
     const p = screenToWorld(e.clientX, e.clientY)
-    const el = byId.value.get(drag.id)
-    if (!el) return
-    el.x = Math.round(p.x - drag.ox)
-    el.y = Math.round(p.y - drag.oy)
+    const dx = p.x - drag.ox
+    const dy = p.y - drag.oy
+    for (const it of drag.items) {
+      const el = byId.value.get(it.id)
+      if (!el) continue
+      el.x = Math.round(it.x0 + dx)
+      el.y = Math.round(it.y0 + dy)
+    }
     drag.moved = true
     return
   }
@@ -449,15 +630,40 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
+  if (connecting.value) {
+    finishConnect(e)
+    try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    return
+  }
   if (pan) { pan = null; panning.value = false }
+  if (marquee) { marquee = null; marqueeRect.value = null }
   if (drag) { if (drag.moved) commit(); drag = null }
   if (resize) { commit(); resize = null }
   if (pinDrag) {
     if (pinDrag.moved) commit()
-    else openCommentId.value = pinDrag.id
+    else setOpenComment(pinDrag.id)
     pinDrag = null
   }
   try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+}
+
+function finishConnect(e) {
+  const fromId = connecting.value.fromId
+  const p = screenToWorld(e.clientX, e.clientY)
+  const target = elementAt(p.x, p.y, fromId)
+  connecting.value = null
+  connectTargetId.value = null
+  if (target) {
+    model.arrows.push({ id: uuid(), from: { elementId: fromId }, to: { elementId: target.id }, label: '' })
+    commit()
+  } else {
+    const src = byId.value.get(fromId)
+    // Ignore an accidental click with no real drag.
+    if (src && Math.hypot(p.x - (src.x + src.w / 2), p.y - (src.y + src.h / 2)) > 12) {
+      model.arrows.push({ id: uuid(), from: { elementId: fromId }, to: { x: Math.round(p.x), y: Math.round(p.y) }, label: '' })
+      commit()
+    }
+  }
 }
 
 // ── Resize ──
@@ -487,7 +693,7 @@ function addElement(tool, x, y) {
   el.x = Math.round(el.x - el.w / 2)
   el.y = Math.round(el.y - el.h / 2)
   model.elements.push(el)
-  selectedId.value = el.id
+  selectOnly(el.id)
   commit()
   nextTick(() => startEdit(el))
 }
@@ -496,10 +702,10 @@ function snap(v) {
 }
 
 function addComment(x, y) {
-  const c = { id: uuid(), x: Math.round(x), y: Math.round(y), text: '' }
+  const c = { id: uuid(), x: Math.round(x), y: Math.round(y), messages: [] }
   model.comments.push(c)
   commit()
-  openCommentId.value = c.id
+  setOpenComment(c.id)
   nextTick(() => commentInput.value?.focus())
 }
 
@@ -521,7 +727,7 @@ function onTextBlur() {
   commit()
 }
 function startEdit(el) {
-  selectedId.value = el.id
+  selectOnly(el.id)
   editingId.value = el.id
   nextTick(() => {
     const node = textNodes.get(el.id)
@@ -544,12 +750,19 @@ function setColor(el, key) {
   commit()
 }
 function removeElement(id) {
-  model.elements = model.elements.filter((el) => el.id !== id)
+  removeElementIds(new Set([id]))
+}
+function removeSelected() {
+  if (!selectedIds.value.size) return
+  removeElementIds(new Set(selectedIds.value))
+}
+function removeElementIds(ids) {
+  model.elements = model.elements.filter((el) => !ids.has(el.id))
   model.arrows = model.arrows.filter(
-    (a) => a.from?.elementId !== id && a.to?.elementId !== id,
+    (a) => !(a.from?.elementId && ids.has(a.from.elementId)) && !(a.to?.elementId && ids.has(a.to.elementId)),
   )
-  if (selectedId.value === id) selectedId.value = null
-  textNodes.delete(id)
+  ids.forEach((id) => textNodes.delete(id))
+  clearSelection()
   commit()
 }
 
@@ -573,7 +786,7 @@ function handleArrowClick(el) {
 }
 function selectArrow(id) {
   selectedArrowId.value = id
-  selectedId.value = null
+  clearSelection()
 }
 function editArrowLabel(id) {
   const a = model.arrows.find((x) => x.id === id)
@@ -631,6 +844,40 @@ const arrowGeoms = computed(() => {
   return out
 })
 
+// ── Connection handles (drag from any element side/corner) ──
+function showHandles(el) {
+  if (editingId.value === el.id) return false
+  if (connecting.value) return connecting.value.fromId === el.id
+  return hoverId.value === el.id || selectedId.value === el.id
+}
+// Topmost element whose box contains a world point (optionally excluding one id).
+function elementAt(wx, wy, excludeId = null) {
+  for (let i = model.elements.length - 1; i >= 0; i--) {
+    const el = model.elements[i]
+    if (el.id === excludeId) continue
+    if (wx >= el.x && wx <= el.x + el.w && wy >= el.y && wy <= el.y + el.h) return el
+  }
+  return null
+}
+function startConnect(e, el) {
+  connecting.value = { fromId: el.id }
+  const p = screenToWorld(e.clientX, e.clientY)
+  connectEnd.x = p.x
+  connectEnd.y = p.y
+  connectTargetId.value = null
+  capture(e)
+}
+const tempArrow = computed(() => {
+  void cam.x; void cam.y; void cam.zoom
+  if (!connecting.value) return null
+  const src = byId.value.get(connecting.value.fromId)
+  if (!src) return null
+  const fp = edgePoint(src, connectEnd.x, connectEnd.y)
+  const s1 = worldToScreen(fp.x, fp.y)
+  const s2 = worldToScreen(connectEnd.x, connectEnd.y)
+  return { x1: s1.x, y1: s1.y, x2: s2.x, y2: s2.y }
+})
+
 // ── Comments ──
 function pinStyle(c) {
   const s = worldToScreen(c.x, c.y)
@@ -646,14 +893,53 @@ function onPinPointerDown(e, c) {
   pinDrag = { id: c.id, ox: p.x - c.x, oy: p.y - c.y, moved: false }
   capture(e)
 }
-function removeComment(id) {
-  model.comments = model.comments.filter((c) => c.id !== id)
-  if (openCommentId.value === id) openCommentId.value = null
+function messageCount(c) {
+  return c?.messages?.length || 0
+}
+function msgTime(m) {
+  return m?.created_at ? dayjs(m.created_at).fromNow() : ''
+}
+// Legacy comments stored a single `text`; fold it into the threaded shape.
+function normalizeComment(c) {
+  if (Array.isArray(c.messages)) return c
+  const messages = []
+  if (c.text && c.text.trim()) {
+    messages.push({ id: uuid(), text: c.text, created_at: c.created_at || null })
+  }
+  return { id: c.id, x: c.x, y: c.y, messages }
+}
+function sendReply() {
+  const c = openComment.value
+  const text = replyDraft.value.trim()
+  if (!c || !text) return
+  c.messages.push({ id: uuid(), text, created_at: new Date().toISOString() })
+  replyDraft.value = ''
+  commit()
+  nextTick(() => commentInput.value?.focus())
+}
+function deleteMessage(commentId, msgId) {
+  const c = model.comments.find((x) => x.id === commentId)
+  if (!c) return
+  c.messages = c.messages.filter((m) => m.id !== msgId)
   commit()
 }
-function closeComment() {
-  openCommentId.value = null
+function removeComment(id) {
+  model.comments = model.comments.filter((c) => c.id !== id)
+  if (openCommentId.value === id) { openCommentId.value = null; replyDraft.value = '' }
   commit()
+}
+// Open a thread; discard any previously-open thread that was never written to.
+function setOpenComment(id) {
+  const prev = model.comments.find((c) => c.id === openCommentId.value)
+  if (prev && !prev.messages.length && prev.id !== id) {
+    model.comments = model.comments.filter((c) => c.id !== prev.id)
+    commit()
+  }
+  openCommentId.value = id
+  replyDraft.value = ''
+}
+function closeComment() {
+  setOpenComment(null)
 }
 
 // ── Keyboard ──
@@ -667,7 +953,21 @@ function onKey(e) {
     spaceDown.value = true
     return
   }
+
+  // Ctrl/Cmd combos: undo / redo / copy / paste
+  const mod = e.ctrlKey || e.metaKey
+  if (mod) {
+    if (isTyping(e.target)) return // let the browser handle text edits natively
+    const k = e.key.toLowerCase()
+    if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
+    if (k === 'y') { e.preventDefault(); redo(); return }
+    if (k === 'c') { if (selectedIds.value.size) { e.preventDefault(); copySelected() } return }
+    if (k === 'v') { e.preventDefault(); pasteClipboard(); return }
+    return
+  }
+
   if (e.key === 'Escape') {
+    if (connecting.value) { connecting.value = null; connectTargetId.value = null; return }
     arrowStart.value = null
     deselectAll()
     emit('tool-used')
@@ -675,13 +975,35 @@ function onKey(e) {
   }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (isTyping(e.target)) return
-    if (selectedId.value) { e.preventDefault(); removeElement(selectedId.value) }
+    if (selectedIds.value.size) { e.preventDefault(); removeSelected() }
     else if (selectedArrowId.value) { e.preventDefault(); removeArrow(selectedArrowId.value) }
+    return
+  }
+
+  // Single-key tool shortcuts (only when not typing)
+  if (!isTyping(e.target)) {
+    const k = e.key.toLowerCase()
+    if (k === 'r') { e.preventDefault(); emit('set-tool', 'shape-rect') }
+    else if (k === 'e') { e.preventDefault(); emit('set-tool', 'shape-ellipse') }
+    else if (k === 'd') { e.preventDefault(); emit('set-tool', 'shape-diamond') }
+    else if (k === 't') { e.preventDefault(); emit('set-tool', 'text') }
+    else if (k === 'c') { e.preventDefault(); emit('set-tool', 'comment') }
+    else if (k === 's') { e.preventDefault(); emit('set-tool', 'sticky') }
   }
 }
 function onKeyUp(e) {
   if (e.key === ' ' || e.code === 'Space') spaceDown.value = false
 }
+
+// ── Board sync ── (declared last so loadFromProps/fit and the refs they touch exist)
+watch(
+  () => props.boardId,
+  () => {
+    loadFromProps()
+    nextTick(fit)
+  },
+  { immediate: true },
+)
 
 // ── Lifecycle ──
 let ro = null
@@ -788,7 +1110,13 @@ defineExpose({ fit, resetView })
   white-space: pre-wrap;
   word-break: break-word;
 }
-.el .el-content[contenteditable='true'] { cursor: text; }
+.el .el-content[contenteditable='true'] {
+  cursor: text;
+  /* The canvas root sets user-select:none for clean dragging; re-enable it here
+     or the contenteditable becomes impossible to type into. */
+  user-select: text;
+  -webkit-user-select: text;
+}
 .el-text > .el-content { font-size: 1.05rem; font-weight: 500; padding: 0.3rem 0.4rem; }
 .el-shape > .el-content {
   display: flex;
@@ -816,6 +1144,22 @@ defineExpose({ fit, resetView })
   cursor: nwse-resize;
   z-index: 3;
 }
+
+/* connection handles (drag to draw an arrow) */
+.connect-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px; /* centre on the side/corner point */
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent-500);
+  cursor: crosshair;
+  z-index: 4;
+  opacity: 0.55;
+  transition: opacity 120ms, transform 120ms;
+}
+.connect-handle:hover { opacity: 1; transform: scale(1.25); }
 
 /* per-element mini toolbar */
 .el-toolbar {
@@ -872,6 +1216,7 @@ defineExpose({ fit, resetView })
   fill: none;
 }
 .arrow-line.on { stroke: var(--accent-600); stroke-width: 2.5; }
+.arrow-line.temp { stroke: var(--accent-500); stroke-width: 2; stroke-dasharray: 5 4; }
 .arrow-hit {
   stroke: transparent;
   stroke-width: 14;
@@ -907,18 +1252,122 @@ defineExpose({ fit, resetView })
 }
 .comment-pin.open,
 .comment-pin:hover { background: var(--accent-600); }
+.comment-pin-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1rem;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}
 
 .comment-pop {
   position: absolute;
-  width: 15rem;
+  width: 16rem;
   background: #fff;
   border: 1px solid #e5e4e1;
   border-radius: 0.6rem;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
   padding: 0.6rem;
   z-index: 7;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.comment-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-600);
+  margin-bottom: 0.5rem;
+}
+.comment-pop-head span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.comment-pop-head i { font-size: 0.7rem; }
+.comment-head-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 0.35rem;
+  color: var(--text-faint, #9a9a9a);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.comment-head-del:hover { background: #fff0f0; color: #c33; }
+
+.comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+.comment-empty {
+  font-size: 0.78rem;
+  color: #9a9a9a;
+  font-style: italic;
+  padding: 0.2rem 0;
+}
+.comment-msg {
+  background: #f6f5f2;
+  border: 1px solid #ecebe7;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.5rem;
+}
+.comment-msg-body {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #1f1f1f;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.comment-msg-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.2rem;
+}
+.comment-msg-time { font-size: 0.66rem; color: #9a9a9a; }
+.comment-msg-del {
+  width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: #b8b5ae;
+  cursor: pointer;
+  font-size: 0.62rem;
+  border-radius: 0.25rem;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.comment-msg:hover .comment-msg-del { opacity: 1; }
+.comment-msg-del:hover { color: #c33; background: #fff0f0; }
+
+.comment-reply {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
 }
 .comment-ta {
+  flex: 1;
   width: 100%;
   border: 1px solid #e5e4e1;
   border-radius: 0.45rem;
@@ -929,31 +1378,31 @@ defineExpose({ fit, resetView })
   outline: none;
 }
 .comment-ta:focus { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-050); }
-.comment-pop-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 0.45rem;
-}
-.comment-del {
+.comment-send {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
-  color: #c33;
-  background: none;
+  justify-content: center;
+  border-radius: 0.45rem;
+  background: var(--accent-500);
+  color: #fff;
   border: none;
   cursor: pointer;
+  font-size: 0.85rem;
 }
-.comment-done {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--accent-600);
-  background: var(--accent-050);
-  border: 1px solid var(--accent-100);
-  border-radius: 0.4rem;
-  padding: 0.25rem 0.7rem;
-  cursor: pointer;
+.comment-send:hover:not(:disabled) { background: var(--accent-600); }
+.comment-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Marquee (rubber-band) selection ── */
+.marquee {
+  position: absolute;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid var(--accent-500);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ── Hint + zoom controls ── */

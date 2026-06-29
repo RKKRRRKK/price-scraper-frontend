@@ -33,6 +33,36 @@ function endpointLabel(end, byId) {
   return '(unattached)'
 }
 
+// Shortest distance from a point to an element's rectangle (0 when inside).
+function distToBox(px, py, el) {
+  const dx = Math.max(el.x - px, 0, px - (el.x + el.w))
+  const dy = Math.max(el.y - py, 0, py - (el.y + el.h))
+  return Math.hypot(dx, dy)
+}
+
+// Describe what a free-floating comment pin points to, based on its position:
+// inside an element → "on" it; otherwise the nearby element(s) within a radius.
+function commentAnchor(comment, elements) {
+  if (comment.x == null || comment.y == null || !elements.length) return ''
+  const px = comment.x
+  const py = comment.y
+  const inside = elements.filter((el) => distToBox(px, py, el) === 0)
+  if (inside.length) {
+    return ` (on ${inside.map((el) => `"${elementLabel(el)}"`).join(', ')})`
+  }
+  const NEAR = 160 // world px
+  const near = elements
+    .map((el) => ({ el, d: distToBox(px, py, el) }))
+    .filter((x) => x.d <= NEAR)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 3)
+  if (near.length === 1) return ` (near "${elementLabel(near[0].el)}")`
+  if (near.length > 1) {
+    return ` (near ${near.map((x) => `"${elementLabel(x.el)}"`).join(', ')})`
+  }
+  return ' (floating, not near any element)'
+}
+
 export function boardToMarkdown(board) {
   const data = board?.data || {}
   const elements = Array.isArray(data.elements) ? data.elements : []
@@ -110,11 +140,20 @@ export function boardToMarkdown(board) {
   }
   lines.push('')
 
-  // ── Comments ──
+  // ── Comments (threads) ──
   lines.push('## Comments')
   lines.push('')
-  if (comments.length) {
-    for (const c of comments) lines.push(`- ${clean(c.text) || '_(empty)_'}`)
+  const threads = comments
+    .map((c) => ({
+      anchor: commentAnchor(c, elements),
+      msgs: Array.isArray(c.messages) ? c.messages : c.text ? [{ text: c.text }] : [],
+    }))
+    .filter((t) => t.msgs.length)
+  if (threads.length) {
+    threads.forEach((t, i) => {
+      lines.push(`- **Thread ${i + 1}**${t.anchor}:`)
+      for (const m of t.msgs) lines.push(`  - ${clean(m.text) || '_(empty)_'}`)
+    })
   } else {
     lines.push('_None._')
   }

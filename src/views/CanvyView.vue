@@ -71,7 +71,7 @@
                 @keyup.enter="confirmRenameFolder(f)"
                 @keyup.esc="cancelRenameFolder"
                 @blur="confirmRenameFolder(f)"
-                :ref="(el) => { if (el && document.activeElement !== el) el.focus() }"
+                :ref="focusRenameInput"
               />
               <span v-else class="folder-name">{{ f.name }}</span>
               <span class="folder-count">{{ folderTotal(f.id) }}</span>
@@ -99,7 +99,7 @@
                     @keyup.enter="confirmRenameBoard(b)"
                     @keyup.esc="cancelRenameBoard"
                     @blur="confirmRenameBoard(b)"
-                    :ref="(el) => { if (el && document.activeElement !== el) el.focus() }"
+                    :ref="focusRenameInput"
                   />
                   <span v-else class="rail-item-name">{{ b.name }}</span>
                   <span class="rail-meta">
@@ -134,7 +134,7 @@
                   @keyup.enter="confirmRenameBoard(b)"
                   @keyup.esc="cancelRenameBoard"
                   @blur="confirmRenameBoard(b)"
-                  :ref="(el) => { if (el && document.activeElement !== el) el.focus() }"
+                  :ref="focusRenameInput"
                 />
                 <span v-else class="rail-item-name">{{ b.name }}</span>
                 <span class="rail-meta">
@@ -205,6 +205,9 @@
               <i :class="copied ? 'pi pi-check' : 'pi pi-sparkles'" style="font-size: 0.8rem;"></i>
               {{ copied ? 'Copied!' : 'Copy for AI' }}
             </button>
+            <button class="btn-ghost btn-sm" @click="openAi" title="Copy a prompt for an AI, or build the board from its reply">
+              <i class="pi pi-bolt" style="font-size: 0.8rem;"></i> AI assist
+            </button>
             <button class="icon-btn icon-danger" @click="removeBoard" title="Delete board">
               <i class="pi pi-trash" style="font-size: 0.875rem;"></i>
             </button>
@@ -245,17 +248,28 @@
         <!-- Canvas -->
         <div class="canvas-host">
           <CanvyCanvas
+            ref="canvasRef"
+            :key="store.activeBoard.id + '-' + canvasKey"
             :board-id="store.activeBoard.id"
             :data="store.activeBoard.data"
             :tool="tool"
             @update="onCanvasUpdate"
             @tool-used="tool = null"
+            @set-tool="tool = $event"
           />
         </div>
       </template>
 
       <p v-if="store.error" class="action-error">{{ store.error }}</p>
     </main>
+
+    <CanvyAiModal
+      :open="aiOpen"
+      :board="store.activeBoard"
+      :build-error="aiError"
+      @build="buildFromText"
+      @close="aiOpen = false"
+    />
   </div>
 </template>
 
@@ -264,7 +278,9 @@ import { ref, computed, watch, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import { useCanvyStore } from '@/stores/canvy'
 import CanvyCanvas from '@/components/canvy/CanvyCanvas.vue'
+import CanvyAiModal from '@/components/canvy/CanvyAiModal.vue'
 import { boardToMarkdown } from '@/lib/canvyExport'
+import { parseBuild } from '@/lib/canvyAi'
 
 const store = useCanvyStore()
 
@@ -273,9 +289,19 @@ const railQuery = ref('')
 const tool = ref(null)
 const copied = ref(false)
 const nameDraft = ref('')
+const aiOpen = ref(false)
+const aiError = ref('')
+const canvasRef = ref(null)
+const canvasKey = ref(0) // bump to force the canvas to reload after an AI build
 
 function setTool(t) {
   tool.value = tool.value === t ? null : t
+}
+
+// Autofocus a freshly-shown rename input. Kept in script (not the template) so
+// `document` resolves to the real global — template expressions can't see it.
+function focusRenameInput(el) {
+  if (el && document.activeElement !== el) el.focus()
 }
 
 // ── Catalogue grouping (mirrors Diffy) ──
@@ -476,6 +502,26 @@ async function copyForAi() {
   } catch (e) {
     console.error('[Canvy] copyForAi error:', e)
   }
+}
+
+// ── AI assist (copy prompt / build from reply) ──
+function openAi() {
+  aiError.value = ''
+  aiOpen.value = true
+}
+function buildFromText(text) {
+  aiError.value = ''
+  const res = parseBuild(text)
+  if (!res.ok) { aiError.value = res.error; return }
+  const b = store.activeBoard
+  if (!b) return
+  const d = b.data || {}
+  const hasContent = (d.elements?.length || d.arrows?.length || d.comments?.length)
+  if (hasContent && !window.confirm('Replace the current board with the AI build?')) return
+  store.updateBoardData(b.id, res.data)
+  aiOpen.value = false
+  canvasKey.value++ // force the canvas to reload from the new data and re-fit
+  if (res.warnings?.length) console.warn('[Canvy] AI build warnings:', res.warnings)
 }
 </script>
 

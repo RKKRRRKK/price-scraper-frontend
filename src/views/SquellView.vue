@@ -71,7 +71,7 @@
                 @keyup.enter="confirmRenameFolder(f)"
                 @keyup.esc="cancelRenameFolder"
                 @blur="confirmRenameFolder(f)"
-                :ref="(el) => { if (el && document.activeElement !== el) el.focus() }"
+                :ref="(el) => { if (el) el.focus() }"
               />
               <span v-else class="folder-name">{{ f.name }}</span>
               <span class="folder-count">{{ folderTotal(f.id) }}</span>
