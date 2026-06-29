@@ -13,6 +13,7 @@ import RemindersView from '@/views/RemindersView.vue'
 import DocumentsView from '@/views/DocumentsView.vue'
 import SquellView from '@/views/SquellView.vue'
 import BreadboardView from '@/views/BreadboardView.vue'
+import CanvyView from '@/views/CanvyView.vue'
 
 const routes = [
   {
@@ -82,6 +83,12 @@ const routes = [
     path: '/breadboard',
     name: 'breadboard',
     component: BreadboardView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/canvy',
+    name: 'canvy',
+    component: CanvyView,
     meta: { requiresAuth: true },
   },
 ]
