@@ -34,27 +34,43 @@
         @pointerdown.stop="onElPointerDown($event, el)"
         @dblclick.stop="startEdit(el)"
       >
-        <!-- shape backdrop (rect / ellipse / diamond) -->
-        <div
-          v-if="el.type === 'shape'"
-          class="shape-fill"
-          :class="'shape-' + el.shape"
-          :style="fillStyle(el)"
-        ></div>
+        <!-- rotated visual layer (keeps handles/toolbar/outline upright) -->
+        <div class="el-rot" :style="rotStyle(el)">
+          <!-- shape backdrop (rect / ellipse / diamond) -->
+          <div
+            v-if="el.type === 'shape'"
+            class="shape-fill"
+            :class="'shape-' + el.shape"
+            :style="fillStyle(el)"
+          ></div>
+
+          <!-- freehand stroke (inline so it shares element z-order) -->
+          <svg v-if="el.type === 'draw'" class="draw-svg" :width="el.w" :height="el.h">
+            <path
+              :d="pointsToPath(el.points)"
+              :stroke="resolveColor(el).stroke"
+              :stroke-width="el.strokeWidth || 3"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+
+          <div
+            v-if="el.type !== 'draw'"
+            class="el-content"
+            :contenteditable="editingId === el.id"
+            spellcheck="false"
+            :data-placeholder="placeholderFor(el)"
+            :ref="(node) => initText(node, el)"
+            @input="onTextInput($event, el)"
+            @blur="onTextBlur"
+            @pointerdown="onTextPointerDown($event, el)"
+          ></div>
+        </div>
 
         <div
-          class="el-content"
-          :contenteditable="editingId === el.id"
-          spellcheck="false"
-          :data-placeholder="placeholderFor(el)"
-          :ref="(node) => initText(node, el)"
-          @input="onTextInput($event, el)"
-          @blur="onTextBlur"
-          @pointerdown="onTextPointerDown($event, el)"
-        ></div>
-
-        <div
-          v-if="selectedId === el.id && editingId !== el.id"
+          v-if="selectedId === el.id && editingId !== el.id && el.type !== 'draw'"
           class="resize-handle"
           @pointerdown.stop="onResizeDown($event, el)"
         ></div>
@@ -78,21 +94,71 @@
           class="el-toolbar"
           @pointerdown.stop
         >
+          <!-- shade strip: 5 shades of the picked hue, expanded above -->
+          <div v-if="shadeHue" class="shade-strip">
+            <button
+              v-for="(s, i) in COLORS[shadeHue]"
+              :key="i"
+              class="swatch"
+              :class="{ on: shadeHue === (el.color || 'yellow') && (el.shade ?? DEFAULT_SHADE) === i }"
+              :style="{ background: s.fill, borderColor: s.stroke }"
+              :title="shadeHue + ' ' + (i + 1)"
+              @click="setShade(el, shadeHue, i)"
+            ></button>
+          </div>
           <button
             v-for="key in SWATCHES"
             :key="key"
-            class="swatch"
+            class="swatch hue"
             :class="{ on: (el.color || 'yellow') === key }"
-            :style="{ background: COLORS[key].fill, borderColor: COLORS[key].stroke }"
-            :title="key"
-            @click="setColor(el, key)"
+            :style="{ background: COLORS[key][DEFAULT_SHADE].fill, borderColor: COLORS[key][DEFAULT_SHADE].stroke }"
+            :title="key + ' — click again for shades'"
+            @click="onHueClick(el, key)"
           ></button>
+          <span class="el-toolbar-sep"></span>
+          <input
+            class="opacity-range"
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.05"
+            :value="el.opacity ?? 1"
+            title="Opacity"
+            @input="setOpacity(el, $event.target.value)"
+            @change="commitOpacity"
+          />
+          <!-- stroke width (draw strokes only) -->
+          <template v-if="el.type === 'draw'">
+            <span class="el-toolbar-sep"></span>
+            <input
+              class="stroke-range"
+              type="range"
+              :min="DRAW_MIN_STROKE"
+              :max="DRAW_MAX_STROKE"
+              step="1"
+              :value="el.strokeWidth ?? 3"
+              :title="'Stroke width: ' + (el.strokeWidth ?? 3) + 'px'"
+              @input="setStrokeWidth(el, $event.target.value)"
+              @change="commitStroke"
+            />
+          </template>
           <span class="el-toolbar-sep"></span>
           <button class="el-toolbar-btn danger" title="Delete" @click="removeElement(el.id)">
             <i class="pi pi-trash"></i>
           </button>
         </div>
       </div>
+
+      <!-- In-progress stroke preview (committed strokes render per-element above) -->
+      <svg v-if="drawing" class="world-draw" width="1" height="1">
+        <path
+          :d="drawingPath"
+          :style="drawingStrokeStyle"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
     </div>
 
     <!-- Screen-space overlay: connectors -->
@@ -122,16 +188,16 @@
         </marker>
       </defs>
       <g v-for="a in arrowGeoms" :key="a.id">
-        <line
+        <path
           class="arrow-hit"
-          :x1="a.x1" :y1="a.y1" :x2="a.x2" :y2="a.y2"
-          @pointerdown.stop="selectArrow(a.id)"
+          :d="a.d"
+          @pointerdown.stop="onArrowPointerDown(a.id)"
           @dblclick.stop="editArrowLabel(a.id)"
         />
-        <line
+        <path
           class="arrow-line"
           :class="{ on: selectedArrowId === a.id }"
-          :x1="a.x1" :y1="a.y1" :x2="a.x2" :y2="a.y2"
+          :d="a.d"
           :marker-end="selectedArrowId === a.id ? 'url(#canvy-arrowhead-on)' : 'url(#canvy-arrowhead)'"
         />
         <text v-if="a.label" class="arrow-label" :x="a.mx" :y="a.my">{{ a.label }}</text>
@@ -143,6 +209,28 @@
         marker-end="url(#canvy-arrowhead-on)"
       />
     </svg>
+
+    <!-- Selected-arrow toolbar: bend / straighten / delete -->
+    <div
+      v-if="selectedArrowGeom"
+      class="arrow-toolbar"
+      :style="{ left: selectedArrowGeom.mx + 'px', top: selectedArrowGeom.my + 'px' }"
+      @pointerdown.stop
+    >
+      <button class="arrow-tb-btn" title="Bow left" @click="bendArrow(selectedArrowId, -1)">
+        <i class="pi pi-arrow-up-left"></i>
+      </button>
+      <button class="arrow-tb-btn" title="Straighten" @click="straightenArrow(selectedArrowId)">
+        <i class="pi pi-minus"></i>
+      </button>
+      <button class="arrow-tb-btn" title="Bow right" @click="bendArrow(selectedArrowId, 1)">
+        <i class="pi pi-arrow-up-right"></i>
+      </button>
+      <span class="el-toolbar-sep"></span>
+      <button class="arrow-tb-btn danger" title="Delete arrow" @click="removeArrow(selectedArrowId)">
+        <i class="pi pi-trash"></i>
+      </button>
+    </div>
 
     <!-- Comment pins (screen space) -->
     <div
@@ -231,25 +319,71 @@ const props = defineProps({
   data: { type: Object, default: () => ({}) },
   tool: { type: String, default: null }, // 'sticky'|'text'|'shape-rect'|'shape-ellipse'|'shape-diamond'|'arrow'|'comment'|null
 })
-const emit = defineEmits(['update', 'tool-used', 'set-tool'])
+const emit = defineEmits(['update', 'tool-used', 'set-tool', 'selection-change'])
 
-// ── Sticky / shape colour palette ──
+// ── Sticky / shape / draw colour palette ──
+// Each hue is a 5-step ramp (light → saturated). Index 1 reproduces the original
+// flat colour, so boards saved before shades existed (no `shade`) look unchanged.
+const DEFAULT_SHADE = 1
 const COLORS = {
-  yellow: { fill: '#fff6c2', stroke: '#ecd56b' },
-  pink: { fill: '#ffd9e2', stroke: '#f3a3b6' },
-  blue: { fill: '#d6e8ff', stroke: '#94bff2' },
-  green: { fill: '#d4f3dd', stroke: '#8fd3a3' },
-  purple: { fill: '#e7dcff', stroke: '#bda3f0' },
-  gray: { fill: '#ecebe7', stroke: '#cfccc5' },
+  yellow: [
+    { fill: '#fffdf0', stroke: '#f1e4a8' },
+    { fill: '#fff6c2', stroke: '#ecd56b' },
+    { fill: '#ffec99', stroke: '#e3c33d' },
+    { fill: '#ffe066', stroke: '#d4af1f' },
+    { fill: '#f6cf3a', stroke: '#b8930f' },
+  ],
+  pink: [
+    { fill: '#fff0f4', stroke: '#f7c6d3' },
+    { fill: '#ffd9e2', stroke: '#f3a3b6' },
+    { fill: '#ffbccd', stroke: '#ec7e9a' },
+    { fill: '#ff97b1', stroke: '#e15c7e' },
+    { fill: '#f56d92', stroke: '#c43c64' },
+  ],
+  blue: [
+    { fill: '#eef6ff', stroke: '#bcd8f7' },
+    { fill: '#d6e8ff', stroke: '#94bff2' },
+    { fill: '#b3d4ff', stroke: '#6aa3ec' },
+    { fill: '#88bbff', stroke: '#4684e0' },
+    { fill: '#5b9bf5', stroke: '#2b66c4' },
+  ],
+  green: [
+    { fill: '#eefaf1', stroke: '#b8e6c6' },
+    { fill: '#d4f3dd', stroke: '#8fd3a3' },
+    { fill: '#aee9c0', stroke: '#66c184' },
+    { fill: '#7fdb9d', stroke: '#43a868' },
+    { fill: '#4cc47b', stroke: '#2b864f' },
+  ],
+  purple: [
+    { fill: '#f4eeff', stroke: '#d6c4f6' },
+    { fill: '#e7dcff', stroke: '#bda3f0' },
+    { fill: '#d3bfff', stroke: '#a07ee8' },
+    { fill: '#b899ff', stroke: '#8257dd' },
+    { fill: '#9a72f0', stroke: '#6638c0' },
+  ],
+  gray: [
+    { fill: '#f6f5f3', stroke: '#ddd9d2' },
+    { fill: '#ecebe7', stroke: '#cfccc5' },
+    { fill: '#d9d6cf', stroke: '#b3afa5' },
+    { fill: '#bcb8ae', stroke: '#918c80' },
+    { fill: '#97928a', stroke: '#6b665d' },
+  ],
 }
 const SWATCHES = Object.keys(COLORS)
 
-// Connection grab points (% of the element box): 4 sides + 4 corners.
+// Resolve an element's hue + shade index to its concrete { fill, stroke }.
+// Tolerates legacy/missing values (unknown hue → yellow, out-of-range shade
+// clamped, absent shade → DEFAULT_SHADE).
+function resolveColor(el) {
+  const ramp = COLORS[el?.color] || COLORS.yellow
+  const idx = clamp(Number.isFinite(el?.shade) ? el.shade : DEFAULT_SHADE, 0, ramp.length - 1)
+  return ramp[idx]
+}
+
+// Connection grab points (% of the element box): 4 sides only.
 const CONNECT_POINTS = [
   { k: 't', x: 50, y: 0 }, { k: 'b', x: 50, y: 100 },
   { k: 'l', x: 0, y: 50 }, { k: 'r', x: 100, y: 50 },
-  { k: 'tl', x: 0, y: 0 }, { k: 'tr', x: 100, y: 0 },
-  { k: 'bl', x: 0, y: 100 }, { k: 'br', x: 100, y: 100 },
 ]
 
 // ── Local working copy (mutated for instant feedback, emitted up to persist) ──
@@ -274,6 +408,8 @@ function loadFromProps() {
   selectedArrowId.value = null
   openCommentId.value = null
   arrowStart.value = null
+  drawing.value = null
+  shadeHue.value = null
   // reset undo/redo history for the freshly-loaded board
   undoStack = []
   redoStack = []
@@ -452,25 +588,37 @@ const hint = computed(() => {
   if (props.tool === 'arrow') {
     return arrowStart.value ? 'Click a target element to connect' : 'Click a source element'
   }
-  if (props.tool === 'comment') return 'Click anywhere to drop a comment'
+  if (props.tool === 'comment') return 'Click an element, an arrow, or empty space to drop a comment'
+  if (props.tool === 'draw') return 'Drag to draw a freehand stroke'
   if (props.tool) return 'Click on the canvas to place'
   return ''
 })
 
 // ── Element styles ──
+// The `.el` box carries only position/size/opacity; rotation lives on the inner
+// `.el-rot` wrapper so the selection outline, handles and mini-toolbar stay
+// upright (and arrows keep anchoring to the axis-aligned box).
 function elStyle(el) {
-  return {
+  const style = {
     left: el.x + 'px',
     top: el.y + 'px',
     width: el.w + 'px',
     height: el.h + 'px',
-    ...(el.type !== 'shape' && el.type !== 'text'
-      ? { background: COLORS[el.color || 'yellow'].fill, borderColor: COLORS[el.color || 'yellow'].stroke }
-      : {}),
   }
+  if (el.opacity != null && el.opacity < 1) style.opacity = el.opacity
+  // Sticky notes paint their own fill on the box; shapes/text/draw don't.
+  if (el.type === 'sticky') {
+    const c = resolveColor(el)
+    style.background = c.fill
+    style.borderColor = c.stroke
+  }
+  return style
+}
+function rotStyle(el) {
+  return el.rotation ? { transform: `rotate(${el.rotation}deg)` } : {}
 }
 function fillStyle(el) {
-  const c = COLORS[el.color || 'blue']
+  const c = resolveColor(el)
   return { background: c.fill, borderColor: c.stroke }
 }
 function placeholderFor(el) {
@@ -481,6 +629,8 @@ function placeholderFor(el) {
 
 // ── Background pointer (create / pan / deselect) ──
 function onBgPointerDown(e) {
+  // Freehand brush: begin collecting a stroke.
+  if (props.tool === 'draw') { startDraw(e); return }
   // Creation tools
   if (props.tool && props.tool !== 'arrow') {
     const p = screenToWorld(e.clientX, e.clientY)
@@ -533,8 +683,15 @@ function capture(e) {
 // ── Element pointer ──
 function onElPointerDown(e, el) {
   if (spaceDown.value || e.button === 1) { startPan(e); return }
+  // Brush tool: draw over elements too (start the stroke instead of selecting).
+  if (props.tool === 'draw') { startDraw(e); return }
   if (props.tool === 'arrow') {
     handleArrowClick(el)
+    return
+  }
+  if (props.tool === 'comment') {
+    addCommentOn({ elementId: el.id })
+    emit('tool-used')
     return
   }
   selectedArrowId.value = null
@@ -563,6 +720,7 @@ function onTextPointerDown(e, el) {
 }
 
 function onPointerMove(e) {
+  if (drawing.value) { appendDrawPoint(e); return }
   if (connecting.value) {
     const p = screenToWorld(e.clientX, e.clientY)
     connectEnd.x = p.x
@@ -624,12 +782,19 @@ function onPointerMove(e) {
     const p = screenToWorld(e.clientX, e.clientY)
     c.x = Math.round(p.x - pinDrag.ox)
     c.y = Math.round(p.y - pinDrag.oy)
+    // Dragging detaches an anchored comment into a free-floating one.
+    if (c.on) delete c.on
     pinDrag.moved = true
     return
   }
 }
 
 function onPointerUp(e) {
+  if (drawing.value) {
+    finishDraw()
+    try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    return
+  }
   if (connecting.value) {
     finishConnect(e)
     try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
@@ -678,6 +843,14 @@ const DEFAULTS = {
   text: { w: 220, h: 48 },
   shape: { w: 180, h: 110, color: 'blue' },
 }
+const DRAW_STROKE = 3
+const DRAW_MIN_STROKE = 1
+const DRAW_MAX_STROKE = 24
+const DRAW_COLOR = 'gray'
+const DRAW_SHADE = 4 // strokes read best with the darkest shade
+// Current brush thickness for new strokes; editing a stroke's width updates it so
+// the next stroke matches.
+const brushWidth = ref(DRAW_STROKE)
 function addElement(tool, x, y) {
   let el
   if (tool === 'sticky') {
@@ -701,8 +874,87 @@ function snap(v) {
   return Math.round(v)
 }
 
+// ── Freehand drawing (brush / pen) ──
+// While drawing we collect raw world points; on release we compute the bbox and
+// store points *relative* to it, so the stroke moves/selects like any element.
+const drawing = ref(null) // { points: [[wx,wy],…] } in world coords while active
+function startDraw(e) {
+  const p = screenToWorld(e.clientX, e.clientY)
+  drawing.value = { points: [[p.x, p.y]] }
+  capture(e)
+}
+function appendDrawPoint(e) {
+  const p = screenToWorld(e.clientX, e.clientY)
+  const pts = drawing.value.points
+  const last = pts[pts.length - 1]
+  // throttle to meaningful movement so paths stay light
+  if (Math.hypot(p.x - last[0], p.y - last[1]) >= 2) pts.push([p.x, p.y])
+}
+function finishDraw() {
+  const pts = drawing.value?.points || []
+  drawing.value = null
+  if (pts.length < 2) return // a tap, not a stroke
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const [px, py] of pts) {
+    minX = Math.min(minX, px); minY = Math.min(minY, py)
+    maxX = Math.max(maxX, px); maxY = Math.max(maxY, py)
+  }
+  const pad = brushWidth.value
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad
+  const el = {
+    id: uuid(),
+    type: 'draw',
+    x: Math.round(minX),
+    y: Math.round(minY),
+    w: Math.max(1, Math.round(maxX - minX)),
+    h: Math.max(1, Math.round(maxY - minY)),
+    points: pts.map(([px, py]) => [Math.round(px - minX), Math.round(py - minY)]),
+    color: DRAW_COLOR,
+    shade: DRAW_SHADE,
+    strokeWidth: brushWidth.value,
+  }
+  model.elements.push(el)
+  // Keep the brush active for the next stroke, and don't auto-select the stroke
+  // we just drew — so you can keep drawing freely.
+  commit()
+}
+
+// Build a smoothed SVG path from a points array, offset by (ox, oy).
+function pointsToPath(points, ox = 0, oy = 0) {
+  if (!points || !points.length) return ''
+  const p = points
+  if (p.length === 1) return `M ${p[0][0] + ox} ${p[0][1] + oy}`
+  let d = `M ${p[0][0] + ox} ${p[0][1] + oy}`
+  // Quadratic smoothing: control = each point, endpoint = midpoint to the next.
+  for (let i = 1; i < p.length - 1; i++) {
+    const cx = p[i][0] + ox, cy = p[i][1] + oy
+    const mx = (p[i][0] + p[i + 1][0]) / 2 + ox
+    const my = (p[i][1] + p[i + 1][1]) / 2 + oy
+    d += ` Q ${cx} ${cy} ${mx} ${my}`
+  }
+  const lastP = p[p.length - 1]
+  d += ` L ${lastP[0] + ox} ${lastP[1] + oy}`
+  return d
+}
+// The in-progress preview lives inside `.world` (which carries the pan/zoom
+// transform), so it uses raw world coordinates; committed strokes use
+// element-local coords inside their own box.
+const drawingPath = computed(() => (drawing.value ? pointsToPath(drawing.value.points) : ''))
+const drawingStrokeStyle = computed(() => ({
+  stroke: COLORS[DRAW_COLOR][DRAW_SHADE].stroke,
+  strokeWidth: brushWidth.value + 'px',
+}))
+
 function addComment(x, y) {
   const c = { id: uuid(), x: Math.round(x), y: Math.round(y), messages: [] }
+  model.comments.push(c)
+  commit()
+  setOpenComment(c.id)
+  nextTick(() => commentInput.value?.focus())
+}
+// Drop a comment anchored to an element / arrow / between two elements.
+function addCommentOn(on) {
+  const c = { id: uuid(), on, messages: [] }
   model.comments.push(c)
   commit()
   setOpenComment(c.id)
@@ -727,6 +979,7 @@ function onTextBlur() {
   commit()
 }
 function startEdit(el) {
+  if (el.type === 'draw') { selectOnly(el.id); return } // strokes have no text
   selectOnly(el.id)
   editingId.value = el.id
   nextTick(() => {
@@ -744,9 +997,40 @@ function startEdit(el) {
   })
 }
 
-// ── Colours / delete ──
-function setColor(el, key) {
+// ── Colours / shades / opacity / delete ──
+// Which hue's shade strip is expanded in the mini-toolbar (null = collapsed).
+const shadeHue = ref(null)
+// First click on a hue selects it; clicking the already-selected hue toggles its
+// shade strip open/closed.
+function onHueClick(el, key) {
+  if ((el.color || 'yellow') === key) {
+    shadeHue.value = shadeHue.value === key ? null : key
+    return
+  }
   el.color = key
+  shadeHue.value = key
+  commit()
+}
+function setShade(el, hue, idx) {
+  el.color = hue
+  el.shade = idx
+  commit()
+}
+// Opacity slider: drag updates live (no history spam); the @change commits once.
+function setOpacity(el, v) {
+  el.opacity = clamp(Number(v), 0.1, 1)
+}
+function commitOpacity() {
+  commit()
+}
+// Stroke-width slider for a draw element. Mirrors the opacity pattern; also stores
+// the value as the current brush width so the next stroke matches.
+function setStrokeWidth(el, v) {
+  const w = clamp(Math.round(Number(v)), DRAW_MIN_STROKE, DRAW_MAX_STROKE)
+  el.strokeWidth = w
+  brushWidth.value = w
+}
+function commitStroke() {
   commit()
 }
 function removeElement(id) {
@@ -766,6 +1050,59 @@ function removeElementIds(ids) {
   commit()
 }
 
+// ── Transform / layering (driven from the stage toolbar) ──
+// Rotate every selected element by `deg`, normalised to [0, 360).
+function rotateSelection(deg) {
+  if (!selectedIds.value.size) return
+  for (const el of model.elements) {
+    if (selectedIds.value.has(el.id)) {
+      el.rotation = (((Number(el.rotation) || 0) + deg) % 360 + 360) % 360
+    }
+  }
+  commit()
+}
+// Z-order: model.elements order is back→front. Pull selected items out and
+// reinsert them at the front / back, or nudge them one step.
+function reorderSelection(mode) {
+  const ids = selectedIds.value
+  if (!ids.size) return
+  const sel = model.elements.filter((el) => ids.has(el.id))
+  const rest = model.elements.filter((el) => !ids.has(el.id))
+  if (mode === 'front') {
+    model.elements = [...rest, ...sel]
+  } else if (mode === 'back') {
+    model.elements = [...sel, ...rest]
+  } else if (mode === 'forward' || mode === 'backward') {
+    const arr = model.elements.slice()
+    const step = mode === 'forward' ? 1 : -1
+    const order = mode === 'forward' ? [...arr.keys()].reverse() : [...arr.keys()]
+    for (const i of order) {
+      if (!ids.has(arr[i].id)) continue
+      const j = i + step
+      if (j < 0 || j >= arr.length || ids.has(arr[j].id)) continue
+      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    model.elements = arr
+  }
+  commit()
+}
+function bringToFront() { reorderSelection('front') }
+function sendToBack() { reorderSelection('back') }
+function bringForward() { reorderSelection('forward') }
+function sendBackward() { reorderSelection('backward') }
+
+// Tell the parent how many elements are selected and (for a single selection)
+// its rotation, so the stage toolbar can enable controls and show the angle.
+watch(
+  selectedIds,
+  (ids) => {
+    shadeHue.value = null
+    const id = ids.size === 1 ? [...ids][0] : null
+    const el = id ? byId.value.get(id) : null
+    emit('selection-change', { count: ids.size, ids: [...ids], rotation: el ? Number(el.rotation) || 0 : 0 })
+  },
+)
+
 // ── Arrows ──
 function handleArrowClick(el) {
   if (!arrowStart.value) {
@@ -784,6 +1121,15 @@ function handleArrowClick(el) {
   arrowStart.value = null
   emit('tool-used')
 }
+function onArrowPointerDown(id) {
+  // Comment tool active → drop a comment at the arrow's midpoint instead.
+  if (props.tool === 'comment') {
+    addCommentOn({ arrowId: id })
+    emit('tool-used')
+    return
+  }
+  selectArrow(id)
+}
 function selectArrow(id) {
   selectedArrowId.value = id
   clearSelection()
@@ -800,6 +1146,22 @@ function editArrowLabel(id) {
 function removeArrow(id) {
   model.arrows = model.arrows.filter((a) => a.id !== id)
   if (selectedArrowId.value === id) selectedArrowId.value = null
+  commit()
+}
+// Bow the arrow: step the signed curve fraction, clamped. 0 = straight.
+const CURVE_STEP = 0.18
+const CURVE_MAX = 0.9
+function bendArrow(id, dir) {
+  const a = model.arrows.find((x) => x.id === id)
+  if (!a) return
+  const next = Math.max(-CURVE_MAX, Math.min(CURVE_MAX, (Number(a.curve) || 0) + dir * CURVE_STEP))
+  a.curve = Math.abs(next) < 0.001 ? 0 : Number(next.toFixed(3))
+  commit()
+}
+function straightenArrow(id) {
+  const a = model.arrows.find((x) => x.id === id)
+  if (!a || !a.curve) return
+  a.curve = 0
   commit()
 }
 
@@ -823,30 +1185,77 @@ function endpointCenter(end) {
   return { x: end?.x ?? 0, y: end?.y ?? 0, el: null }
 }
 
+// Perpendicular bow offset (world units) for an arrow's `curve` value: a signed
+// fraction of the chord length. 0 / absent → straight line.
+function curveControl(fc, tc, curve) {
+  const dx = tc.x - fc.x
+  const dy = tc.y - fc.y
+  const len = Math.hypot(dx, dy) || 1
+  const off = curve * len
+  // unit normal (perpendicular to the chord)
+  const nx = -dy / len
+  const ny = dx / len
+  return { x: (fc.x + tc.x) / 2 + nx * off, y: (fc.y + tc.y) / 2 + ny * off }
+}
+
+// World-space geometry for one arrow: the two edge points, the curve control
+// point (null when straight) and the visual midpoint. Shared by the renderer
+// and by comment anchoring.
+function arrowWorldGeom(a) {
+  const from = endpointCenter(a.from)
+  const to = endpointCenter(a.to)
+  const curve = Number(a.curve) || 0
+  // Control point; edges exit aiming toward it so the curve leaves each box
+  // naturally. For curve 0 it sits on the chord → straight.
+  const ctrl = curveControl(from, to, curve)
+  const fp = from.el ? edgePoint(from.el, ctrl.x, ctrl.y) : { x: from.x, y: from.y }
+  const tp = to.el ? edgePoint(to.el, ctrl.x, ctrl.y) : { x: to.x, y: to.y }
+  let cw = null, mid
+  if (curve) {
+    // recompute control off the actual edge points so the bow is symmetric
+    cw = curveControl(fp, tp, curve * 2)
+    mid = { x: 0.25 * fp.x + 0.5 * cw.x + 0.25 * tp.x, y: 0.25 * fp.y + 0.5 * cw.y + 0.25 * tp.y }
+  } else {
+    mid = { x: (fp.x + tp.x) / 2, y: (fp.y + tp.y) / 2 }
+  }
+  return { fp, tp, cw, mid }
+}
+
 const arrowGeoms = computed(() => {
   // depend on camera so screen coords recompute on pan/zoom
   void cam.x; void cam.y; void cam.zoom
   const out = []
   for (const a of model.arrows) {
-    const from = endpointCenter(a.from)
-    const to = endpointCenter(a.to)
-    const fp = from.el ? edgePoint(from.el, to.x, to.y) : from
-    const tp = to.el ? edgePoint(to.el, from.x, from.y) : to
+    const { fp, tp, cw } = arrowWorldGeom(a)
     const s1 = worldToScreen(fp.x, fp.y)
     const s2 = worldToScreen(tp.x, tp.y)
-    out.push({
-      id: a.id,
-      x1: s1.x, y1: s1.y, x2: s2.x, y2: s2.y,
-      mx: (s1.x + s2.x) / 2, my: (s1.y + s2.y) / 2 - 6,
-      label: a.label,
-    })
+    let d, mx, my
+    if (cw) {
+      const sc = worldToScreen(cw.x, cw.y)
+      d = `M ${s1.x} ${s1.y} Q ${sc.x} ${sc.y} ${s2.x} ${s2.y}`
+      // midpoint of a quadratic bezier at t=0.5
+      mx = 0.25 * s1.x + 0.5 * sc.x + 0.25 * s2.x
+      my = 0.25 * s1.y + 0.5 * sc.y + 0.25 * s2.y - 6
+    } else {
+      d = `M ${s1.x} ${s1.y} L ${s2.x} ${s2.y}`
+      mx = (s1.x + s2.x) / 2
+      my = (s1.y + s2.y) / 2 - 6
+    }
+    out.push({ id: a.id, d, mx, my, label: a.label })
   }
   return out
 })
 
+const selectedArrowGeom = computed(() =>
+  selectedArrowId.value ? arrowGeoms.value.find((a) => a.id === selectedArrowId.value) : null,
+)
+
 // ── Connection handles (drag from any element side/corner) ──
 function showHandles(el) {
   if (editingId.value === el.id) return false
+  // While the comment tool is active, clicking an element should drop a comment
+  // on it — don't surface the connect handles that would start an arrow instead.
+  if (props.tool === 'comment') return false
   if (connecting.value) return connecting.value.fromId === el.id
   return hoverId.value === el.id || selectedId.value === el.id
 }
@@ -879,18 +1288,46 @@ const tempArrow = computed(() => {
 })
 
 // ── Comments ──
+// Resolve a comment's world position from its anchor (`on`), falling back to its
+// stored free point. Anchors keep the pin attached as elements/arrows move:
+//   { elementId }            → the element's top-right corner
+//   { betweenIds:[a, b] }    → halfway between two element centres
+//   { arrowId }              → the arrow's midpoint
+function commentPos(c) {
+  const on = c?.on
+  if (on) {
+    if (on.elementId != null) {
+      const el = byId.value.get(on.elementId)
+      if (el) return { x: el.x + el.w, y: el.y }
+    } else if (Array.isArray(on.betweenIds) && on.betweenIds.length === 2) {
+      const a = byId.value.get(on.betweenIds[0])
+      const b = byId.value.get(on.betweenIds[1])
+      if (a && b) return {
+        x: (a.x + a.w / 2 + b.x + b.w / 2) / 2,
+        y: (a.y + a.h / 2 + b.y + b.h / 2) / 2,
+      }
+    } else if (on.arrowId != null) {
+      const ar = model.arrows.find((x) => x.id === on.arrowId)
+      if (ar) return arrowWorldGeom(ar).mid
+    }
+  }
+  return { x: c?.x ?? 0, y: c?.y ?? 0 }
+}
 function pinStyle(c) {
-  const s = worldToScreen(c.x, c.y)
+  const w = commentPos(c)
+  const s = worldToScreen(w.x, w.y)
   return { left: s.x + 'px', top: s.y + 'px' }
 }
 function popStyle(c) {
-  const s = worldToScreen(c.x, c.y)
+  const w = commentPos(c)
+  const s = worldToScreen(w.x, w.y)
   return { left: s.x + 14 + 'px', top: s.y + 'px' }
 }
 const commentInput = ref(null)
 function onPinPointerDown(e, c) {
   const p = screenToWorld(e.clientX, e.clientY)
-  pinDrag = { id: c.id, ox: p.x - c.x, oy: p.y - c.y, moved: false }
+  const w = commentPos(c)
+  pinDrag = { id: c.id, ox: p.x - w.x, oy: p.y - w.y, moved: false }
   capture(e)
 }
 function messageCount(c) {
@@ -906,7 +1343,9 @@ function normalizeComment(c) {
   if (c.text && c.text.trim()) {
     messages.push({ id: uuid(), text: c.text, created_at: c.created_at || null })
   }
-  return { id: c.id, x: c.x, y: c.y, messages }
+  const out = { id: c.id, x: c.x, y: c.y, messages }
+  if (c.on) out.on = c.on
+  return out
 }
 function sendReply() {
   const c = openComment.value
@@ -937,9 +1376,6 @@ function setOpenComment(id) {
   }
   openCommentId.value = id
   replyDraft.value = ''
-}
-function closeComment() {
-  setOpenComment(null)
 }
 
 // ── Keyboard ──
@@ -989,6 +1425,7 @@ function onKey(e) {
     else if (k === 't') { e.preventDefault(); emit('set-tool', 'text') }
     else if (k === 'c') { e.preventDefault(); emit('set-tool', 'comment') }
     else if (k === 's') { e.preventDefault(); emit('set-tool', 'sticky') }
+    else if (k === 'p') { e.preventDefault(); emit('set-tool', props.tool === 'draw' ? null : 'draw') }
   }
 }
 function onKeyUp(e) {
@@ -1027,7 +1464,15 @@ onBeforeUnmount(() => {
   if (ro) ro.disconnect()
 })
 
-defineExpose({ fit, resetView })
+defineExpose({
+  fit,
+  resetView,
+  rotateSelection,
+  bringToFront,
+  sendToBack,
+  bringForward,
+  sendBackward,
+})
 </script>
 
 <style scoped>
@@ -1081,6 +1526,28 @@ defineExpose({ fit, resetView })
 }
 .el-text { background: transparent; }
 .el-shape { padding: 0; }
+.el-draw { background: transparent; }
+
+/* rotated visual layer: fills the element's content box; rotation pivots on its
+   centre while the box, outline, handles and toolbar stay upright. */
+.el-rot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  transform-origin: center;
+}
+
+/* freehand stroke svg */
+.draw-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
 
 /* shape backdrop */
 .shape-fill {
@@ -1117,8 +1584,8 @@ defineExpose({ fit, resetView })
   user-select: text;
   -webkit-user-select: text;
 }
-.el-text > .el-content { font-size: 1.05rem; font-weight: 500; padding: 0.3rem 0.4rem; }
-.el-shape > .el-content {
+.el-text .el-content { font-size: 1.05rem; font-weight: 500; padding: 0.3rem 0.4rem; }
+.el-shape .el-content {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1187,6 +1654,26 @@ defineExpose({ fit, resetView })
   padding: 0;
 }
 .swatch.on { outline: 2px solid var(--accent-500); outline-offset: 1px; }
+/* expanding shade strip, floated just above the toolbar row */
+.shade-strip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem 0.4rem;
+  background: #fff;
+  border: 1px solid #e5e4e1;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+.opacity-range,
+.stroke-range {
+  width: 4.5rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: var(--accent-500);
+}
 .el-toolbar-sep { width: 1px; height: 1.1rem; background: #e5e4e1; margin: 0 0.15rem; }
 .el-toolbar-btn {
   display: inline-flex;
@@ -1202,6 +1689,46 @@ defineExpose({ fit, resetView })
   font-size: 0.8rem;
 }
 .el-toolbar-btn.danger:hover { background: #fff0f0; color: #c33; }
+
+/* ── Selected-arrow toolbar ── */
+.arrow-toolbar {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.35rem;
+  background: #fff;
+  border: 1px solid #e5e4e1;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  z-index: 5;
+  white-space: nowrap;
+}
+.arrow-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.35rem;
+  border: none;
+  background: none;
+  color: #5c5c5c;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.arrow-tb-btn:hover { background: #f3f2f0; color: #1a1a1a; }
+.arrow-tb-btn.danger:hover { background: #fff0f0; color: #c33; }
+
+/* in-progress freehand preview (lives inside the transformed .world) */
+.world-draw {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
 
 /* ── Connectors overlay ── */
 .overlay {

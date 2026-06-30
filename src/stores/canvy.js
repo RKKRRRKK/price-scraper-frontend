@@ -63,6 +63,7 @@ export const useCanvyStore = defineStore('canvy', () => {
           name: (name || 'Untitled board').trim(),
           folder_id: folderId,
           data: blankData(),
+          branch_data: blankData(),
         })
         .select('*')
         .single()
@@ -82,13 +83,32 @@ export const useCanvyStore = defineStore('canvy', () => {
   }
 
   // Update a board's data locally (immediate) and persist (debounced).
-  function updateBoardData(id, data) {
+  // `view` selects which copy to write: 'main' (the stable `data`) or 'branch'.
+  function updateBoardData(id, data, view = 'main') {
     const board = boards.value.find((b) => b.id === id)
     if (!board) return
-    board.data = data
+    if (view === 'branch') board.branch_data = data
+    else board.data = data
     board.updated_at = new Date().toISOString()
     sortBoards()
     scheduleSave(id)
+  }
+
+  // Merge the branch into main: main takes the branch's content, branch resets to
+  // blank. Persisted immediately (not debounced).
+  async function mergeBranch(id) {
+    const board = boards.value.find((b) => b.id === id)
+    if (!board) return
+    const merged = JSON.parse(JSON.stringify(board.branch_data || blankData()))
+    board.data = merged
+    board.branch_data = blankData()
+    board.updated_at = new Date().toISOString()
+    sortBoards()
+    return updateBoard(id, {
+      data: board.data,
+      branch_data: board.branch_data,
+      updated_at: board.updated_at,
+    })
   }
 
   function scheduleSave(id) {
@@ -109,7 +129,11 @@ export const useCanvyStore = defineStore('canvy', () => {
     try {
       const { error: err } = await supabase
         .from('canvy_boards')
-        .update({ data: board.data, updated_at: new Date().toISOString() })
+        .update({
+          data: board.data,
+          branch_data: board.branch_data ?? null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
       if (err) throw err
     } catch (e) {
@@ -177,6 +201,7 @@ export const useCanvyStore = defineStore('canvy', () => {
           name: `${src.name} copy`,
           folder_id: src.folder_id || null,
           data: JSON.parse(JSON.stringify(src.data || blankData())),
+          branch_data: JSON.parse(JSON.stringify(src.branch_data || blankData())),
         })
         .select('*')
         .single()
@@ -294,6 +319,7 @@ export const useCanvyStore = defineStore('canvy', () => {
     createBoard,
     selectBoard,
     updateBoardData,
+    mergeBranch,
     updateBoard,
     renameBoard,
     moveBoardToFolder,

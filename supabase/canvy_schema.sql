@@ -5,6 +5,11 @@
 -- Folders mirror squell_folders (normalized). A board is the unit of work and the
 -- whole board (elements, arrows, comments, viewport) lives in `data` as JSONB —
 -- same approach as breadboard_sheets.
+--
+-- Each board also has a `branch_data` JSONB: a parallel working copy ("branch")
+-- you can toggle to/from the stable "main" (`data`). Both are editable manually;
+-- AI constructive builds land in the branch. "Merge" copies branch → main and
+-- blanks the branch.
 
 -- ── Tables ──────────────────────────────────────────────────────────────────
 -- Folders group boards in the catalogue rail (e.g. "System Architecture").
@@ -22,6 +27,7 @@ create table if not exists public.canvy_boards (
   name        text not null,
   folder_id   uuid references public.canvy_folders (id) on delete set null,
   data        jsonb not null default '{}'::jsonb,
+  branch_data jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -31,6 +37,11 @@ create table if not exists public.canvy_boards (
 -- to re-run.
 alter table public.canvy_boards
   add column if not exists folder_id uuid references public.canvy_folders (id) on delete set null;
+
+-- Migration for existing installs: the "branch" working copy. Nullable; a null
+-- (or empty) branch is treated as a blank board. Safe to re-run.
+alter table public.canvy_boards
+  add column if not exists branch_data jsonb;
 
 create index if not exists canvy_boards_user_idx
   on public.canvy_boards (user_id, updated_at desc);

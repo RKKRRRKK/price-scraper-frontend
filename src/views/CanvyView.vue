@@ -174,7 +174,7 @@
     </aside>
 
     <!-- ── Stage ── -->
-    <main class="stage">
+    <main class="stage" ref="stageRef" :class="{ fullscreen: isFullscreen }">
       <button class="btn-ghost btn-sm rail-toggle mobile-only" @click="railOpen = true">
         <i class="pi pi-bars" style="font-size: 0.75rem;"></i> Boards
       </button>
@@ -201,12 +201,23 @@
           />
           <div class="stage-header-right">
             <span v-if="store.saving" class="save-hint"><i class="pi pi-spin pi-spinner" style="font-size: 0.7rem;"></i> Saving…</span>
+            <!-- Main / Branch toggle + merge -->
+            <div class="branch-toggle" title="Main is the stable board; Branch is a working copy. AI edits land in the branch.">
+              <button class="branch-seg" :class="{ on: activeView === 'main' }" @click="setView('main')">Main</button>
+              <button class="branch-seg" :class="{ on: activeView === 'branch' }" @click="setView('branch')">Branch</button>
+            </div>
+            <button class="btn-ghost btn-sm" @click="mergeBranch" title="Replace main with the branch, then clear the branch">
+              <i class="pi pi-arrow-right-arrow-left" style="font-size: 0.8rem;"></i> Merge
+            </button>
             <button class="btn-ghost btn-sm" @click="copyForAi" :class="{ copied }">
               <i :class="copied ? 'pi pi-check' : 'pi pi-sparkles'" style="font-size: 0.8rem;"></i>
               {{ copied ? 'Copied!' : 'Copy for AI' }}
             </button>
             <button class="btn-ghost btn-sm" @click="openAi" title="Copy a prompt for an AI, or build the board from its reply">
               <i class="pi pi-bolt" style="font-size: 0.8rem;"></i> AI assist
+            </button>
+            <button class="icon-btn" @click="toggleFullscreen" :title="isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'">
+              <i :class="isFullscreen ? 'pi pi-window-minimize' : 'pi pi-window-maximize'" style="font-size: 0.875rem;"></i>
             </button>
             <button class="icon-btn icon-danger" @click="removeBoard" title="Delete board">
               <i class="pi pi-trash" style="font-size: 0.875rem;"></i>
@@ -223,8 +234,8 @@
           <button class="tool" :class="{ on: tool === 'sticky' }" title="Sticky note" @click="setTool('sticky')">
             <i class="pi pi-bookmark-fill"></i>
           </button>
-          <button class="tool" :class="{ on: tool === 'text' }" title="Text block" @click="setTool('text')">
-            <i class="pi pi-pencil"></i>
+          <button class="tool" :class="{ on: tool === 'text' }" title="Text block (T)" @click="setTool('text')">
+            <span class="tool-glyph">T</span>
           </button>
           <span class="tool-sep"></span>
           <button class="tool" :class="{ on: tool === 'shape-rect' }" title="Rectangle" @click="setTool('shape-rect')">
@@ -236,6 +247,9 @@
           <button class="tool" :class="{ on: tool === 'shape-diamond' }" title="Diamond" @click="setTool('shape-diamond')">
             <i class="pi pi-stop" style="transform: rotate(45deg);"></i>
           </button>
+          <button class="tool" :class="{ on: tool === 'draw' }" title="Brush / pen (P)" @click="setTool('draw')">
+            <i class="pi pi-pencil"></i>
+          </button>
           <span class="tool-sep"></span>
           <button class="tool" :class="{ on: tool === 'arrow' }" title="Connect with arrow" @click="setTool('arrow')">
             <i class="pi pi-arrow-right"></i>
@@ -243,19 +257,44 @@
           <button class="tool" :class="{ on: tool === 'comment' }" title="Comment pin" @click="setTool('comment')">
             <i class="pi pi-comment"></i>
           </button>
+
+          <!-- Contextual: rotate + layer order (act on the current selection) -->
+          <template v-if="selCount">
+            <span class="tool-sep"></span>
+            <button class="tool" title="Rotate 15° left" @click="canvasRef?.rotateSelection(-15)">
+              <i class="pi pi-replay"></i>
+            </button>
+            <button class="tool" title="Rotate 15° right" @click="canvasRef?.rotateSelection(15)">
+              <i class="pi pi-refresh"></i>
+            </button>
+            <span class="tool-sep"></span>
+            <button class="tool" title="Bring to front" @click="canvasRef?.bringToFront()">
+              <i class="pi pi-angle-double-up"></i>
+            </button>
+            <button class="tool" title="Bring forward" @click="canvasRef?.bringForward()">
+              <i class="pi pi-angle-up"></i>
+            </button>
+            <button class="tool" title="Send backward" @click="canvasRef?.sendBackward()">
+              <i class="pi pi-angle-down"></i>
+            </button>
+            <button class="tool" title="Send to back" @click="canvasRef?.sendToBack()">
+              <i class="pi pi-angle-double-down"></i>
+            </button>
+          </template>
         </div>
 
         <!-- Canvas -->
         <div class="canvas-host">
           <CanvyCanvas
             ref="canvasRef"
-            :key="store.activeBoard.id + '-' + canvasKey"
+            :key="store.activeBoard.id + '-' + activeView + '-' + canvasKey"
             :board-id="store.activeBoard.id"
-            :data="store.activeBoard.data"
+            :data="activeData"
             :tool="tool"
             @update="onCanvasUpdate"
             @tool-used="tool = null"
             @set-tool="tool = $event"
+            @selection-change="onSelectionChange"
           />
         </div>
       </template>
@@ -266,6 +305,8 @@
     <CanvyAiModal
       :open="aiOpen"
       :board="store.activeBoard"
+      :board-data="activeData"
+      :scope-ids="selIds"
       :build-error="aiError"
       @build="buildFromText"
       @close="aiOpen = false"
@@ -274,13 +315,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import dayjs from 'dayjs'
-import { useCanvyStore } from '@/stores/canvy'
+import { useCanvyStore, blankData } from '@/stores/canvy'
 import CanvyCanvas from '@/components/canvy/CanvyCanvas.vue'
 import CanvyAiModal from '@/components/canvy/CanvyAiModal.vue'
 import { boardToMarkdown } from '@/lib/canvyExport'
-import { parseBuild } from '@/lib/canvyAi'
+import { parseBuild, applyScoped, parseCommentBuild } from '@/lib/canvyAi'
 
 const store = useCanvyStore()
 
@@ -293,6 +334,68 @@ const aiOpen = ref(false)
 const aiError = ref('')
 const canvasRef = ref(null)
 const canvasKey = ref(0) // bump to force the canvas to reload after an AI build
+
+// ── Fullscreen (stage = header + toolbar + canvas, so all controls stay usable) ──
+const stageRef = ref(null)
+const isFullscreen = ref(false)
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.()
+  } else {
+    stageRef.value?.requestFullscreen?.()
+  }
+}
+function onFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+  // the canvas re-measures itself via its ResizeObserver; refit after the resize
+  nextTick(() => canvasRef.value?.fit?.())
+}
+onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange))
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
+
+// ── Selection (mirrored from the canvas for the toolbar + AI scope) ──
+const selCount = ref(0)
+const selIds = ref([])
+function onSelectionChange(p) {
+  selCount.value = p?.count || 0
+  selIds.value = p?.ids || []
+}
+
+// ── Main / branch view ──
+// Which copy of the active board we're editing. Persisted per board so a board
+// reopens on the same view. AI constructive builds always target the branch.
+const VIEW_KEY = 'canvy.boardView'
+const activeView = ref('main')
+function loadViewMap() {
+  try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') } catch { return {} }
+}
+function persistView(boardId, view) {
+  try {
+    const m = loadViewMap()
+    m[boardId] = view
+    localStorage.setItem(VIEW_KEY, JSON.stringify(m))
+  } catch { /* ignore */ }
+}
+const activeData = computed(() => {
+  const b = store.activeBoard
+  if (!b) return blankData()
+  return (activeView.value === 'branch' ? b.branch_data : b.data) || blankData()
+})
+function setView(view) {
+  if (activeView.value === view) return
+  activeView.value = view
+  if (store.activeBoard) persistView(store.activeBoard.id, view)
+}
+async function mergeBranch() {
+  const b = store.activeBoard
+  if (!b) return
+  if (!window.confirm('Merge the branch into main? This overwrites main and clears the branch.')) return
+  try {
+    await store.mergeBranch(b.id)
+    setView('main')
+    canvasKey.value++
+  } catch { /* surfaced via store.error */ }
+}
 
 function setTool(t) {
   tool.value = tool.value === t ? null : t
@@ -468,7 +571,13 @@ function selectBoard(id) {
 }
 watch(
   () => store.activeBoard,
-  (b) => { nameDraft.value = b?.name || '' },
+  (b) => {
+    nameDraft.value = b?.name || ''
+    // Restore this board's last-used view (default main).
+    if (b) activeView.value = loadViewMap()[b.id] === 'branch' ? 'branch' : 'main'
+    selCount.value = 0
+    selIds.value = []
+  },
   { immediate: true },
 )
 async function saveName() {
@@ -479,7 +588,7 @@ async function saveName() {
   try { await store.renameBoard(b.id, name) } catch { /* ignore */ }
 }
 function onCanvasUpdate(data) {
-  if (store.activeBoard) store.updateBoardData(store.activeBoard.id, data)
+  if (store.activeBoard) store.updateBoardData(store.activeBoard.id, data, activeView.value)
 }
 async function newBoard() {
   try { await store.createBoard({}) } catch { /* ignore */ }
@@ -496,7 +605,7 @@ async function copyForAi() {
   const b = store.activeBoard
   if (!b) return
   try {
-    await navigator.clipboard.writeText(boardToMarkdown(b))
+    await navigator.clipboard.writeText(boardToMarkdown({ name: b.name, data: activeData.value }))
     copied.value = true
     setTimeout(() => { copied.value = false }, 1600)
   } catch (e) {
@@ -509,16 +618,35 @@ function openAi() {
   aiError.value = ''
   aiOpen.value = true
 }
-function buildFromText(text) {
+function buildFromText(payload) {
   aiError.value = ''
-  const res = parseBuild(text)
-  if (!res.ok) { aiError.value = res.error; return }
   const b = store.activeBoard
   if (!b) return
-  const d = b.data || {}
-  const hasContent = (d.elements?.length || d.arrows?.length || d.comments?.length)
-  if (hasContent && !window.confirm('Replace the current board with the AI build?')) return
-  store.updateBoardData(b.id, res.data)
+  const text = typeof payload === 'string' ? payload : payload.text
+  const mode = typeof payload === 'string' ? 'edit' : payload.mode
+  const scoped = typeof payload === 'string' ? false : payload.scoped
+
+  // Comment-only review: merge comments into whichever view is shown — never
+  // restructures the board.
+  if (mode === 'comment') {
+    const res = parseCommentBuild(text, activeData.value)
+    if (!res.ok) { aiError.value = res.error; return }
+    store.updateBoardData(b.id, { ...activeData.value, comments: res.comments }, activeView.value)
+    aiOpen.value = false
+    canvasKey.value++
+    if (res.warnings?.length) console.warn('[Canvy] AI comment warnings:', res.warnings)
+    return
+  }
+
+  // Constructive edit: always lands in the branch. Scoped edits merge the
+  // assistant's section back into the data the prompt was built from (the current
+  // view); full builds replace it. Either way the result is stored as the branch.
+  const res = scoped ? applyScoped(text, activeData.value, new Set(selIds.value)) : parseBuild(text)
+  if (!res.ok) { aiError.value = res.error; return }
+  store.updateBoardData(b.id, res.data, 'branch')
+  if (activeView.value !== 'branch') {
+    setView('branch')
+  }
   aiOpen.value = false
   canvasKey.value++ // force the canvas to reload from the new data and re-fit
   if (res.warnings?.length) console.warn('[Canvy] AI build warnings:', res.warnings)
@@ -751,6 +879,11 @@ function buildFromText(text) {
 }
 .rail-toggle { align-self: flex-start; }
 
+/* Fullscreen: the stage is rendered in the top layer, so give it the app
+   background + a little padding and let the canvas fill the rest. */
+.stage:fullscreen { background: var(--bg-card, #fff); padding: 1rem 1rem 0; }
+.stage:fullscreen .canvas-host { border-radius: 0.75rem; }
+
 .stage-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .board-name {
   font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em;
@@ -759,8 +892,20 @@ function buildFromText(text) {
   border-bottom: 2px solid transparent;
 }
 .board-name:focus { border-bottom-color: var(--accent-400); }
-.stage-header-right { display: flex; align-items: center; gap: 0.5rem; }
+.stage-header-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .save-hint { font-size: 0.78rem; color: var(--text-faint); }
+
+/* Main / branch segmented toggle */
+.branch-toggle {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 0.55rem;
+  background: var(--bg-sunken); padding: 0.15rem; gap: 0.1rem;
+}
+.canvy-app .branch-seg {
+  padding: 0.3rem 0.7rem; border-radius: 0.4rem;
+  font-size: 0.8rem; font-weight: 600; color: var(--text-dim);
+}
+.canvy-app .branch-seg.on { background: #fff; color: var(--accent-600); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 
 /* toolbar */
 .toolbar {
@@ -777,6 +922,7 @@ function buildFromText(text) {
 }
 .canvy-app .tool:hover { background: var(--bg-sunken); color: var(--text); }
 .canvy-app .tool.on { background: var(--accent-050); color: var(--accent-600); box-shadow: inset 0 0 0 1px var(--accent-400); }
+.tool-glyph { font-weight: 800; font-size: 1.05rem; line-height: 1; font-family: Georgia, 'Times New Roman', serif; }
 .tool-sep { width: 1px; height: 1.4rem; background: var(--border); margin: 0 0.25rem; }
 
 /* canvas host */

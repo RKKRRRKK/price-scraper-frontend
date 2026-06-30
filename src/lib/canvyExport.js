@@ -40,9 +40,19 @@ function distToBox(px, py, el) {
   return Math.hypot(dx, dy)
 }
 
-// Describe what a free-floating comment pin points to, based on its position:
-// inside an element → "on" it; otherwise the nearby element(s) within a radius.
-function commentAnchor(comment, elements) {
+// Describe what a comment points to. An explicit `on` anchor wins; otherwise
+// infer from a free-floating pin's position (inside / near element(s)).
+function commentAnchor(comment, elements, byId) {
+  const on = comment.on
+  if (on) {
+    if (on.elementId != null) {
+      return ` (on "${elementLabel(byId.get(on.elementId))}")`
+    }
+    if (Array.isArray(on.betweenIds) && on.betweenIds.length === 2) {
+      return ` (between "${elementLabel(byId.get(on.betweenIds[0]))}" and "${elementLabel(byId.get(on.betweenIds[1]))}")`
+    }
+    if (on.arrowId != null) return ' (on an arrow)'
+  }
   if (comment.x == null || comment.y == null || !elements.length) return ''
   const px = comment.x
   const py = comment.y
@@ -73,6 +83,7 @@ export function boardToMarkdown(board) {
   const stickies = elements.filter((el) => el.type === 'sticky')
   const texts = elements.filter((el) => el.type === 'text')
   const shapes = elements.filter((el) => el.type === 'shape')
+  const draws = elements.filter((el) => el.type === 'draw')
 
   const lines = []
   lines.push(`# Whiteboard: ${board?.name || 'Untitled board'}`)
@@ -87,6 +98,7 @@ export function boardToMarkdown(board) {
     `- **Sticky notes:** ${stickies.length}  ` +
       `**Text blocks:** ${texts.length}  ` +
       `**Shapes:** ${shapes.length}  ` +
+      `**Drawings:** ${draws.length}  ` +
       `**Connections:** ${arrows.length}  ` +
       `**Comments:** ${comments.length}`,
   )
@@ -125,6 +137,14 @@ export function boardToMarkdown(board) {
   }
   lines.push('')
 
+  // ── Drawings ──
+  if (draws.length) {
+    lines.push('## Drawings')
+    lines.push('')
+    lines.push(`_${draws.length} freehand ${draws.length === 1 ? 'stroke' : 'strokes'} (hand-drawn annotations)._`)
+    lines.push('')
+  }
+
   // ── Connections ──
   lines.push('## Connections')
   lines.push('')
@@ -145,7 +165,7 @@ export function boardToMarkdown(board) {
   lines.push('')
   const threads = comments
     .map((c) => ({
-      anchor: commentAnchor(c, elements),
+      anchor: commentAnchor(c, elements, byId),
       msgs: Array.isArray(c.messages) ? c.messages : c.text ? [{ text: c.text }] : [],
     }))
     .filter((t) => t.msgs.length)
