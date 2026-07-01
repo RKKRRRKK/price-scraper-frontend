@@ -1,35 +1,22 @@
 <template>
-  <!-- ───── top bar / header ───── -->
-  <header class="header">
-    <Button
-      v-if="isMobile"
-      icon="pi pi-folder text-2xl"
-      class="p-button-text p-button-lg hamburger-btn"
-      aria-label="Open navigation"
-      label='Open Folders'
-      @click="mobileVisible = true"
-    />
-    <slot name="header" />
-  </header>
-  
-
   <div class="app-shell">
-    <!-- ───── desktop fixed sidebar (card style) ───── -->
+    <!-- ───── desktop fixed sidebar ───── -->
     <aside class="sidebar-wrapper desktop-only">
       <SidebarContent @file-selected="$emit('file-selected', $event)" />
     </aside>
 
-    <!-- ───── mobile slide-in (plain style) ───── -->
+    <!-- ───── mobile slide-in drawer ───── -->
     <Sidebar
       v-model:visible="mobileVisible"
       position="left"
-      class="mobile-only"
+      class="scraper-drawer mobile-only"
       :dismissable="true"
       :modal="true"
       :showCloseIcon="false"
     >
       <SidebarContent
         variant="plain"
+        @close="mobileVisible = false"
         @file-selected="
           (id) => {
             mobileVisible = false
@@ -40,50 +27,41 @@
     </Sidebar>
 
     <!-- ───── main area ───── -->
-    <main class="flex-1">
+    <main class="shell-main">
       <slot />
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, provide } from 'vue'
 import Sidebar from 'primevue/sidebar'
-import Button from 'primevue/button'
 import SidebarContent from './SidebarContent.vue'
 
 defineEmits(['file-selected'])
 
-/* responsive media query */
-const mq = window.matchMedia('(max-width: 767px)')
-const isMobile = ref(mq.matches)
-const update = () => {
-  isMobile.value = mq.matches
-}
-onMounted(() => mq.addEventListener('change', update))
-onUnmounted(() => mq.removeEventListener('change', update))
-
 const mobileVisible = ref(false)
+
+/* let descendants (the section header ☰ button) open the drawer */
+provide('openMobileSidebar', () => {
+  mobileVisible.value = true
+})
 </script>
 
 <style scoped>
-/* layout shell */
 .app-shell {
   display: flex;
- 
+  min-height: calc(100vh - 4rem);
+  background: linear-gradient(180deg, #f8f1e7, #f5ede1);
+  font-family: 'Outfit', system-ui, sans-serif;
 }
 .sidebar-wrapper {
-  width: 18rem;
+  width: 248px;
   flex-shrink: 0;
 }
-
-/* header line */
-.header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1rem;
-  
-  background: var(--surface-0);
+.shell-main {
+  flex: 1;
+  min-width: 0;
 }
 
 /* hide / show depending on breakpoint */
@@ -93,9 +71,27 @@ const mobileVisible = ref(false)
   }
 }
 @media (min-width: 768px) {
-  .mobile-only,
-  .hamburger-btn {
+  .mobile-only {
     display: none !important;
   }
+}
+</style>
+
+<!-- Drawer chrome is teleported to <body>, so it must be styled unscoped -->
+<style>
+.scraper-drawer.p-sidebar {
+  width: 300px !important;
+  background: #fffdf9;
+  border-radius: 0 20px 20px 0;
+  box-shadow: 8px 0 30px rgba(61, 50, 38, 0.3);
+}
+.scraper-drawer .p-sidebar-header {
+  display: none;
+}
+.scraper-drawer .p-sidebar-content {
+  padding: 0;
+}
+.p-sidebar-mask:has(.scraper-drawer) {
+  background: rgba(61, 50, 38, 0.35);
 }
 </style>

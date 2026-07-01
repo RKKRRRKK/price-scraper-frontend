@@ -1,7 +1,16 @@
 <template>
-  <!-- card on desktop, plain in mobile overlay -->
   <div :class="['sidebar-nav', { plain: variant === 'plain' }]">
-    <h3 class="sidebar-title">Folders</h3>
+    <div class="sidebar-head">
+      <span class="sidebar-title">Folders</span>
+      <span
+        v-if="variant === 'plain'"
+        class="drawer-close"
+        role="button"
+        aria-label="Close folders"
+        @click="emit('close')"
+        >×</span
+      >
+    </div>
 
     <div class="tree-wrapper">
       <Tree
@@ -13,27 +22,32 @@
         class="folder-tree"
       >
         <template #default="{ node }">
-          <div class="node-content">
-            <i :class="[node.leaf ? 'pi pi-file' : 'pi pi-folder', 'node-icon']" />
+          <div class="node-content" :class="node.leaf ? 'node-file' : 'node-folder'">
             <span class="node-label">{{ node.label }}</span>
+
+            <span
+              v-if="node.leaf && isSelected(node.key) && jobCount(node.key) > 0"
+              class="job-count"
+              >{{ jobCount(node.key) }}</span
+            >
 
             <div class="action-buttons">
               <template v-if="!node.leaf">
                 <Button
                   icon="pi pi-plus"
-                  class="p-button-text p-button-sm"
+                  class="p-button-text p-button-sm node-action"
                   @click.stop="openAddFileDialog(node.key)"
                   aria-label="Add file"
                 />
                 <Button
                   icon="pi pi-pencil"
-                  class="p-button-text p-button-sm"
+                  class="p-button-text p-button-sm node-action"
                   @click.stop="openRenameFolderDialog(node.key)"
                   aria-label="Rename folder"
                 />
                 <Button
                   icon="pi pi-trash"
-                  class="p-button-text p-button-sm p-button-danger"
+                  class="p-button-text p-button-sm p-button-danger node-action"
                   @click.stop="openDeleteFolderDialog(node.key)"
                   aria-label="Delete folder"
                 />
@@ -41,13 +55,13 @@
               <template v-else>
                 <Button
                   icon="pi pi-pencil"
-                  class="p-button-text p-button-sm"
+                  class="p-button-text p-button-sm node-action"
                   @click.stop="openRenameFileDialog(node.key)"
                   aria-label="Rename file"
                 />
                 <Button
                   icon="pi pi-trash"
-                  class="p-button-text p-button-sm p-button-danger"
+                  class="p-button-text p-button-sm p-button-danger node-action"
                   @click.stop="openDeleteFileDialog(node.key)"
                   aria-label="Delete file"
                 />
@@ -56,19 +70,13 @@
           </div>
         </template>
       </Tree>
-
-      <div class="add-folder-container">
-        <Button
-          icon="pi pi-plus"
-          label="Add Folder"
-          severity="primary"
-          class="p-button-sm add-folder-btn"
-          @click="openAddFolderDialog"
-        />
-      </div>
     </div>
 
-    <!-- dialogs (unchanged) -->
+    <div class="add-folder-container">
+      <button class="add-folder-btn" @click="openAddFolderDialog">+ Add folder</button>
+    </div>
+
+    <!-- dialogs (logic unchanged) -->
     <Dialog
       v-model:visible="dialogState.addFolder.visible"
       :header="dialogState.addFolder.title"
@@ -182,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import Tree from 'primevue/tree'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -190,19 +198,31 @@ import InputText from 'primevue/inputtext'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
 import { useSidebarStore } from '@/stores/sidebar'
+import { useSearchTerms } from '@/stores/searchTerms'
 
-/* NEW ───────────────────────────────────────────── */
 defineProps({
-  /** 'card' keeps the background & shadow (desktop).
-   *  'plain' removes them (mobile overlay).
-   */
+  /** 'card' = desktop rail · 'plain' = mobile drawer */
   variant: { type: String, default: 'card' },
 })
-/* ──────────────────────────────────────────────── */
+const emit = defineEmits(['file-selected', 'close'])
 
 const store = useSidebarStore()
+const termsStore = useSearchTerms()
 const confirm = useConfirm()
-const emit = defineEmits(['file-selected'])
+
+/* -------- job counts per file (kleinanzeigen-only) -------- */
+function jobCount(compositeKey) {
+  const [, fileIdStr] = compositeKey.split('__')
+  const fileId = Number(fileIdStr)
+  return termsStore.terms.filter(
+    (t) => t.fileId === fileId && t.marketplace === 'kleinanzeigen',
+  ).length
+}
+function isSelected(compositeKey) {
+  if (!store.selectedFile) return false
+  const { folderId, fileId } = store.selectedFile
+  return compositeKey === `${folderId}__${fileId}`
+}
 
 /* -------- state & helpers (unchanged) -------- */
 const dialogState = reactive({
@@ -216,76 +236,54 @@ const nodes = computed(() =>
   store.folders.map((folder) => ({
     key: String(folder.id),
     label: folder.name,
-    selectable: false, // PREVENTS FOLDERS FROM BEING VISUALLY SELECTED
+    selectable: false,
     children: folder.files.map((file) => ({
       key: `${folder.id}__${file.id}`,
       label: file.name,
       leaf: true,
-      selectable: true, // Files are selectable (this is often default for leaf nodes if Tree is selectable)
+      selectable: true,
     })),
   })),
-);
+)
 
 const selectionKeys = computed({
   get() {
-    if (!store.selectedFile) {
-      return {}; // Return an empty object for no selection, consistently with PrimeVue
-    }
-    const { folderId, fileId } = store.selectedFile;
-    const key = `${folderId}__${fileId}`;
-    return { [key]: true }; // CORRECTED: Return object like { 'nodeKeyValue': true }
+    if (!store.selectedFile) return {}
+    const { folderId, fileId } = store.selectedFile
+    return { [`${folderId}__${fileId}`]: true }
   },
   set(val) {
-    // val is an object from PrimeVue Tree, e.g., { 'actualNodeKeyClicked': true } or {} on deselect
-    let newSelectedNodeKey = null;
-
+    let newSelectedNodeKey = null
     if (val && typeof val === 'object' && Object.keys(val).length > 0) {
-      newSelectedNodeKey = Object.keys(val)[0];
+      newSelectedNodeKey = Object.keys(val)[0]
     }
 
-    if (newSelectedNodeKey && newSelectedNodeKey.includes('__')) { // A file node key
-      const [folderIdStr, fileIdStr] = newSelectedNodeKey.split('__');
-      const folderId = Number(folderIdStr);
-      const fileId = Number(fileIdStr);
-
-      // Update store only if selection actually changed to a new file
-      if (!store.selectedFile || store.selectedFile.folderId !== folderId || store.selectedFile.fileId !== fileId) {
-        store.selectFile(folderId, fileId);
-        emit('file-selected', fileId);
+    if (newSelectedNodeKey && newSelectedNodeKey.includes('__')) {
+      const [folderIdStr, fileIdStr] = newSelectedNodeKey.split('__')
+      const folderId = Number(folderIdStr)
+      const fileId = Number(fileIdStr)
+      if (
+        !store.selectedFile ||
+        store.selectedFile.folderId !== folderId ||
+        store.selectedFile.fileId !== fileId
+      ) {
+        store.selectFile(folderId, fileId)
+        emit('file-selected', fileId)
       }
     } else if (newSelectedNodeKey && !newSelectedNodeKey.includes('__')) {
-        // A folder was clicked.
-        // Current app logic seems to only want to "select" files in the store.
-        // If a folder is clicked, we might want to clear the file selection.
-        // Or, if you want folders to be visually selectable but not affect `store.selectedFile`,
-        // this logic would need to be more complex. For now, let's assume clicking a folder
-        // means "no file is selected."
-        // To ensure the tree updates and doesn't retain the folder selection if it's not
-        // reflected in `store.selectedFile`, we can reset the selection in the store.
-        if (store.selectedFile) { // If a file was selected
-            store.resetSelection(); // This will make the getter return {}
-                                    // and effectively deselect in the tree.
-        }
-        // If you want folders to appear selected without affecting store.selectedFile,
-        // then the 'nodes' definition should make folders "selectable: false" (see below).
+      if (store.selectedFile) store.resetSelection()
     } else {
-      // Selection was cleared (val is likely {} or null)
-      if (store.selectedFile) {
-        store.resetSelection(); // Ensure store reflects no selection
-      }
+      if (store.selectedFile) store.resetSelection()
     }
   },
-});
+})
 
-/* dialog helpers … unchanged (add / rename / delete) */
-/* … */
 function closeDialog(type) {
   dialogState[type].visible = false
   dialogState[type].name = ''
   if (type === 'addFile') dialogState[type].folderId = null
   if (type === 'renameFolder' || type === 'renameFile') dialogState[type].id = null
 }
-/* (rest of helper functions unchanged) */
 function openAddFolderDialog() {
   dialogState.addFolder.visible = true
 }
@@ -383,109 +381,181 @@ function openDeleteFileDialog(compositeKey) {
 </script>
 
 <style scoped>
-/* ───────── original “card” styling ───────── */
 .sidebar-nav {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--primary-color);
-  border-radius: 0.5rem;
-  padding: 0.5rem;
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.2),
-    0 -2px 6px rgba(255, 255, 255, 0.2);
-  transform: translateZ(0);
-  transition:
-    box-shadow 0.3s ease,
-    transform 0.3s ease,
-    background-color 0.3s ease,
-    scale 1.5s ease;
+  gap: 2px;
+  background: #fffdf9;
+  border-right: 1px solid #eadfcf;
+  padding: 20px 12px;
 }
-.sidebar-nav:hover {
-  transform: translateY(-4px);
-  scale: 1.1;
-  box-shadow:
-    0 16px 32px rgba(0, 0, 0, 0.15),
-    0 -8px 16px rgba(255, 255, 255, 0.1);
-  background-color: var(--primary-dark);
+.sidebar-nav.plain {
+  border-right: none;
 }
 
-.sidebar-title {
-  font-weight: 600;
-  color: #495057;
-  padding: 0.75rem 1rem;
-  margin: 0;
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 10px;
 }
+.sidebar-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c9a877;
+}
+.drawer-close {
+  color: #c4ad8a;
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.drawer-close:hover {
+  color: #3d3226;
+}
+
 .tree-wrapper {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
-.folder-tree {
+
+/* ───── tree reset + restyle ───── */
+.folder-tree,
+.folder-tree :deep(.p-tree) {
   border: none;
   background: transparent;
   padding: 0;
 }
-.folder-tree :deep(.p-tree) {
-  padding: 0;
-  border: none;
-}
 .folder-tree :deep(.p-treenode) {
   padding: 0;
 }
-.folder-tree :deep(.p-treenode-content) {
-  padding: 0.35rem 0.5rem;
-  border-radius: 0;
-  transition: background-color 0.2s;
+.folder-tree :deep(.p-tree-node-children),
+.folder-tree :deep(.p-treenode-children) {
+  padding-left: 14px;
 }
-.folder-tree :deep(.p-treenode-content:hover) {
-  background-color: var(--surface-b);
+.folder-tree :deep(.p-treenode-content),
+.folder-tree :deep(.p-tree-node-content) {
+  padding: 7px 12px;
+  border-radius: 8px;
+  transition: background-color 0.15s;
 }
-.folder-tree :deep(.p-treenode-content.p-highlight) {
-  background-color: var(--surface-b);
+.folder-tree :deep(.p-treenode-content:hover),
+.folder-tree :deep(.p-tree-node-content:hover) {
+  background-color: #f8f0e4;
 }
 .folder-tree :deep(.p-tree-toggler) {
+  width: 1.25rem;
+  height: 1.25rem;
   margin-right: 0.25rem;
+  color: #40382e;
 }
+.folder-tree :deep(.p-tree-toggler-icon) {
+  color: #c9a877;
+}
+
+/* selected file */
+.folder-tree :deep(.p-treenode-content.p-highlight),
+.folder-tree :deep(.p-tree-node-content.p-tree-node-selected),
+.folder-tree :deep(.p-tree-node-content[data-p-selected='true']) {
+  background-color: #ffe8d2 !important;
+}
+.folder-tree :deep(.p-treenode-content.p-highlight) .node-label,
+.folder-tree :deep(.p-tree-node-content[data-p-selected='true']) .node-label {
+  color: #b3520e;
+  font-weight: 600;
+}
+
 .node-content {
   display: flex;
   align-items: center;
   width: 100%;
-  margin-right: 0.75rem;
-}
-.node-icon {
-  margin-right: 0.5rem;
-  color: #6c757d;
+  gap: 8px;
 }
 .node-label {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.875rem;
 }
+.node-file .node-label {
+  color: #8a7a64;
+}
+.node-folder .node-label {
+  color: #40382e;
+  font-weight: 600;
+}
+
+.job-count {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  background: #fdd9b5;
+  color: #b3520e;
+  border-radius: 99px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
 .action-buttons {
   display: none;
   align-items: center;
+  gap: 2px;
 }
 .node-content:hover .action-buttons {
   display: flex;
 }
-.action-buttons .p-button {
-  padding: 0.25rem;
+.action-buttons :deep(.node-action.p-button) {
   width: 1.5rem;
   height: 1.5rem;
-  margin-left: 0.2rem;
+  padding: 0.25rem;
 }
+
+/* ───── add folder ghost button ───── */
 .add-folder-container {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
+  margin-top: auto;
+  padding: 8px 4px 0;
 }
 .add-folder-btn {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  border: 1.5px dashed #e2b98f;
+  background: transparent;
+  color: #c2540a;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s;
 }
+.add-folder-btn:hover {
+  background: #fff3e8;
+}
+
+/* ───── plain (mobile drawer) — taller touch targets ───── */
+.sidebar-nav.plain .folder-tree :deep(.p-treenode-content),
+.sidebar-nav.plain .folder-tree :deep(.p-tree-node-content) {
+  padding: 11px 14px;
+  border-radius: 10px;
+}
+.sidebar-nav.plain .node-label {
+  font-size: 0.9375rem;
+}
+.sidebar-nav.plain .add-folder-btn {
+  padding: 12px;
+  font-size: 0.875rem;
+}
+
 .field {
   margin-bottom: 1rem;
 }
@@ -494,34 +564,4 @@ function openDeleteFileDialog(compositeKey) {
   margin-bottom: 0.5rem;
   font-weight: 500;
 }
-
-/* ───────── plain variant overrides (mobile) ───────── */
-.sidebar-nav.plain {
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0.5rem 0 1rem;
-}
-.sidebar-nav.plain:hover {
-  transform: none;
-  box-shadow: none;
-  background: transparent;
-}
-.sidebar-nav.plain .p-menuitem:hover {
-  transform: none;
-  background: var(--surface-b);
-}
-
-
-
-.folder-tree :deep(.p-tree-node-content[data-p-selected="true"]) {
-  background-color: var(--p-orange-100) !important;
-  color: var(--p-orange-600);
-  text-shadow: 
-  0 0 0.25px currentColor,
-  0 0 0.5px currentColor;
-
-}
-
- 
 </style>
