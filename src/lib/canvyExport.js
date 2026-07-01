@@ -3,7 +3,13 @@
 // connect them, and any comments. Output is structured with clear headings and
 // readable connection lines ("A → B"), ready to paste into any AI chat.
 
-const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Ellipse', diamond: 'Diamond' }
+const SHAPE_LABEL = {
+  rect: 'Rectangle',
+  ellipse: 'Ellipse',
+  diamond: 'Diamond',
+  cylinder: 'Cylinder',
+  parallelogram: 'Parallelogram',
+}
 
 function clean(text) {
   return (text || '').replace(/\s+/g, ' ').trim()

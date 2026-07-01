@@ -213,6 +213,10 @@
               <i :class="copied ? 'pi pi-check' : 'pi pi-sparkles'" style="font-size: 0.8rem;"></i>
               {{ copied ? 'Copied!' : 'Copy for AI' }}
             </button>
+            <button class="btn-ghost btn-sm" @click="copyToMiro" :class="{ copied: miroCopied }" :title="selCount ? `Copy the ${selCount} selected item(s) as a Miro clipboard — paste straight into miro.com` : 'Copy the board as a Miro clipboard — paste straight into miro.com'">
+              <i :class="miroCopied ? 'pi pi-check' : 'pi pi-clone'" style="font-size: 0.8rem;"></i>
+              {{ miroCopied ? 'Copied!' : (selCount ? 'Copy selection to Miro' : 'Copy to Miro') }}
+            </button>
             <button class="btn-ghost btn-sm" @click="openAi" title="Copy a prompt for an AI, or build the board from its reply">
               <i class="pi pi-bolt" style="font-size: 0.8rem;"></i> AI assist
             </button>
@@ -246,6 +250,12 @@
           </button>
           <button class="tool" :class="{ on: tool === 'shape-diamond' }" title="Diamond" @click="setTool('shape-diamond')">
             <i class="pi pi-stop" style="transform: rotate(45deg);"></i>
+          </button>
+          <button class="tool" :class="{ on: tool === 'shape-cylinder' }" title="Cylinder" @click="setTool('shape-cylinder')">
+            <i class="pi pi-database"></i>
+          </button>
+          <button class="tool" :class="{ on: tool === 'shape-parallelogram' }" title="Parallelogram" @click="setTool('shape-parallelogram')">
+            <i class="pi pi-stop" style="transform: skewX(-18deg);"></i>
           </button>
           <button class="tool" :class="{ on: tool === 'draw' }" title="Brush / pen (P)" @click="setTool('draw')">
             <i class="pi pi-pencil"></i>
@@ -321,6 +331,7 @@ import { useCanvyStore, blankData } from '@/stores/canvy'
 import CanvyCanvas from '@/components/canvy/CanvyCanvas.vue'
 import CanvyAiModal from '@/components/canvy/CanvyAiModal.vue'
 import { boardToMarkdown } from '@/lib/canvyExport'
+import { buildMiroClipboard } from '@/lib/canvyToMiro'
 import { parseBuild, applyScoped, parseCommentBuild } from '@/lib/canvyAi'
 
 const store = useCanvyStore()
@@ -329,6 +340,7 @@ const railOpen = ref(false)
 const railQuery = ref('')
 const tool = ref(null)
 const copied = ref(false)
+const miroCopied = ref(false)
 const nameDraft = ref('')
 const aiOpen = ref(false)
 const aiError = ref('')
@@ -610,6 +622,35 @@ async function copyForAi() {
     setTimeout(() => { copied.value = false }, 1600)
   } catch (e) {
     console.error('[Canvy] copyForAi error:', e)
+  }
+}
+
+// ── Copy to Miro ──
+// Write a Miro clipboard payload (rich text/html) so the board can be pasted
+// straight into miro.com. Needs the async Clipboard API + ClipboardItem.
+async function copyToMiro() {
+  const b = store.activeBoard
+  if (!b) return
+  try {
+    // If a selection is active, copy just those elements (and arrows between
+    // them); otherwise copy the whole board.
+    const opts = selIds.value.length ? { onlyIds: selIds.value } : {}
+    const { html, text } = buildMiroClipboard({ name: b.name, data: activeData.value }, opts)
+    if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        }),
+      ])
+    } else {
+      // Fallback for browsers without ClipboardItem: plain text only.
+      await navigator.clipboard.writeText(text)
+    }
+    miroCopied.value = true
+    setTimeout(() => { miroCopied.value = false }, 1600)
+  } catch (e) {
+    console.error('[Canvy] copyToMiro error:', e)
   }
 }
 

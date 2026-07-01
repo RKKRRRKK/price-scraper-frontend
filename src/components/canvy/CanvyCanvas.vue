@@ -36,13 +36,50 @@
       >
         <!-- rotated visual layer (keeps handles/toolbar/outline upright) -->
         <div class="el-rot" :style="rotStyle(el)">
-          <!-- shape backdrop (rect / ellipse / diamond) -->
-          <div
+          <!-- shape backdrop (rect / ellipse / diamond / cylinder / parallelogram),
+               drawn as SVG so borders (width / colour / opacity / dashed) work on
+               every shape uniformly. -->
+          <svg
             v-if="el.type === 'shape'"
-            class="shape-fill"
-            :class="'shape-' + el.shape"
-            :style="fillStyle(el)"
-          ></div>
+            class="shape-svg"
+            :viewBox="`0 0 ${el.w} ${el.h}`"
+            preserveAspectRatio="none"
+          >
+            <rect
+              v-if="el.shape === 'rect' || !SHAPES.includes(el.shape)"
+              :x="sInset(el)" :y="sInset(el)"
+              :width="innerW(el)" :height="innerH(el)"
+              rx="8" v-bind="shapePaint(el)"
+            />
+            <ellipse
+              v-else-if="el.shape === 'ellipse'"
+              :cx="el.w / 2" :cy="el.h / 2"
+              :rx="innerW(el) / 2" :ry="innerH(el) / 2"
+              v-bind="shapePaint(el)"
+            />
+            <polygon
+              v-else-if="el.shape === 'diamond'"
+              :points="diamondPoints(el)"
+              v-bind="shapePaint(el)"
+            />
+            <polygon
+              v-else-if="el.shape === 'parallelogram'"
+              :points="parallelogramPoints(el)"
+              v-bind="shapePaint(el)"
+            />
+            <template v-else-if="el.shape === 'cylinder'">
+              <path :d="cylinderBody(el)" v-bind="shapePaint(el)" />
+              <path
+                :d="cylinderLid(el)"
+                fill="none"
+                :stroke="shapeStroke(el)"
+                :stroke-width="borderW(el)"
+                :stroke-opacity="borderOpacity(el)"
+                :stroke-dasharray="borderDash(el)"
+                stroke-linecap="round"
+              />
+            </template>
+          </svg>
 
           <!-- freehand stroke (inline so it shares element z-order) -->
           <svg v-if="el.type === 'draw'" class="draw-svg" :width="el.w" :height="el.h">
@@ -94,6 +131,45 @@
           class="el-toolbar"
           @pointerdown.stop
         >
+          <!-- border panel (shapes only): colour, style, width, opacity -->
+          <div v-if="borderPanel && el.type === 'shape'" class="border-panel">
+            <div class="bp-row">
+              <span class="bp-label">Border</span>
+              <button
+                v-for="key in SWATCHES"
+                :key="key"
+                class="swatch hue"
+                :class="{ on: borderHueOf(el) === key }"
+                :style="{ background: COLORS[key][3].fill, borderColor: COLORS[key][3].stroke }"
+                :title="key"
+                @click="setBorderColor(el, key)"
+              ></button>
+            </div>
+            <div class="bp-row">
+              <button class="bp-seg" :class="{ on: (el.borderStyle || 'solid') === 'solid' }" @click="setBorderStyle(el, 'solid')">Solid</button>
+              <button class="bp-seg" :class="{ on: el.borderStyle === 'dashed' }" @click="setBorderStyle(el, 'dashed')">Dashed</button>
+            </div>
+            <div class="bp-row">
+              <span class="bp-label">Width</span>
+              <input
+                class="stroke-range" type="range" min="0" max="12" step="1"
+                :value="el.borderWidth ?? 2"
+                :title="'Border width: ' + (el.borderWidth ?? 2) + 'px'"
+                @input="setBorderWidth(el, $event.target.value)"
+                @change="commit"
+              />
+            </div>
+            <div class="bp-row">
+              <span class="bp-label">Opacity</span>
+              <input
+                class="stroke-range" type="range" min="0.1" max="1" step="0.05"
+                :value="el.borderOpacity ?? 1"
+                title="Border opacity"
+                @input="setBorderOpacity(el, $event.target.value)"
+                @change="commit"
+              />
+            </div>
+          </div>
           <!-- shade strip: 5 shades of the picked hue, expanded above -->
           <div v-if="shadeHue" class="shade-strip">
             <button
@@ -141,6 +217,17 @@
               @input="setStrokeWidth(el, $event.target.value)"
               @change="commitStroke"
             />
+          </template>
+          <template v-if="el.type === 'shape'">
+            <span class="el-toolbar-sep"></span>
+            <button
+              class="el-toolbar-btn"
+              :class="{ on: borderPanel }"
+              title="Border style"
+              @click="toggleBorderPanel"
+            >
+              <i class="pi pi-stop"></i>
+            </button>
           </template>
           <span class="el-toolbar-sep"></span>
           <button class="el-toolbar-btn danger" title="Delete" @click="removeElement(el.id)">
@@ -370,6 +457,7 @@ const COLORS = {
   ],
 }
 const SWATCHES = Object.keys(COLORS)
+const SHAPES = ['rect', 'ellipse', 'diamond', 'cylinder', 'parallelogram']
 
 // Resolve an element's hue + shade index to its concrete { fill, stroke }.
 // Tolerates legacy/missing values (unknown hue → yellow, out-of-range shade
@@ -617,9 +705,90 @@ function elStyle(el) {
 function rotStyle(el) {
   return el.rotation ? { transform: `rotate(${el.rotation}deg)` } : {}
 }
-function fillStyle(el) {
-  const c = resolveColor(el)
-  return { background: c.fill, borderColor: c.stroke }
+// ── Shape SVG rendering (rect / ellipse / diamond / cylinder / parallelogram) ──
+// Borders are first-class here: width, colour, opacity and dashed/solid all apply
+// on every shape. Border colour defaults to the fill's stroke tone, so shapes
+// saved before border controls existed look unchanged.
+function borderW(el) {
+  return clamp(Number.isFinite(el.borderWidth) ? el.borderWidth : 2, 0, 40)
+}
+function sInset(el) {
+  return borderW(el) / 2
+}
+function innerW(el) {
+  return Math.max(0, el.w - borderW(el))
+}
+function innerH(el) {
+  return Math.max(0, el.h - borderW(el))
+}
+function borderOpacity(el) {
+  return clamp(Number.isFinite(el.borderOpacity) ? el.borderOpacity : 1, 0, 1)
+}
+// Which hue drives the border colour (falls back to the fill hue).
+function borderHueOf(el) {
+  return el.borderColor || el.color || 'blue'
+}
+function shapeStroke(el) {
+  if (borderW(el) <= 0) return 'none'
+  const ramp = COLORS[borderHueOf(el)] || COLORS.blue
+  const idx = el.borderColor
+    ? (Number.isFinite(el.borderShade) ? el.borderShade : 3)
+    : (Number.isFinite(el.shade) ? el.shade : DEFAULT_SHADE)
+  return ramp[clamp(idx, 0, ramp.length - 1)].stroke
+}
+function borderDash(el) {
+  if (el.borderStyle !== 'dashed') return null
+  const w = Math.max(1, borderW(el))
+  return `${(w * 2.4).toFixed(1)} ${(w * 1.8).toFixed(1)}`
+}
+// Attribute bundle shared by every shape's fill+stroke path.
+function shapePaint(el) {
+  return {
+    fill: resolveColor(el).fill,
+    stroke: shapeStroke(el),
+    'stroke-width': borderW(el),
+    'stroke-opacity': borderOpacity(el),
+    'stroke-dasharray': borderDash(el),
+    'stroke-linejoin': 'round',
+  }
+}
+function diamondPoints(el) {
+  const s = sInset(el)
+  const cx = el.w / 2
+  const cy = el.h / 2
+  return `${cx},${s} ${el.w - s},${cy} ${cx},${el.h - s} ${s},${cy}`
+}
+function parallelogramPoints(el) {
+  const s = sInset(el)
+  const o = Math.min(el.w * 0.25, Math.max(0, innerW(el) - 4), 70)
+  return `${o + s},${s} ${el.w - s},${s} ${el.w - o - s},${el.h - s} ${s},${el.h - s}`
+}
+// Cylinder body outline (top back-rim + sides + bottom front-rim), then a separate
+// front rim line (see cylinderLid) draws the visible top ellipse edge.
+function cylEy(el) {
+  const s = sInset(el)
+  const ex = Math.max(1, el.w / 2 - s)
+  return clamp(Math.min(el.h * 0.16, ex * 0.5), 4, Math.max(4, (el.h - 2 * s) / 2 - 2))
+}
+function cylinderBody(el) {
+  const s = sInset(el)
+  const ex = Math.max(1, el.w / 2 - s)
+  const ey = cylEy(el)
+  const topY = s + ey
+  const botY = el.h - s - ey
+  return (
+    `M ${s},${topY} ` +
+    `A ${ex},${ey} 0 0 0 ${el.w - s},${topY} ` +
+    `V ${botY} ` +
+    `A ${ex},${ey} 0 0 1 ${s},${botY} Z`
+  )
+}
+function cylinderLid(el) {
+  const s = sInset(el)
+  const ex = Math.max(1, el.w / 2 - s)
+  const ey = cylEy(el)
+  const topY = s + ey
+  return `M ${s},${topY} A ${ex},${ey} 0 0 1 ${el.w - s},${topY}`
 }
 function placeholderFor(el) {
   if (el.type === 'sticky') return 'Sticky note'
@@ -1000,9 +1169,16 @@ function startEdit(el) {
 // ── Colours / shades / opacity / delete ──
 // Which hue's shade strip is expanded in the mini-toolbar (null = collapsed).
 const shadeHue = ref(null)
+// Whether the border-style panel is expanded (shapes only).
+const borderPanel = ref(false)
+function toggleBorderPanel() {
+  borderPanel.value = !borderPanel.value
+  if (borderPanel.value) shadeHue.value = null // avoid overlapping popovers
+}
 // First click on a hue selects it; clicking the already-selected hue toggles its
 // shade strip open/closed.
 function onHueClick(el, key) {
+  borderPanel.value = false // avoid overlapping popovers
   if ((el.color || 'yellow') === key) {
     shadeHue.value = shadeHue.value === key ? null : key
     return
@@ -1015,6 +1191,21 @@ function setShade(el, hue, idx) {
   el.color = hue
   el.shade = idx
   commit()
+}
+// ── Shape border controls (colour / style / width / opacity) ──
+function setBorderColor(el, hue) {
+  el.borderColor = hue
+  commit()
+}
+function setBorderStyle(el, style) {
+  el.borderStyle = style
+  commit()
+}
+function setBorderWidth(el, v) {
+  el.borderWidth = clamp(Math.round(Number(v)), 0, 40)
+}
+function setBorderOpacity(el, v) {
+  el.borderOpacity = clamp(Number(v), 0, 1)
 }
 // Opacity slider: drag updates live (no history spam); the @change commits once.
 function setOpacity(el, v) {
@@ -1097,6 +1288,7 @@ watch(
   selectedIds,
   (ids) => {
     shadeHue.value = null
+    borderPanel.value = false
     const id = ids.size === 1 ? [...ids][0] : null
     const el = id ? byId.value.get(id) : null
     emit('selection-change', { count: ids.size, ids: [...ids], rotation: el ? Number(el.rotation) || 0 : 0 })
@@ -1549,19 +1741,15 @@ defineExpose({
   pointer-events: none;
 }
 
-/* shape backdrop */
-.shape-fill {
+/* shape backdrop (SVG — borders styled per-element via attributes) */
+.shape-svg {
   position: absolute;
   inset: 0;
-  border: 2px solid;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   pointer-events: none;
-}
-.shape-fill.shape-rect { border-radius: 0.5rem; }
-.shape-fill.shape-ellipse { border-radius: 50%; }
-.shape-fill.shape-diamond {
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  border: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
 }
 
 /* text content */
@@ -1674,6 +1862,42 @@ defineExpose({
   cursor: pointer;
   accent-color: var(--accent-500);
 }
+
+/* border panel (shapes) — floats above the toolbar row */
+.border-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  background: #fff;
+  border: 1px solid #e5e4e1;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+.bp-row { display: flex; align-items: center; gap: 0.3rem; }
+.bp-label {
+  width: 3.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #7a7772;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bp-seg {
+  flex: 1;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #e5e4e1;
+  border-radius: 0.35rem;
+  background: #fff;
+  color: #5c5c5c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bp-seg.on { background: var(--accent-050); border-color: var(--accent-400); color: var(--accent-600); }
 .el-toolbar-sep { width: 1px; height: 1.1rem; background: #e5e4e1; margin: 0 0.15rem; }
 .el-toolbar-btn {
   display: inline-flex;
@@ -1688,6 +1912,8 @@ defineExpose({
   cursor: pointer;
   font-size: 0.8rem;
 }
+.el-toolbar-btn:hover { background: #f3f2f0; color: #1a1a1a; }
+.el-toolbar-btn.on { background: var(--accent-050); color: var(--accent-600); box-shadow: inset 0 0 0 1px var(--accent-400); }
 .el-toolbar-btn.danger:hover { background: #fff0f0; color: #c33; }
 
 /* ── Selected-arrow toolbar ── */

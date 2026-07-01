@@ -12,7 +12,7 @@
 import { v4 as uuid } from 'uuid'
 
 const COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'gray']
-const SHAPES = ['rect', 'ellipse', 'diamond']
+const SHAPES = ['rect', 'ellipse', 'diamond', 'cylinder', 'parallelogram']
 const TYPES = ['sticky', 'text', 'shape', 'draw']
 
 // ── Prompt templates ──────────────────────────────────────────────────────────
@@ -22,10 +22,14 @@ const TYPES = ['sticky', 'text', 'shape', 'draw']
 import promptOldRaw from './canvy-prompts/prompt_old.md?raw'
 import promptNewRaw from './canvy-prompts/prompt_new.md?raw'
 import promptCommentRaw from './canvy-prompts/prompt_comment.md?raw'
+import promptBpmnRaw from './canvy-prompts/prompt_bpmn.md?raw'
+import promptC4Raw from './canvy-prompts/prompt_c4.md?raw'
 
 export const PROMPTS = [
   { key: 'old', label: 'Old', mode: 'edit' },
   { key: 'new', label: 'New', mode: 'edit' },
+  { key: 'bpmn', label: 'BPMN diagram', mode: 'edit' },
+  { key: 'c4', label: 'C4 model', mode: 'edit' },
   { key: 'comment', label: 'Comment only', mode: 'comment' },
 ]
 
@@ -37,6 +41,8 @@ export function promptMode(key) {
 const PROMPT_TEMPLATES = {
   old: promptOldRaw,
   new: promptNewRaw,
+  bpmn: promptBpmnRaw,
+  c4: promptC4Raw,
   comment: promptCommentRaw,
 }
 
@@ -231,10 +237,18 @@ function normalizeBoard(spec) {
   return { data: { elements, arrows, comments }, warnings }
 }
 
-// Carry optional opacity/rotation through normalization for any element type.
+// Carry optional opacity/rotation through normalization for any element type,
+// plus per-shape border styling (width / colour / opacity / dashed).
 function applyCommonStyle(el, raw) {
   if (raw.opacity != null) el.opacity = clampN(num(raw.opacity, 1), 0.1, 1)
   if (raw.rotation != null) el.rotation = ((num(raw.rotation, 0) % 360) + 360) % 360
+  if (el.type === 'shape') {
+    if (raw.borderWidth != null) el.borderWidth = clampN(num(raw.borderWidth, 2), 0, 40)
+    if (raw.borderStyle === 'dashed' || raw.borderStyle === 'solid') el.borderStyle = raw.borderStyle
+    if (COLORS.includes(raw.borderColor)) el.borderColor = raw.borderColor
+    if (raw.borderShade != null) el.borderShade = clampN(num(raw.borderShade, 3), 0, 4)
+    if (raw.borderOpacity != null) el.borderOpacity = clampN(num(raw.borderOpacity, 1), 0, 1)
+  }
 }
 
 export function parseBuild(text) {

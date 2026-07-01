@@ -25,7 +25,13 @@ JSON inside that block — no commentary inside it.
       "shade": number,   // optional 0–4 shade of the hue: 0 lightest … 4 most saturated (default 1)
       "opacity": number, // optional 0.1–1 (default 1 = opaque)
       "rotation": number,// optional degrees clockwise (default 0)
-      "shape": "rect | ellipse | diamond   (only when type = shape)",
+      "shape": "rect | ellipse | diamond | cylinder | parallelogram   (only when type = shape)",
+      // Optional shape border styling (type = shape only; omit to inherit the fill's outline):
+      "borderWidth": number,  // px, 0–40 (default 2; 0 = no border)
+      "borderStyle": "solid | dashed",           // default solid
+      "borderColor": "yellow | pink | blue | green | purple | gray", // independent border hue
+      "borderShade": number,  // 0–4 shade of borderColor (default 3)
+      "borderOpacity": number,// 0–1, independent of the fill's opacity (default 1)
       "points": [[x,y], …], // ONLY when type = draw: a freehand stroke as a list of
                             //   points in absolute board coords (≥2). The editor
                             //   derives x/y/w/h from these.
@@ -62,8 +68,12 @@ JSON inside that block — no commentary inside it.
 - **Routing:** if a straight arrow would cut through another element, set `curve` to arc it around — a value like `0.3`/`-0.3` bows it gently, `0.6`/`-0.6` more strongly. Positive and negative bow to opposite sides. Use this whenever a connection would otherwise pass over an unrelated note or shape.
 - **Comments:** anchor a comment to what it refers to using `on` (`elementId`, `betweenIds`, or `arrowId`) instead of raw `x`/`y`, so it stays attached when the layout shifts. Only fall back to a free `x`/`y` point when it refers to empty space.
 - **Style sparingly:** only set `shade`, `opacity` or `rotation` when the change calls for it; otherwise omit them. Use `draw` strokes for freehand annotations (circles, underlines, arrows by hand) — not for structured boxes. Set `strokeWidth` (1–24px, default 3) to make a pen line thicker or thinner — e.g. a bold highlight vs. a fine mark.
-- Use `type:"shape"` with a `shape` of rect/ellipse/diamond for architecture boxes;
-  use `type:"sticky"` for notes and `type:"text"` for plain labels.
+- Use `type:"shape"` with a `shape` of rect/ellipse/diamond/cylinder/parallelogram for architecture boxes
+  (`cylinder` = datastore/database, `parallelogram` = input/output); use `type:"sticky"` for notes and
+  `type:"text"` for plain labels.
+- **Borders:** only set `borderWidth`/`borderStyle`/`borderColor`/`borderShade`/`borderOpacity` when a shape
+  needs to stand out — e.g. a `dashed` border for an optional/planned element, a thicker or contrasting
+  border to highlight. Otherwise omit them and the shape uses its default outline.
 - Return the FULL board (all elements/arrows/comments you want to keep), not just the diff.
 
 
