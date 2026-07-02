@@ -397,6 +397,7 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { v4 as uuid } from 'uuid'
+import { parseMiroClipboard } from '@/lib/miroToCanvy'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 dayjs.extend(relativeTime)
@@ -568,6 +569,59 @@ function pasteClipboard() {
   selectedIds.value = new Set(fresh.map((el) => el.id))
   clipboard = fresh.map((el) => clone(el)) // cascade repeated pastes
   commit()
+}
+
+// ── Paste from Miro ──
+// A native `paste` carrying miro.com clipboard HTML is decoded into Canvy
+// elements/arrows (see src/lib/miroToCanvy.js). The imported group arrives
+// centred on (0,0); we translate it to the current viewport centre.
+function importMiro({ elements, arrows }) {
+  if (!elements.length && !arrows.length) return
+  // Centre of the current viewport in world coords (matches screenToWorld at the
+  // canvas midpoint, without needing a live pointer event).
+  const cx = (size.w / 2 - cam.x) / cam.zoom
+  const cy = (size.h / 2 - cam.y) / cam.zoom
+  // Bounding box of the imported group (elements + floating arrow ends) so we can
+  // shift its centre onto the viewport centre.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  const acc = (x, y, w = 0, h = 0) => {
+    minX = Math.min(minX, x); minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h)
+  }
+  for (const el of elements) acc(el.x, el.y, el.w, el.h)
+  for (const a of arrows) {
+    if (a.from?.x != null) acc(a.from.x, a.from.y)
+    if (a.to?.x != null) acc(a.to.x, a.to.y)
+  }
+  const dx = Number.isFinite(minX) ? Math.round(cx - (minX + maxX) / 2) : Math.round(cx)
+  const dy = Number.isFinite(minY) ? Math.round(cy - (minY + maxY) / 2) : Math.round(cy)
+  for (const el of elements) { el.x += dx; el.y += dy }
+  for (const a of arrows) {
+    if (a.from?.x != null) { a.from.x += dx; a.from.y += dy }
+    if (a.to?.x != null) { a.to.x += dx; a.to.y += dy }
+  }
+  model.elements.push(...elements)
+  model.arrows.push(...arrows)
+  selectedIds.value = new Set(elements.map((el) => el.id))
+  selectedArrowId.value = null
+  commit()
+}
+// Own the Ctrl+V paste: import Miro clipboard data if present, else fall back to
+// the internal element clipboard. Skipped while typing so text editors paste
+// natively.
+function onPaste(e) {
+  if (isTyping(e.target)) return
+  const html = e.clipboardData?.getData('text/html') || ''
+  const miro = parseMiroClipboard(html)
+  if (miro) {
+    e.preventDefault()
+    importMiro(miro)
+    return
+  }
+  if (clipboard && clipboard.length) {
+    e.preventDefault()
+    pasteClipboard()
+  }
 }
 
 // ── Camera (CSS transform) ──
@@ -1590,7 +1644,9 @@ function onKey(e) {
     if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
     if (k === 'y') { e.preventDefault(); redo(); return }
     if (k === 'c') { if (selectedIds.value.size) { e.preventDefault(); copySelected() } return }
-    if (k === 'v') { e.preventDefault(); pasteClipboard(); return }
+    // Paste is handled by the native `paste` event (onPaste) so it can read the
+    // clipboard HTML and import Miro data; don't also paste here.
+    if (k === 'v') return
     return
   }
 
@@ -1645,6 +1701,7 @@ onMounted(() => {
   nextTick(fit)
   window.addEventListener('keydown', onKey)
   window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('paste', onPaste)
   if (window.ResizeObserver && wrap.value) {
     ro = new ResizeObserver(measure)
     ro.observe(wrap.value)
@@ -1653,6 +1710,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('paste', onPaste)
   if (ro) ro.disconnect()
 })
 

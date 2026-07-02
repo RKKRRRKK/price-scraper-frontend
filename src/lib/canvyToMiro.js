@@ -14,8 +14,8 @@
 
 // ── Colour palette (mirrors CanvyCanvas.vue COLORS ramp) ──────────────────────
 // Kept in sync by hand: a hue + shade index resolves to concrete { fill, stroke }.
-const DEFAULT_SHADE = 1
-const COLORS = {
+export const DEFAULT_SHADE = 1
+export const COLORS = {
   yellow: [
     { fill: '#fffdf0', stroke: '#f1e4a8' }, { fill: '#fff6c2', stroke: '#ecd56b' },
     { fill: '#ffec99', stroke: '#e3c33d' }, { fill: '#ffe066', stroke: '#d4af1f' },
@@ -52,7 +52,7 @@ const COLORS = {
 // Verified against local_utilities/variants: rect=3, ellipse=4, diamond=8,
 // parallelogram=10. `cylinder` is NOT a plain shape — Miro models it as a
 // flowchart stencil widget, handled by stencilObject() below.
-const SHAPE_CODE = {
+export const SHAPE_CODE = {
   rect: 3,
   ellipse: 4,
   diamond: 8,
@@ -60,12 +60,12 @@ const SHAPE_CODE = {
 }
 
 // Multiply Canvy pixels so pasted objects land at comfortable Miro sizes.
-const SCALE = 3
+export const SCALE = 3
 // Miro dark ink used for text + outlines in every captured sample (#1a1a1a).
 const INK = 0x1a1a1a
 // Miro sticky notes are a fixed-aspect widget scaled by `scale`; this is the
 // canonical base size seen in the yellow-sticky-note sample.
-const STICKY_BASE = { width: 199, height: 228 }
+export const STICKY_BASE = { width: 199, height: 228 }
 // Miro board id is cosmetic for a cross-board paste (Miro reassigns on paste); we
 // reuse the value from the captured samples.
 const BOARD_ID = 'uXjVH_znONY='
