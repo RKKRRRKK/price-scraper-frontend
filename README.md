@@ -32,3 +32,10 @@ _done_
   (Supabase `breadboard_sheets` — run `supabase/breadboard_schema.sql`), Copy-as-MD with an
   embedded build spec, and an "AI build" paste-to-construct round-trip. Docs:
   `src/components/breadboard/README.md`.
+- Tools → Canvy tool: Miro-style whiteboard (stickies, text, shapes, arrows, comments) with
+  folders + Main/Branch copies, persistence (Supabase `canvy_boards`/`canvy_folders` — run
+  `supabase/canvy_schema.sql`), Miro/Copy-for-AI clipboard interop, and AI editing two ways:
+  manual copy/paste, or **Run with AI** — a direct screenshot round-trip through OpenRouter
+  (`google/gemini-3.5-flash`) via the `canvy-ai` Supabase Edge Function, where Gemini edits the
+  board then reviews a screenshot of its own result and corrects it. Docs:
+  `src/components/canvy/README.md`.

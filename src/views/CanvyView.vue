@@ -213,10 +213,6 @@
               <i :class="copied ? 'pi pi-check' : 'pi pi-sparkles'" style="font-size: 0.8rem;"></i>
               {{ copied ? 'Copied!' : 'Copy for AI' }}
             </button>
-            <button class="btn-ghost btn-sm" @click="copyToMiro" :class="{ copied: miroCopied }" :title="selCount ? `Copy the ${selCount} selected item(s) as a Miro clipboard — paste straight into miro.com` : 'Copy the board as a Miro clipboard — paste straight into miro.com'">
-              <i :class="miroCopied ? 'pi pi-check' : 'pi pi-clone'" style="font-size: 0.8rem;"></i>
-              {{ miroCopied ? 'Copied!' : (selCount ? 'Copy selection to Miro' : 'Copy to Miro') }}
-            </button>
             <button class="btn-ghost btn-sm" @click="openAi" title="Copy a prompt for an AI, or build the board from its reply">
               <i class="pi pi-bolt" style="font-size: 0.8rem;"></i> AI assist
             </button>
@@ -240,6 +236,9 @@
           </button>
           <button class="tool" :class="{ on: tool === 'text' }" title="Text block (T)" @click="setTool('text')">
             <span class="tool-glyph">T</span>
+          </button>
+          <button class="tool" :class="{ on: tool === 'frame' }" title="Frame (F) — a titled container; copies to/from Miro" @click="setTool('frame')">
+            <i class="pi pi-clone"></i>
           </button>
           <span class="tool-sep"></span>
           <button class="tool" :class="{ on: tool === 'shape-rect' }" title="Rectangle" @click="setTool('shape-rect')">
@@ -318,7 +317,14 @@
       :board-data="activeData"
       :scope-ids="selIds"
       :build-error="aiError"
+      :running="aiRunning"
+      :run-status="aiStatus"
+      :run-error="aiRunError"
+      :ai-note="aiNote"
+      :ai-issues="aiIssues"
+      :run-usage="aiRunUsage"
       @build="buildFromText"
+      @run="runAiLive"
       @close="aiOpen = false"
     />
   </div>
@@ -331,8 +337,8 @@ import { useCanvyStore, blankData } from '@/stores/canvy'
 import CanvyCanvas from '@/components/canvy/CanvyCanvas.vue'
 import CanvyAiModal from '@/components/canvy/CanvyAiModal.vue'
 import { boardToMarkdown } from '@/lib/canvyExport'
-import { buildMiroClipboard } from '@/lib/canvyToMiro'
 import { parseBuild, applyScoped, parseCommentBuild } from '@/lib/canvyAi'
+import { runLiveAi } from '@/lib/canvyAiLive'
 
 const store = useCanvyStore()
 
@@ -340,10 +346,15 @@ const railOpen = ref(false)
 const railQuery = ref('')
 const tool = ref(null)
 const copied = ref(false)
-const miroCopied = ref(false)
 const nameDraft = ref('')
 const aiOpen = ref(false)
 const aiError = ref('')
+const aiRunning = ref(false)   // a direct "Run with AI" round-trip is in flight
+const aiStatus = ref('')       // progress / result text shown in the modal
+const aiRunError = ref(false)  // style aiStatus as an error
+const aiNote = ref('')         // the model's own summary of what it did
+const aiIssues = ref([])       // real problems the model flagged (broken screenshot, big inference…)
+const aiRunUsage = ref(null)   // { in, out, cost } totals for the last run
 const canvasRef = ref(null)
 const canvasKey = ref(0) // bump to force the canvas to reload after an AI build
 
@@ -625,39 +636,79 @@ async function copyForAi() {
   }
 }
 
-// ── Copy to Miro ──
-// Write a Miro clipboard payload (rich text/html) so the board can be pasted
-// straight into miro.com. Needs the async Clipboard API + ClipboardItem.
-async function copyToMiro() {
-  const b = store.activeBoard
-  if (!b) return
-  try {
-    // If a selection is active, copy just those elements (and arrows between
-    // them); otherwise copy the whole board.
-    const opts = selIds.value.length ? { onlyIds: selIds.value } : {}
-    const { html, text } = buildMiroClipboard({ name: b.name, data: activeData.value }, opts)
-    if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([text], { type: 'text/plain' }),
-        }),
-      ])
-    } else {
-      // Fallback for browsers without ClipboardItem: plain text only.
-      await navigator.clipboard.writeText(text)
-    }
-    miroCopied.value = true
-    setTimeout(() => { miroCopied.value = false }, 1600)
-  } catch (e) {
-    console.error('[Canvy] copyToMiro error:', e)
-  }
-}
-
 // ── AI assist (copy prompt / build from reply) ──
 function openAi() {
   aiError.value = ''
+  aiStatus.value = ''
+  aiRunError.value = false
+  aiNote.value = ''
+  aiIssues.value = []
+  aiRunUsage.value = null
   aiOpen.value = true
+}
+
+// Direct "Run with AI": send the board (as a compact op-DSL prompt) + a screenshot
+// to the model, apply the edit commands it returns to the branch, then screenshot
+// the result and let it review/correct its own work. commitData + capture wire the
+// loop (in canvyAiLive) to the store and canvas here.
+async function runAiLive(payload) {
+  const b = store.activeBoard
+  if (!b || aiRunning.value) return
+  aiError.value = ''
+  aiRunError.value = false
+  aiNote.value = ''
+  aiIssues.value = []
+  aiRunUsage.value = null
+  aiRunning.value = true
+  aiStatus.value = 'Starting…'
+
+  const startData = activeData.value
+
+  // Commit a new board state to the branch. The canvasKey bump remounts the
+  // canvas so the next screenshot reflects the edit; await nextTick so canvasRef
+  // rebinds to the fresh instance before we capture.
+  const commitData = async (data) => {
+    store.updateBoardData(b.id, data, 'branch')
+    if (activeView.value !== 'branch') setView('branch')
+    canvasKey.value++
+    await nextTick()
+  }
+  const capture = async (opts = {}) => {
+    await nextTick()
+    if (!canvasRef.value?.captureImage) throw new Error('The canvas is not ready to screenshot.')
+    return canvasRef.value.captureImage(opts)
+  }
+
+  try {
+    const result = await runLiveAi({
+      board: b,
+      boardData: startData,
+      instruction: payload.instruction,
+      steering: payload.steering,
+      scopeIds: payload.scoped ? new Set(payload.scopeIds) : null,
+      scoped: payload.scoped,
+      context: payload.context,
+      maxRounds: payload.verifyRounds || 1,
+      capture,
+      commitData,
+      onStatus: ({ text }) => { aiStatus.value = text },
+    })
+    if (!result.ok) {
+      aiRunError.value = true
+      aiStatus.value = result.error || 'The AI run failed.'
+    } else {
+      aiNote.value = result.say || ''
+      aiIssues.value = result.issues || []
+      aiRunUsage.value = result.usage || null
+      if (result.warning) aiStatus.value = `${aiStatus.value} (${result.warning})`
+    }
+  } catch (e) {
+    aiRunError.value = true
+    aiStatus.value = e?.message || 'The AI run failed.'
+    console.error('[Canvy] runAiLive error:', e)
+  } finally {
+    aiRunning.value = false
+  }
 }
 function buildFromText(payload) {
   aiError.value = ''

@@ -17,20 +17,24 @@ JSON inside that block — no commentary inside it.
   "elements": [
     {
       "id": "string, unique and stable (reuse existing ids when editing)",
-      "type": "sticky | text | shape",
+      "type": "sticky | text | shape | frame",  // frame = titled container drawn behind (title in "text")
       "x": number, "y": number, "w": number, "h": number,
       "text": "string (the label / contents)",
-      "color": "yellow | pink | blue | green | purple | gray   (sticky & shape only)",
+      "color": "yellow | pink | blue | green | purple | gray   (sticky, shape & frame)",
+      "fontSize": number, // optional per-element text size in px
+      "locked": true,     // optional; true = can't be selected/moved by hand
       "shape": "rect | ellipse | diamond | cylinder | parallelogram   (only when type = shape)"
     }
   ],
   "arrows": [
     {
       "id": "string, unique",
-      "from": { "elementId": "<an element id>" },   // or a free point: { "x": n, "y": n }
+      "from": { "elementId": "<an element id>" },   // or { "x": n, "y": n }; add "ax"/"ay" (0..1) to pin a side
       "to":   { "elementId": "<an element id>" },   // or { "x": n, "y": n }
       "label": "string (optional, shown on the arrow)",
-      "curve": number   // optional, default 0 = straight. Signed bow, -0.9..0.9
+      "mode": "straight | curved | elbow",  // optional (elbow = right-angle)
+      "curve": number,  // optional signed bow -0.9..0.9 (mode = curved)
+      "heads": { "start": false, "end": true } // optional; both true = double-ended
     }
   ],
   "comments": [

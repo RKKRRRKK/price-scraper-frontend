@@ -103,16 +103,47 @@ function textToMiroHtml(text) {
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
-// Point on an element's box border in the direction of (tx,ty) — same routine as
-// CanvyCanvas.vue edgePoint(), so anchors match what Canvy draws.
+function rayPolygon(cx, cy, dx, dy, pts) {
+  let best = null, bestT = Infinity
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i]
+    const [bx, by] = pts[(i + 1) % pts.length]
+    const ex = bx - ax, ey = by - ay
+    const denom = dx * ey - dy * ex
+    if (Math.abs(denom) < 1e-9) continue
+    const t = ((ax - cx) * ey - (ay - cy) * ex) / denom
+    const s = ((ax - cx) * dy - (ay - cy) * dx) / denom
+    if (t > 1e-6 && s >= -1e-6 && s <= 1 + 1e-6 && t < bestT) { bestT = t; best = { x: cx + dx * t, y: cy + dy * t } }
+  }
+  return best
+}
+// Point on an element's true outline in the direction of (tx,ty) — same routine
+// as CanvyCanvas.vue edgePoint(), so anchor fractions match what Canvy draws.
 function edgePoint(el, tx, ty) {
   const cx = el.x + el.w / 2
   const cy = el.y + el.h / 2
   const dx = tx - cx
   const dy = ty - cy
   if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const scale = 1 / Math.max(Math.abs(dx) / (el.w / 2), Math.abs(dy) / (el.h / 2))
-  return { x: cx + dx * scale, y: cy + dy * scale }
+  const hw = el.w / 2, hh = el.h / 2
+  const shape = el.type === 'shape' ? el.shape : 'rect'
+  if (shape === 'ellipse') {
+    const k = 1 / Math.sqrt((dx * dx) / (hw * hw) + (dy * dy) / (hh * hh))
+    return { x: cx + dx * k, y: cy + dy * k }
+  }
+  if (shape === 'diamond') {
+    const k = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh)
+    return { x: cx + dx * k, y: cy + dy * k }
+  }
+  if (shape === 'parallelogram') {
+    const o = Math.min(el.w * 0.25, 70)
+    const p = rayPolygon(cx, cy, dx, dy, [
+      [el.x + o, el.y], [el.x + el.w, el.y], [el.x + el.w - o, el.y + el.h], [el.x, el.y + el.h],
+    ])
+    if (p) return p
+  }
+  const k = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh)
+  return { x: cx + dx * k, y: cy + dy * k }
 }
 // A Miro attachment point is the edge point expressed as a 0–1 fraction of the box.
 function anchorPoint(el, towardX, towardY) {
@@ -131,8 +162,10 @@ function makeIdGen() {
   return () => String(base + Math.floor(Math.random() * 8999999) + n++ * 37)
 }
 
-// Font size for a shape/stencil, proportional to its (scaled) height.
+// Font size for a shape/stencil: the element's own fontSize (scaled to Miro
+// units) when set, else proportional to its (scaled) height.
 function fontFor(el) {
+  if (Number.isFinite(el?.fontSize)) return clamp(Math.round(el.fontSize * SCALE), 8, 400)
   return clamp(Math.round(el.h * SCALE * 0.16), 12, 160)
 }
 
@@ -317,8 +350,14 @@ function stickyObject(el, nextId) {
   // Miro stickies keep a fixed aspect and are sized via `scale`; derive a uniform
   // scale from the Canvy sticky's (scaled) height.
   const scale = Number(((el.h * SCALE) / STICKY_BASE.height).toFixed(3)) || 1
+  // Miro stickies store an explicit font size in `fs` (with fsa:0), or auto-fit
+  // with fs:0/fsa:1. Canvy's per-sticky fontSize maps 1:1 to Miro's sticky `fs`
+  // (the number shown in Miro's font-size control), so 10/32 round-trip exactly.
+  const hasFs = Number.isFinite(el.fontSize)
   const style = {
-    fs: 0, fsa: 1, ffn: 'Noto Sans', ta: 'c', tav: 'm',
+    fs: hasFs ? Math.round(el.fontSize) : 0,
+    fsa: hasFs ? 0 : 1,
+    ffn: 'Noto Sans', ta: 'c', tav: 'm',
     taw: 0, tah: 0, lh: 1.36, sbc: hexToInt(resolveColor(el).fill),
   }
   return {
@@ -344,26 +383,75 @@ function stickyObject(el, nextId) {
   }
 }
 
+// Frame → Miro frame widget (type 12). Derived from scene-4/clipboard.json: a
+// titled container. Text is a plain string (not <p> HTML). Positioned like every
+// other widget by its centre offset (MIRO_FORMAT §6).
+function frameObject(el, nextId) {
+  const w = el.w * SCALE
+  const h = el.h * SCALE
+  const style = {
+    fs: Number.isFinite(el.fontSize) ? Math.round(el.fontSize) : 14,
+    tc: 6052956, ta: 'l', ff: 5, ss: 4, sc: 16777215,
+    bc: 16777215, fo: 1, fd: 0,
+  }
+  return {
+    widgetData: {
+      json: {
+        type: 12,
+        prevFrameIndex: -1,
+        x: 0, y: 0, // filled in by caller (group-relative centre)
+        width: w,
+        height: h,
+        style: JSON.stringify(style),
+        text: escapeHtml(el.text || ''),
+        boardId: BOARD_ID,
+        isClusteringContainer: false,
+        speakerNotes: null,
+        coldStartType: null,
+        _parent: null,
+        _position: { offsetPx: { x: 0, y: 0 }, schema: 'canvasOffsetPx' },
+        rotation: { rotation: rotationDeg(el) },
+        scale: { scale: 1 },
+        relativeRotation: rotationDeg(el),
+        relativeScale: 1,
+        size: { width: w, height: h },
+      },
+      type: 'frame',
+    },
+    type: 14,
+    id: 0,
+    initialId: nextId(),
+    meta: { boardId: BOARD_ID, widgetToken: 100 },
+  }
+}
+
 const CAPTION_FS = 48
 
 // An endpoint descriptor is either { widgetIndex, point:{x,y in 0..1} } for an
 // attachment, or { widgetIndex:-1, point:{x,y in world units} } for a floating
 // end (verified from scene-2's floating arrow).
-function lineObject({ from, to, curved, label }, nextId, captionNonce, captionSeq) {
+function lineObject({ from, to, mode, heads, label, labelPos, labelSize, strokeWidth }, nextId, captionNonce, captionSeq) {
+  // lt: 0=straight, 1=elbow/right-angle, 2=curved (all observed in samples).
+  const lt = mode === 'elbow' ? 1 : mode === 'curved' ? 2 : 0
+  const h = heads || { start: false, end: true }
+  // Canvy line width (default 2) → Miro `t` (default 12 in samples): factor 6, so
+  // the default round-trips exactly.
+  const t = clamp(Math.round((Number.isFinite(strokeWidth) ? strokeWidth : 2) * 6), 1, 120)
   const style = {
-    lc: 3355443, ls: 2, t: 12,
-    lt: curved ? 2 : 0, // 0=straight, 2=curved (verified against scene-1)
-    a_start: 0, a_end: 9, VER: 2, jump: 0,
+    lc: 3355443, ls: 2, t,
+    lt,
+    a_start: h.start ? 9 : 0, a_end: h.end ? 9 : 0, VER: 2, jump: 0,
   }
   const captions = []
   if (label && String(label).trim()) {
-    style.fs = CAPTION_FS
+    const fs = Number.isFinite(labelSize) ? Math.round(labelSize * SCALE) : CAPTION_FS
+    style.fs = fs
     captions.push({
       id: `${captionNonce}:${String(captionSeq()).padStart(5, '0')}`,
       text: textToMiroHtml(label),
-      fontSize: CAPTION_FS,
-      width: Math.max(40, Math.round(String(label).length * CAPTION_FS * 0.2)),
-      position: { x: 0.5, y: 0.5 },
+      fontSize: fs,
+      width: Math.max(40, Math.round(String(label).length * fs * 0.2)),
+      position: { x: Number.isFinite(labelPos) ? labelPos : 0.5, y: 0.5 },
       rotated: false,
       color: 3355443,
     })
@@ -411,7 +499,7 @@ export function boardToMiroPayload(board, opts = {}) {
   let captionN = 0
   const captionSeq = () => ++captionN
 
-  const stats = { shapes: 0, cylinders: 0, stickies: 0, texts: 0, draws: 0, arrows: 0, skippedArrows: 0 }
+  const stats = { shapes: 0, cylinders: 0, stickies: 0, texts: 0, draws: 0, frames: 0, arrows: 0, skippedArrows: 0 }
 
   // Group centroid = centre of the elements' bounding box. Only relative offsets
   // matter (Miro re-centres the group on paste), so any consistent origin works.
@@ -436,10 +524,13 @@ export function boardToMiroPayload(board, opts = {}) {
     if (el.type === 'sticky') { obj = stickyObject(el, nextId); stats.stickies++ }
     else if (el.type === 'text') { obj = textObject(el, nextId); stats.texts++ }
     else if (el.type === 'draw') { obj = paintObject(el, nextId); stats.draws++ }
+    else if (el.type === 'frame') { obj = frameObject(el, nextId); stats.frames++ }
     else if (el.type === 'shape' && el.shape === 'cylinder') { obj = stencilObject(el, nextId); stats.cylinders++ }
     else { obj = shapeObject(el, nextId); stats.shapes++ }
     // Centre of the element, relative to the group origin, scaled to Miro units.
-    obj.widgetData.json._position.offsetPx = toWorld(el.x + el.w / 2, el.y + el.h / 2)
+    const c = toWorld(el.x + el.w / 2, el.y + el.h / 2)
+    obj.widgetData.json._position.offsetPx = c
+    if (el.type === 'frame') { obj.widgetData.json.x = c.x; obj.widgetData.json.y = c.y }
     indexById.set(el.id, objects.length)
     objects.push(obj)
   }
@@ -450,7 +541,12 @@ export function boardToMiroPayload(board, opts = {}) {
   function resolveEnd(end, towardCenter) {
     const el = end?.elementId != null ? byId.get(end.elementId) : null
     if (el && indexById.has(el.id)) {
-      return { widgetIndex: indexById.get(el.id), point: anchorPoint(el, towardCenter.x, towardCenter.y) }
+      // A chosen fractional anchor (ax/ay) is emitted directly; otherwise derive
+      // the box fraction from the directional edge point.
+      const point = end.ax != null && end.ay != null
+        ? { x: clamp(Number(end.ax), 0, 1), y: clamp(Number(end.ay), 0, 1) }
+        : anchorPoint(el, towardCenter.x, towardCenter.y)
+      return { widgetIndex: indexById.get(el.id), point }
     }
     if (end && end.x != null && end.y != null) {
       return { widgetIndex: -1, point: toWorld(end.x, end.y) }
@@ -468,9 +564,10 @@ export function boardToMiroPayload(board, opts = {}) {
     const from = resolveEnd(a.from, endCenter(a.to))
     const to = resolveEnd(a.to, endCenter(a.from))
     if (!from || !to) { stats.skippedArrows++; continue }
+    const mode = a.mode || (Number(a.curve) ? 'curved' : 'straight')
     objects.push(
       lineObject(
-        { from, to, curved: !!(Number(a.curve) || 0), label: a.label },
+        { from, to, mode, heads: a.heads, label: a.label, labelPos: a.labelPos, labelSize: a.labelSize, strokeWidth: a.strokeWidth },
         nextId, captionNonce, captionSeq,
       ),
     )

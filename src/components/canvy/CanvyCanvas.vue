@@ -36,6 +36,9 @@
       >
         <!-- rotated visual layer (keeps handles/toolbar/outline upright) -->
         <div class="el-rot" :style="rotStyle(el)">
+          <!-- frame: a titled container that renders behind other elements -->
+          <div v-if="el.type === 'frame'" class="frame-box" :style="frameStyle(el)"></div>
+
           <!-- shape backdrop (rect / ellipse / diamond / cylinder / parallelogram),
                drawn as SVG so borders (width / colour / opacity / dashed) work on
                every shape uniformly. -->
@@ -98,12 +101,23 @@
             class="el-content"
             :contenteditable="editingId === el.id"
             spellcheck="false"
+            :style="contentStyle(el)"
             :data-placeholder="placeholderFor(el)"
             :ref="(node) => initText(node, el)"
             @input="onTextInput($event, el)"
             @blur="onTextBlur"
             @pointerdown="onTextPointerDown($event, el)"
           ></div>
+        </div>
+
+        <!-- lock badge: always visible on a locked element; click to unlock -->
+        <div
+          v-if="el.locked"
+          class="lock-badge"
+          title="Locked — click to unlock"
+          @pointerdown.stop="toggleLock(el)"
+        >
+          <i class="pi pi-lock"></i>
         </div>
 
         <div
@@ -130,6 +144,7 @@
           v-if="selectedId === el.id && editingId !== el.id"
           class="el-toolbar"
           @pointerdown.stop
+          @dblclick.stop
         >
           <!-- border panel (shapes only): colour, style, width, opacity -->
           <div v-if="borderPanel && el.type === 'shape'" class="border-panel">
@@ -229,6 +244,35 @@
               <i class="pi pi-stop"></i>
             </button>
           </template>
+          <!-- font size (text-bearing elements) -->
+          <template v-if="el.type !== 'draw'">
+            <span class="el-toolbar-sep"></span>
+            <button class="el-toolbar-btn" title="Smaller text (−4)" @click="bumpFontSize(el, -FONT_STEP)">A-</button>
+            <input
+              v-if="fontEditId === el.id"
+              ref="fontEditInput"
+              class="font-size-input"
+              type="number"
+              :min="FONT_MIN"
+              :max="FONT_MAX"
+              v-model="fontEditValue"
+              @keydown.enter.prevent="commitFontEdit(el)"
+              @keydown.esc.prevent="cancelFontEdit"
+              @blur="commitFontEdit(el)"
+              @pointerdown.stop
+            />
+            <span
+              v-else
+              class="font-size-readout"
+              title="Font size — double-click to type"
+              @dblclick.stop="startFontEdit(el)"
+            >{{ fontSizeOf(el) }}</span>
+            <button class="el-toolbar-btn" title="Larger text (+4)" @click="bumpFontSize(el, FONT_STEP)">A+</button>
+          </template>
+          <span class="el-toolbar-sep"></span>
+          <button class="el-toolbar-btn" title="Lock (prevents selecting)" @click="toggleLock(el)">
+            <i class="pi pi-lock"></i>
+          </button>
           <span class="el-toolbar-sep"></span>
           <button class="el-toolbar-btn danger" title="Delete" @click="removeElement(el.id)">
             <i class="pi pi-trash"></i>
@@ -250,45 +294,106 @@
 
     <!-- Screen-space overlay: connectors -->
     <svg class="overlay" :width="size.w" :height="size.h">
+      <!-- markerUnits="strokeWidth": the head scales with the line's thickness, so
+           a thicker arrow gets a proportionally bigger point. Geometry is half the
+           old userSpaceOnUse values, so a default width-2 arrow is unchanged. -->
       <defs>
         <marker
           id="canvy-arrowhead"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8"
-          refY="3"
+          markerWidth="5"
+          markerHeight="5"
+          refX="4"
+          refY="1.5"
           orient="auto"
-          markerUnits="userSpaceOnUse"
+          markerUnits="strokeWidth"
         >
-          <path d="M0,0 L8,3 L0,6 Z" fill="#6b6b6b" />
+          <path d="M0,0 L4,1.5 L0,3 Z" fill="#6b6b6b" />
         </marker>
         <marker
           id="canvy-arrowhead-on"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8"
-          refY="3"
+          markerWidth="5"
+          markerHeight="5"
+          refX="4"
+          refY="1.5"
           orient="auto"
-          markerUnits="userSpaceOnUse"
+          markerUnits="strokeWidth"
         >
-          <path d="M0,0 L8,3 L0,6 Z" fill="var(--accent-600)" />
+          <path d="M0,0 L4,1.5 L0,3 Z" fill="var(--accent-600)" />
+        </marker>
+        <!-- start-side heads (triangle points the other way; used for double-ended
+             and reversed arrows). Kept as explicit markers so html-to-image keeps
+             them (auto-start-reverse isn't reliably rasterised). -->
+        <marker
+          id="canvy-arrowhead-start"
+          markerWidth="5"
+          markerHeight="5"
+          refX="1"
+          refY="1.5"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M4,0 L0,1.5 L4,3 Z" fill="#6b6b6b" />
+        </marker>
+        <marker
+          id="canvy-arrowhead-start-on"
+          markerWidth="5"
+          markerHeight="5"
+          refX="1"
+          refY="1.5"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M4,0 L0,1.5 L4,3 Z" fill="var(--accent-600)" />
         </marker>
       </defs>
       <g v-for="a in arrowGeoms" :key="a.id">
+        <!-- fill/stroke are set as presentation attributes (not only via CSS) so
+             html-to-image's rasteriser keeps them; otherwise SVG paths default to
+             fill:black (curved arrows blob, straight ones vanish) in the AI
+             screenshot. CSS classes still override these for the live view. -->
         <path
           class="arrow-hit"
           :d="a.d"
+          fill="none"
+          stroke="transparent"
+          :stroke-width="Math.max(14, a.strokeWidth + 12)"
           @pointerdown.stop="onArrowPointerDown(a.id)"
-          @dblclick.stop="editArrowLabel(a.id)"
+          @dblclick.stop="startArrowLabelEdit(a.id)"
         />
         <path
           class="arrow-line"
           :class="{ on: selectedArrowId === a.id }"
           :d="a.d"
-          :marker-end="selectedArrowId === a.id ? 'url(#canvy-arrowhead-on)' : 'url(#canvy-arrowhead)'"
+          fill="none"
+          :stroke="selectedArrowId === a.id ? 'var(--accent-600)' : '#6b6b6b'"
+          :stroke-width="selectedArrowId === a.id ? a.strokeWidth + 0.75 : a.strokeWidth"
+          :marker-start="a.heads.start ? (selectedArrowId === a.id ? 'url(#canvy-arrowhead-start-on)' : 'url(#canvy-arrowhead-start)') : null"
+          :marker-end="a.heads.end ? (selectedArrowId === a.id ? 'url(#canvy-arrowhead-on)' : 'url(#canvy-arrowhead)') : null"
         />
-        <text v-if="a.label" class="arrow-label" :x="a.mx" :y="a.my">{{ a.label }}</text>
+        <text
+          v-if="a.label && editingArrowId !== a.id"
+          class="arrow-label"
+          :x="a.mx" :y="a.my"
+          :font-size="a.labelSize"
+          fill="#3a3a3a"
+          @pointerdown.stop="onLabelPointerDown($event, a.id)"
+          @dblclick.stop="startArrowLabelEdit(a.id)"
+        >{{ a.label }}</text>
       </g>
+      <!-- endpoint handles for the selected arrow (drag onto a shape's outline to
+           choose the attach point, or onto empty space to free-float the end) -->
+      <template v-if="selectedArrowGeom">
+        <circle
+          class="arrow-endpoint"
+          :cx="selectedArrowGeom.x1" :cy="selectedArrowGeom.y1" r="6"
+          @pointerdown.stop="onEndpointDown($event, selectedArrowId, 'from')"
+        />
+        <circle
+          class="arrow-endpoint"
+          :cx="selectedArrowGeom.x2" :cy="selectedArrowGeom.y2" r="6"
+          @pointerdown.stop="onEndpointDown($event, selectedArrowId, 'to')"
+        />
+      </template>
       <line
         v-if="tempArrow"
         class="arrow-line temp"
@@ -297,22 +402,66 @@
       />
     </svg>
 
-    <!-- Selected-arrow toolbar: bend / straighten / delete -->
+    <!-- Inline arrow-label editor (screen space) -->
     <div
-      v-if="selectedArrowGeom"
+      v-if="editingArrowGeom"
+      class="arrow-label-edit"
+      :style="{ left: editingArrowGeom.mx + 'px', top: editingArrowGeom.my + 'px', fontSize: editingArrowGeom.labelSize + 'px' }"
+      contenteditable
+      spellcheck="false"
+      :ref="initArrowLabelInput"
+      @pointerdown.stop
+      @keydown.enter.exact.prevent="finishArrowLabelEdit"
+      @blur="finishArrowLabelEdit"
+    ></div>
+
+    <!-- Selected-arrow toolbar: routing / heads / bow / label size / delete -->
+    <div
+      v-if="selectedArrowGeom && !editingArrowId"
       class="arrow-toolbar"
       :style="{ left: selectedArrowGeom.mx + 'px', top: selectedArrowGeom.my + 'px' }"
       @pointerdown.stop
+      @dblclick.stop
     >
-      <button class="arrow-tb-btn" title="Bow left" @click="bendArrow(selectedArrowId, -1)">
-        <i class="pi pi-arrow-up-left"></i>
-      </button>
-      <button class="arrow-tb-btn" title="Straighten" @click="straightenArrow(selectedArrowId)">
+      <button class="arrow-tb-btn" :class="{ on: arrowMode(selectedArrowId) === 'straight' }" title="Straight" @click="setArrowMode(selectedArrowId, 'straight')">
         <i class="pi pi-minus"></i>
       </button>
-      <button class="arrow-tb-btn" title="Bow right" @click="bendArrow(selectedArrowId, 1)">
-        <i class="pi pi-arrow-up-right"></i>
+      <button class="arrow-tb-btn" :class="{ on: arrowMode(selectedArrowId) === 'curved' }" title="Curved" @click="setArrowMode(selectedArrowId, 'curved')">
+        <i class="pi pi-chart-line"></i>
       </button>
+      <button class="arrow-tb-btn" :class="{ on: arrowMode(selectedArrowId) === 'elbow' }" title="Right-angle (elbow)" @click="setArrowMode(selectedArrowId, 'elbow')">
+        <i class="pi pi-directions"></i>
+      </button>
+      <template v-if="arrowMode(selectedArrowId) === 'curved'">
+        <span class="el-toolbar-sep"></span>
+        <button class="arrow-tb-btn" title="Bow left" @click="bendArrow(selectedArrowId, -1)">
+          <i class="pi pi-arrow-up-left"></i>
+        </button>
+        <button class="arrow-tb-btn" title="Bow right" @click="bendArrow(selectedArrowId, 1)">
+          <i class="pi pi-arrow-up-right"></i>
+        </button>
+      </template>
+      <span class="el-toolbar-sep"></span>
+      <button class="arrow-tb-btn" title="Thinner line" @click="bumpArrowWidth(selectedArrowId, -1)">
+        <i class="pi pi-minus-circle"></i>
+      </button>
+      <span class="font-size-readout" :title="'Line width ' + arrowStrokeWidth(selectedArrowId) + 'px'">{{ arrowStrokeWidth(selectedArrowId) }}</span>
+      <button class="arrow-tb-btn" title="Thicker line" @click="bumpArrowWidth(selectedArrowId, 1)">
+        <i class="pi pi-plus-circle"></i>
+      </button>
+      <span class="el-toolbar-sep"></span>
+      <button class="arrow-tb-btn" :class="{ on: arrowHeads(selectedArrowId).start }" title="Start head" @click="toggleHead(selectedArrowId, 'start')">
+        <i class="pi pi-arrow-left"></i>
+      </button>
+      <button class="arrow-tb-btn" :class="{ on: arrowHeads(selectedArrowId).end }" title="End head" @click="toggleHead(selectedArrowId, 'end')">
+        <i class="pi pi-arrow-right"></i>
+      </button>
+      <span class="el-toolbar-sep"></span>
+      <button class="arrow-tb-btn" title="Edit label" @click="startArrowLabelEdit(selectedArrowId)">
+        <i class="pi pi-pencil"></i>
+      </button>
+      <button class="arrow-tb-btn" title="Smaller label" @click="bumpLabelSize(selectedArrowId, -2)">A-</button>
+      <button class="arrow-tb-btn" title="Bigger label" @click="bumpLabelSize(selectedArrowId, 2)">A+</button>
       <span class="el-toolbar-sep"></span>
       <button class="arrow-tb-btn danger" title="Delete arrow" @click="removeArrow(selectedArrowId)">
         <i class="pi pi-trash"></i>
@@ -396,8 +545,11 @@
 
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { toPng } from 'html-to-image'
 import { v4 as uuid } from 'uuid'
 import { parseMiroClipboard } from '@/lib/miroToCanvy'
+import { buildMiroClipboard } from '@/lib/canvyToMiro'
+import { buildCanvyClipboardHtml, parseCanvyClipboard } from '@/lib/canvyClipboard'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 dayjs.extend(relativeTime)
@@ -555,34 +707,52 @@ function redo() {
   emitUpdate()
 }
 
-// ── Clipboard (copy / paste of the selected element(s)) ──
-let clipboard = null // array of element snapshots
-function copySelected() {
-  const ids = selectedIds.value
-  if (!ids.size) return
-  clipboard = model.elements.filter((el) => ids.has(el.id)).map((el) => clone(el))
-}
-function pasteClipboard() {
-  if (!clipboard || !clipboard.length) return
-  const fresh = clipboard.map((el) => ({ ...clone(el), id: uuid(), x: (el.x || 0) + 24, y: (el.y || 0) + 24 }))
-  model.elements.push(...fresh)
-  selectedIds.value = new Set(fresh.map((el) => el.id))
-  clipboard = fresh.map((el) => clone(el)) // cascade repeated pastes
-  commit()
+// ── Clipboard (copy / paste) ──
+// Copy and paste are unified with the Miro round-trip: a Ctrl+C writes both a
+// lossless native Canvy payload AND the equivalent Miro clipboard into one write,
+// so pasting works inside Canvy (native, exact) and into miro.com (Miro payload).
+// A paste prefers the native payload, falls back to Miro data, so copying between
+// the two apps and copying inside Canvy behave identically.
+
+// Arrows that belong with a selection: at least one end attached to a selected
+// element, and every attached end selected (so a floating end is fine, but an
+// arrow leaving the selection is dropped).
+function arrowInSelection(a, ids) {
+  const f = a.from?.elementId
+  const t = a.to?.elementId
+  if (f == null && t == null) return false
+  if (f != null && !ids.has(f)) return false
+  if (t != null && !ids.has(t)) return false
+  return true
 }
 
-// ── Paste from Miro ──
-// A native `paste` carrying miro.com clipboard HTML is decoded into Canvy
-// elements/arrows (see src/lib/miroToCanvy.js). The imported group arrives
-// centred on (0,0); we translate it to the current viewport centre.
-function importMiro({ elements, arrows }) {
+// Own the native `copy` event so the canvas (which has no text selection) puts
+// real board data on the clipboard. Skipped while typing so text editors copy
+// natively. Not intercepted in `onKey` — preventing the Ctrl+C keydown would
+// suppress this event.
+function onCopy(e) {
+  if (isTyping(e.target)) return
+  const ids = selectedIds.value
+  if (!ids.size || !e.clipboardData) return
+  e.preventDefault()
+  const els = model.elements.filter((el) => ids.has(el.id)).map((el) => clone(el))
+  const ars = model.arrows.filter((a) => arrowInSelection(a, ids)).map((a) => clone(a))
+  const canvyHtml = buildCanvyClipboardHtml(els, ars)
+  const { html: miroHtml, text } = buildMiroClipboard({ name: '', data: { elements: els, arrows: ars } }, {})
+  e.clipboardData.setData('text/html', canvyHtml + miroHtml)
+  e.clipboardData.setData('text/plain', text || ' ')
+}
+
+// Drop an imported group (fresh ids) onto the board, centred on the current
+// viewport. Arrows keep referencing elements by their new ids.
+function dropGroup(elements, arrows) {
   if (!elements.length && !arrows.length) return
   // Centre of the current viewport in world coords (matches screenToWorld at the
   // canvas midpoint, without needing a live pointer event).
   const cx = (size.w / 2 - cam.x) / cam.zoom
   const cy = (size.h / 2 - cam.y) / cam.zoom
-  // Bounding box of the imported group (elements + floating arrow ends) so we can
-  // shift its centre onto the viewport centre.
+  // Bounding box of the group (elements + floating arrow ends) so we can shift its
+  // centre onto the viewport centre.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   const acc = (x, y, w = 0, h = 0) => {
     minX = Math.min(minX, x); minY = Math.min(minY, y)
@@ -606,21 +776,50 @@ function importMiro({ elements, arrows }) {
   selectedArrowId.value = null
   commit()
 }
-// Own the Ctrl+V paste: import Miro clipboard data if present, else fall back to
-// the internal element clipboard. Skipped while typing so text editors paste
-// natively.
+
+// Native Canvy payload → fresh elements/arrows with remapped ids (lossless).
+function importCanvy({ elements, arrows }) {
+  const idMap = new Map()
+  const freshEls = (elements || []).map((el) => {
+    const id = uuid()
+    idMap.set(el.id, id)
+    return { ...clone(el), id }
+  })
+  const freshArrows = (arrows || []).map((a) => {
+    const na = { ...clone(a), id: uuid() }
+    if (na.from?.elementId != null) {
+      const m = idMap.get(na.from.elementId)
+      if (!m) return null
+      na.from = { ...na.from, elementId: m }
+    }
+    if (na.to?.elementId != null) {
+      const m = idMap.get(na.to.elementId)
+      if (!m) return null
+      na.to = { ...na.to, elementId: m }
+    }
+    return na
+  }).filter(Boolean)
+  dropGroup(freshEls, freshArrows)
+}
+// Miro clipboard → Canvy elements/arrows (see src/lib/miroToCanvy.js).
+function importMiro({ elements, arrows }) {
+  dropGroup(elements, arrows)
+}
+// Own the Ctrl+V paste: prefer the native Canvy payload, else Miro data. Skipped
+// while typing so text editors paste natively.
 function onPaste(e) {
   if (isTyping(e.target)) return
   const html = e.clipboardData?.getData('text/html') || ''
+  const canvy = parseCanvyClipboard(html)
+  if (canvy) {
+    e.preventDefault()
+    importCanvy(canvy)
+    return
+  }
   const miro = parseMiroClipboard(html)
   if (miro) {
     e.preventDefault()
     importMiro(miro)
-    return
-  }
-  if (clipboard && clipboard.length) {
-    e.preventDefault()
-    pasteClipboard()
   }
 }
 
@@ -674,10 +873,15 @@ function resetView() {
   cam.y = 0
   cam.zoom = 1
 }
-function fit() {
-  const els = model.elements
+// Frame the board. Pass a set/array of element ids to fit to just those (used for
+// a scoped AI screenshot — the selection fills the frame); omit for the whole board.
+function fit(ids = null) {
   const r = wrap.value?.getBoundingClientRect()
   if (!r) return
+  const all = model.elements
+  const idSet = ids ? new Set([...ids].map(String)) : null
+  let els = idSet ? all.filter((el) => idSet.has(String(el.id))) : all
+  if (!els.length) els = all // scoped set matched nothing → fall back to the whole board
   if (!els.length) {
     resetView()
     return
@@ -714,6 +918,7 @@ const connectTargetId = ref(null)
 const connecting = ref(null) // { fromId } while dragging a new arrow from a handle
 const connectEnd = reactive({ x: 0, y: 0 })
 const marqueeRect = ref(null) // { x, y, w, h } in screen px while rubber-band selecting
+const editingArrowId = ref(null) // arrow whose label is being edited inline
 
 function selectOnly(id) { selectedIds.value = new Set(id ? [id] : []) }
 function clearSelection() { selectedIds.value = new Set() }
@@ -725,6 +930,8 @@ let drag = null
 let resize = null
 let marquee = null
 let pinDrag = null
+let endpointDrag = null // { arrowId, which } while dragging an arrow endpoint
+let labelDrag = null    // { arrowId } while dragging an arrow label along the line
 
 const hint = computed(() => {
   if (props.tool === 'arrow') {
@@ -847,7 +1054,13 @@ function cylinderLid(el) {
 function placeholderFor(el) {
   if (el.type === 'sticky') return 'Sticky note'
   if (el.type === 'text') return 'Text'
+  if (el.type === 'frame') return 'Frame'
   return 'Label'
+}
+// Frame border/tint follows its hue (defaults to a neutral grey).
+function frameStyle(el) {
+  const c = resolveColor(el)
+  return { borderColor: c.stroke, background: c.fill + '22' }
 }
 
 // ── Background pointer (create / pan / deselect) ──
@@ -917,6 +1130,9 @@ function onElPointerDown(e, el) {
     emit('tool-used')
     return
   }
+  // Locked: not selectable/draggable — behave like a click on the background
+  // (marquee / pan / deselect), so the element is effectively click-through.
+  if (el.locked) { onBgPointerDown(e); return }
   selectedArrowId.value = null
   setOpenComment(null)
   if (e.shiftKey) {
@@ -944,6 +1160,8 @@ function onTextPointerDown(e, el) {
 
 function onPointerMove(e) {
   if (drawing.value) { appendDrawPoint(e); return }
+  if (endpointDrag) { moveEndpoint(e); return }
+  if (labelDrag) { moveLabel(e); return }
   if (connecting.value) {
     const p = screenToWorld(e.clientX, e.clientY)
     connectEnd.x = p.x
@@ -968,6 +1186,7 @@ function onPointerMove(e) {
     const b = screenToWorld(Math.max(x1, x2), Math.max(y1, y2))
     const hit = new Set(marquee.additive ? marquee.base : [])
     for (const el of model.elements) {
+      if (el.locked) continue // locked elements aren't marquee-selectable
       if (el.x < b.x && el.x + el.w > a.x && el.y < b.y && el.y + el.h > a.y) hit.add(el.id)
     }
     selectedIds.value = hit
@@ -1023,6 +1242,8 @@ function onPointerUp(e) {
     try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
     return
   }
+  if (endpointDrag) { commit(); endpointDrag = null; try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ } return }
+  if (labelDrag) { commit(); labelDrag = null; try { wrap.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ } return }
   if (pan) { pan = null; panning.value = false }
   if (marquee) { marquee = null; marqueeRect.value = null }
   if (drag) { if (drag.moved) commit(); drag = null }
@@ -1065,6 +1286,7 @@ const DEFAULTS = {
   sticky: { w: 180, h: 140, color: 'yellow' },
   text: { w: 220, h: 48 },
   shape: { w: 180, h: 110, color: 'blue' },
+  frame: { w: 640, h: 420, color: 'gray' },
 }
 const DRAW_STROKE = 3
 const DRAW_MIN_STROKE = 1
@@ -1080,6 +1302,8 @@ function addElement(tool, x, y) {
     el = { id: uuid(), type: 'sticky', x: snap(x), y: snap(y), ...DEFAULTS.sticky, text: '' }
   } else if (tool === 'text') {
     el = { id: uuid(), type: 'text', x: snap(x), y: snap(y), ...DEFAULTS.text, text: '' }
+  } else if (tool === 'frame') {
+    el = { id: uuid(), type: 'frame', x: snap(x), y: snap(y), ...DEFAULTS.frame, text: '' }
   } else if (tool.startsWith('shape-')) {
     el = { id: uuid(), type: 'shape', shape: tool.slice(6), x: snap(x), y: snap(y), ...DEFAULTS.shape, text: '' }
   } else {
@@ -1088,7 +1312,9 @@ function addElement(tool, x, y) {
   // Center the new element on the click point
   el.x = Math.round(el.x - el.w / 2)
   el.y = Math.round(el.y - el.h / 2)
-  model.elements.push(el)
+  // Frames sit behind everything else so notes drop on top of them.
+  if (el.type === 'frame') model.elements.unshift(el)
+  else model.elements.push(el)
   selectOnly(el.id)
   commit()
   nextTick(() => startEdit(el))
@@ -1278,6 +1504,57 @@ function setStrokeWidth(el, v) {
 function commitStroke() {
   commit()
 }
+// ── Font size (text-bearing elements) ──
+// Defaults mirror the CSS (.el-content 0.95rem ≈ 15px, .el-text 1.05rem ≈ 17px).
+const FONT_MIN = 8
+const FONT_MAX = 160
+const FONT_STEP = 4 // A-/A+ step (doubled from the old ±2 so it moves faster)
+function fontSizeOf(el) {
+  return el.fontSize || (el.type === 'text' ? 17 : 15)
+}
+function contentStyle(el) {
+  return el.fontSize ? { fontSize: el.fontSize + 'px' } : {}
+}
+function bumpFontSize(el, delta) {
+  el.fontSize = clamp(fontSizeOf(el) + delta, FONT_MIN, FONT_MAX)
+  commit()
+}
+// Manual entry: double-click the readout to type an exact size.
+const fontEditId = ref(null)
+const fontEditValue = ref(15)
+const fontEditInput = ref(null)
+function startFontEdit(el) {
+  fontEditId.value = el.id
+  fontEditValue.value = fontSizeOf(el)
+  nextTick(() => {
+    const node = Array.isArray(fontEditInput.value) ? fontEditInput.value[0] : fontEditInput.value
+    node?.focus?.()
+    node?.select?.()
+  })
+}
+function commitFontEdit(el) {
+  if (fontEditId.value !== el.id) return
+  const raw = Math.round(Number(fontEditValue.value))
+  fontEditId.value = null
+  if (!Number.isFinite(raw)) return
+  const v = clamp(raw, FONT_MIN, FONT_MAX)
+  if (v !== fontSizeOf(el)) { el.fontSize = v; commit() }
+}
+function cancelFontEdit() {
+  fontEditId.value = null
+}
+// ── Lock ──
+// Locked elements can't be click-selected, dragged, resized or deleted; a small
+// always-visible badge unlocks them. Arrows/comments can still attach to them.
+function toggleLock(el) {
+  el.locked = !el.locked
+  if (el.locked) {
+    const next = new Set(selectedIds.value)
+    next.delete(el.id)
+    selectedIds.value = next
+  }
+  commit()
+}
 function removeElement(id) {
   removeElementIds(new Set([id]))
 }
@@ -1380,14 +1657,134 @@ function selectArrow(id) {
   selectedArrowId.value = id
   clearSelection()
 }
-function editArrowLabel(id) {
+// ── Arrow routing / heads / label ──
+function arrowMode(id) {
+  const a = model.arrows.find((x) => x.id === id)
+  return a ? a.mode || (a.curve ? 'curved' : 'straight') : 'straight'
+}
+function arrowHeads(id) {
+  const a = model.arrows.find((x) => x.id === id)
+  return a?.heads || { start: false, end: true }
+}
+function setArrowMode(id, mode) {
   const a = model.arrows.find((x) => x.id === id)
   if (!a) return
-  const label = window.prompt('Connection label', a.label || '')
-  if (label !== null) {
-    a.label = label
-    commit()
+  a.mode = mode
+  if (mode === 'curved' && !a.curve) a.curve = CURVE_STEP
+  if (mode !== 'curved') a.curve = 0
+  commit()
+}
+function toggleHead(id, which) {
+  const a = model.arrows.find((x) => x.id === id)
+  if (!a) return
+  const h = { ...(a.heads || { start: false, end: true }) }
+  h[which] = !h[which]
+  a.heads = h
+  commit()
+}
+function bumpLabelSize(id, delta) {
+  const a = model.arrows.find((x) => x.id === id)
+  if (!a) return
+  a.labelSize = clamp((a.labelSize || 13) + delta, 6, 200)
+  if (!a.label) a.label = 'label'
+  commit()
+}
+// Line thickness (px). Default 2; range 1–10.
+function arrowStrokeWidth(id) {
+  const a = model.arrows.find((x) => x.id === id)
+  return a?.strokeWidth || 2
+}
+function bumpArrowWidth(id, delta) {
+  const a = model.arrows.find((x) => x.id === id)
+  if (!a) return
+  a.strokeWidth = clamp((a.strokeWidth || 2) + delta, 1, 10)
+  commit()
+}
+
+// Inline label editing (replaces the old window.prompt).
+const editingArrowGeom = computed(() =>
+  editingArrowId.value ? arrowGeoms.value.find((a) => a.id === editingArrowId.value) : null,
+)
+let arrowLabelNode = null
+function initArrowLabelInput(node) {
+  arrowLabelNode = node
+  if (!node) return
+  const a = model.arrows.find((x) => x.id === editingArrowId.value)
+  node.textContent = a?.label || ''
+  nextTick(() => {
+    node.focus()
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  })
+}
+function startArrowLabelEdit(id) {
+  selectArrow(id)
+  editingArrowId.value = id
+}
+function finishArrowLabelEdit() {
+  const id = editingArrowId.value
+  if (!id) return
+  const a = model.arrows.find((x) => x.id === id)
+  const text = arrowLabelNode ? arrowLabelNode.innerText.trim() : ''
+  editingArrowId.value = null
+  arrowLabelNode = null
+  if (a && a.label !== text) { a.label = text; commit() }
+}
+
+// Drag an arrow endpoint onto a shape's outline (chosen anchor) or empty space.
+function onEndpointDown(e, arrowId, which) {
+  selectArrow(arrowId)
+  endpointDrag = { arrowId, which }
+  capture(e)
+}
+function moveEndpoint(e) {
+  const a = model.arrows.find((x) => x.id === endpointDrag.arrowId)
+  if (!a) return
+  const p = screenToWorld(e.clientX, e.clientY)
+  const target = elementAt(p.x, p.y)
+  if (target) {
+    // Fractional position across the box, snapped to the nearest edge so the
+    // anchor always sits on the boundary.
+    let ax = clamp((p.x - target.x) / target.w, 0, 1)
+    let ay = clamp((p.y - target.y) / target.h, 0, 1)
+    const dl = ax, dr = 1 - ax, dt = ay, db = 1 - ay
+    const m = Math.min(dl, dr, dt, db)
+    if (m === dl) ax = 0
+    else if (m === dr) ax = 1
+    else if (m === dt) ay = 0
+    else ay = 1
+    a[endpointDrag.which] = { elementId: target.id, ax: Number(ax.toFixed(3)), ay: Number(ay.toFixed(3)) }
+  } else {
+    a[endpointDrag.which] = { x: Math.round(p.x), y: Math.round(p.y) }
   }
+}
+
+// Drag the label along the connector to set labelPos (0..1 by nearest arc point).
+function onLabelPointerDown(e, arrowId) {
+  selectArrow(arrowId)
+  labelDrag = { arrowId }
+  capture(e)
+}
+function moveLabel(e) {
+  const a = model.arrows.find((x) => x.id === labelDrag.arrowId)
+  if (!a) return
+  const g = arrowWorldGeom(a)
+  const p = screenToWorld(e.clientX, e.clientY)
+  // Sample the path and pick the nearest t.
+  let best = 0.5, bestD = Infinity
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40
+    let q
+    if (g.mode === 'elbow') q = polylinePointAt(g.pts, t)
+    else if (g.cw) q = quadPointAt(g.fp, g.cw, g.tp, t)
+    else q = { x: g.fp.x + (g.tp.x - g.fp.x) * t, y: g.fp.y + (g.tp.y - g.fp.y) * t }
+    const dd = (q.x - p.x) ** 2 + (q.y - p.y) ** 2
+    if (dd < bestD) { bestD = dd; best = t }
+  }
+  a.labelPos = Number(best.toFixed(3))
 }
 function removeArrow(id) {
   model.arrows = model.arrows.filter((a) => a.id !== id)
@@ -1404,14 +1801,27 @@ function bendArrow(id, dir) {
   a.curve = Math.abs(next) < 0.001 ? 0 : Number(next.toFixed(3))
   commit()
 }
-function straightenArrow(id) {
-  const a = model.arrows.find((x) => x.id === id)
-  if (!a || !a.curve) return
-  a.curve = 0
-  commit()
-}
 
-// Point on a box border in the direction of (tx, ty) from the box centre.
+// Ray/segment-polygon intersection: nearest positive hit of the ray from (cx,cy)
+// along (dx,dy) with a closed polygon `pts` ([[x,y],…] world coords).
+function rayPolygon(cx, cy, dx, dy, pts) {
+  let best = null, bestT = Infinity
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i]
+    const [bx, by] = pts[(i + 1) % pts.length]
+    const ex = bx - ax, ey = by - ay
+    const denom = dx * ey - dy * ex
+    if (Math.abs(denom) < 1e-9) continue
+    const t = ((ax - cx) * ey - (ay - cy) * ex) / denom
+    const s = ((ax - cx) * dy - (ay - cy) * dx) / denom
+    if (t > 1e-6 && s >= -1e-6 && s <= 1 + 1e-6 && t < bestT) { bestT = t; best = { x: cx + dx * t, y: cy + dy * t } }
+  }
+  return best
+}
+// Point on an element's *true* outline in the direction of (tx, ty) from its
+// centre. Shape-aware (ellipse / diamond / parallelogram) so arrows land on the
+// visible edge, not the invisible bounding box. rect / frame / sticky / text /
+// cylinder use the box (cylinder ≈ box is close enough).
 function edgePoint(el, tx, ty) {
   const cx = el.x + el.w / 2
   const cy = el.y + el.h / 2
@@ -1420,8 +1830,249 @@ function edgePoint(el, tx, ty) {
   if (dx === 0 && dy === 0) return { x: cx, y: cy }
   const hw = el.w / 2
   const hh = el.h / 2
-  const scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh)
-  return { x: cx + dx * scale, y: cy + dy * scale }
+  const shape = el.type === 'shape' ? el.shape : 'rect'
+  if (shape === 'ellipse') {
+    const k = 1 / Math.sqrt((dx * dx) / (hw * hw) + (dy * dy) / (hh * hh))
+    return { x: cx + dx * k, y: cy + dy * k }
+  }
+  if (shape === 'diamond') {
+    const k = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh)
+    return { x: cx + dx * k, y: cy + dy * k }
+  }
+  if (shape === 'parallelogram') {
+    const o = Math.min(el.w * 0.25, 70)
+    const p = rayPolygon(cx, cy, dx, dy, [
+      [el.x + o, el.y], [el.x + el.w, el.y], [el.x + el.w - o, el.y + el.h], [el.x, el.y + el.h],
+    ])
+    if (p) return p
+  }
+  const k = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh)
+  return { x: cx + dx * k, y: cy + dy * k }
+}
+// Project a fractional boundary anchor (ax,ay ∈ 0..1 across the box) onto the
+// element's true outline (via the ray from the centre through the box point).
+function anchorPoint(el, ax, ay) {
+  const cx = el.x + el.w / 2
+  const cy = el.y + el.h / 2
+  const px = el.x + ax * el.w
+  const py = el.y + ay * el.h
+  if (Math.abs(px - cx) < 0.01 && Math.abs(py - cy) < 0.01) return { x: cx, y: cy }
+  return edgePoint(el, px, py)
+}
+// Resolve one arrow endpoint to a world point: a chosen boundary anchor (ax/ay),
+// else the directional edge toward (tx,ty), else a free-floating {x,y}.
+function resolveEndpoint(end, tx, ty) {
+  if (end?.elementId != null) {
+    const el = byId.value.get(end.elementId)
+    if (el) return end.ax != null && end.ay != null ? anchorPoint(el, end.ax, end.ay) : edgePoint(el, tx, ty)
+  }
+  return { x: end?.x ?? 0, y: end?.y ?? 0 }
+}
+// ── Right-angle (elbow) routing ──
+// Miro-style: each attached end leaves its box perpendicular to the side it
+// attaches to (an outward "stub"), then the two stubs are joined by an
+// axis-aligned route chosen to avoid cutting back through either box. This stops
+// arrows lying flat against a box or slicing through it.
+const ELBOW_STUB = 22    // outward leg length before the route turns
+const ELBOW_INFLATE = 12 // clearance kept around each box when routing
+
+function sideDir(side) {
+  return side === 'l' ? { x: -1, y: 0 }
+    : side === 'r' ? { x: 1, y: 0 }
+      : side === 't' ? { x: 0, y: -1 }
+        : { x: 0, y: 1 }
+}
+// Which side an end attaches to: its explicit fractional anchor's nearest edge,
+// else the side of the box facing the other end.
+function attachSide(end, el, otherC) {
+  if (end?.ax != null && end?.ay != null) {
+    const dl = end.ax, dr = 1 - end.ax, dt = end.ay, db = 1 - end.ay
+    const m = Math.min(dl, dr, dt, db)
+    return m === dl ? 'l' : m === dr ? 'r' : m === dt ? 't' : 'b'
+  }
+  const cx = el.x + el.w / 2, cy = el.y + el.h / 2
+  const dx = otherC.x - cx, dy = otherC.y - cy
+  if (Math.abs(dx) / (el.w / 2 || 1) >= Math.abs(dy) / (el.h / 2 || 1)) return dx >= 0 ? 'r' : 'l'
+  return dy >= 0 ? 'b' : 't'
+}
+// The exit point on a box side (the anchor's along-edge position when set, else
+// the side's midpoint).
+function sidePoint(el, side, end) {
+  const cx = el.x + el.w / 2, cy = el.y + el.h / 2
+  if (end?.ax != null && end?.ay != null) {
+    const px = clamp(el.x + end.ax * el.w, el.x, el.x + el.w)
+    const py = clamp(el.y + end.ay * el.h, el.y, el.y + el.h)
+    if (side === 'l') return { x: el.x, y: py }
+    if (side === 'r') return { x: el.x + el.w, y: py }
+    if (side === 't') return { x: px, y: el.y }
+    return { x: px, y: el.y + el.h }
+  }
+  if (side === 'l') return { x: el.x, y: cy }
+  if (side === 'r') return { x: el.x + el.w, y: cy }
+  if (side === 't') return { x: cx, y: el.y }
+  return { x: cx, y: el.y + el.h }
+}
+function inflateRect(el, m) {
+  return { x: el.x - m, y: el.y - m, w: el.w + 2 * m, h: el.h + 2 * m }
+}
+// True if the axis-aligned segment p→q crosses a rect's interior (Liang–Barsky).
+// Grazing the boundary (t0===t1) does not count, so stubs sitting on the inflated
+// edge aren't treated as collisions.
+function segHitsRect(p, q, rect) {
+  const dx = q.x - p.x, dy = q.y - p.y
+  let t0 = 0, t1 = 1
+  // Each call constrains t by `t*den >= num`: den>0 raises the lower bound (t0),
+  // den<0 lowers the upper bound (t1), den==0 keeps only if num<=0.
+  const clip = (num, den) => {
+    if (den === 0) return num <= 0
+    const r = num / den
+    if (den > 0) { if (r > t1) return false; if (r > t0) t0 = r }
+    else { if (r < t0) return false; if (r < t1) t1 = r }
+    return true
+  }
+  if (clip(rect.x - p.x, dx) && clip(p.x - (rect.x + rect.w), -dx) &&
+      clip(rect.y - p.y, dy) && clip(p.y - (rect.y + rect.h), -dy)) {
+    return t0 < t1
+  }
+  return false
+}
+function pathHitsBoxes(pts, boxes) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    for (const b of boxes) if (segHitsRect(pts[i], pts[i + 1], b)) return true
+  }
+  return false
+}
+function dirTowards(p, q) {
+  const dx = q.x - p.x, dy = q.y - p.y
+  return Math.abs(dx) >= Math.abs(dy) ? { x: Math.sign(dx) || 1, y: 0 } : { x: 0, y: Math.sign(dy) || 1 }
+}
+// Drop duplicate and colinear points from an orthogonal polyline.
+function simplifyPath(pts) {
+  const out = []
+  for (const p of pts) {
+    const last = out[out.length - 1]
+    if (!last || Math.abs(last.x - p.x) > 0.5 || Math.abs(last.y - p.y) > 0.5) out.push(p)
+  }
+  let i = 1
+  while (i < out.length - 1) {
+    const a = out[i - 1], b = out[i], c = out[i + 1]
+    if (Math.sign(b.x - a.x) === Math.sign(c.x - b.x) && Math.sign(b.y - a.y) === Math.sign(c.y - b.y)) out.splice(i, 1)
+    else i++
+  }
+  return out
+}
+// Simple fallback: join two points with an L, then a Z, choosing the first that
+// clears the boxes (used only if the grid router degenerates).
+function orthoConnect(s0, s1, boxes) {
+  const mx = (s0.x + s1.x) / 2, my = (s0.y + s1.y) / 2
+  const cands = [
+    [{ x: s1.x, y: s0.y }],
+    [{ x: s0.x, y: s1.y }],
+    [{ x: mx, y: s0.y }, { x: mx, y: s1.y }],
+    [{ x: s0.x, y: my }, { x: s1.x, y: my }],
+  ]
+  for (const c of cands) {
+    const pts = [s0, ...c, s1]
+    if (!pathHitsBoxes(pts, boxes)) return pts
+  }
+  return [s0, { x: mx, y: s0.y }, { x: mx, y: s1.y }, s1]
+}
+function dirKey(d) {
+  return d.x === 1 ? 0 : d.x === -1 ? 1 : d.y === 1 ? 2 : 3
+}
+// Obstacle-avoiding orthogonal router from s0 (leaving in d0) to s1. Dijkstra over
+// the Hanan grid — the lattice of x/y lines through the stub ends and each box's
+// (inflated) edges — which is guaranteed to contain a shortest rectilinear path
+// around axis-aligned obstacles. Turn cost keeps it to few bends; obstacles are
+// tested slightly shrunk so a route may hug an inflated edge but never cut through.
+function routeOrth(s0, d0, s1, boxes) {
+  const xs = [...new Set([s0.x, s1.x, (s0.x + s1.x) / 2, ...boxes.flatMap((b) => [b.x, b.x + b.w])])].sort((a, b) => a - b)
+  const ys = [...new Set([s0.y, s1.y, (s0.y + s1.y) / 2, ...boxes.flatMap((b) => [b.y, b.y + b.h])])].sort((a, b) => a - b)
+  const nx = xs.length, ny = ys.length
+  const xi0 = xs.indexOf(s0.x), yi0 = ys.indexOf(s0.y)
+  const xi1 = xs.indexOf(s1.x), yi1 = ys.indexOf(s1.y)
+  if (xi0 < 0 || yi0 < 0 || xi1 < 0 || yi1 < 0) return null
+  const testBoxes = boxes.map((b) => ({ x: b.x + 1, y: b.y + 1, w: b.w - 2, h: b.h - 2 }))
+  const clearSeg = (a, b) => { for (const bx of testBoxes) if (segHitsRect(a, b, bx)) return false; return true }
+  const at = (xi, yi) => ({ x: xs[xi], y: ys[yi] })
+  const DIRS = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }]
+  const TURN = 30
+  const dist = new Map(), prev = new Map()
+  const start = { c: 0, xi: xi0, yi: yi0, dir: dirKey(d0), key: `${xi0},${yi0},${dirKey(d0)}` }
+  dist.set(start.key, 0)
+  const pq = [start]
+  let goal = null
+  while (pq.length) {
+    let mi = 0
+    for (let i = 1; i < pq.length; i++) if (pq[i].c < pq[mi].c) mi = i
+    const cur = pq.splice(mi, 1)[0]
+    if (cur.c > (dist.get(cur.key) ?? Infinity)) continue
+    if (cur.xi === xi1 && cur.yi === yi1) { goal = cur; break }
+    const from = at(cur.xi, cur.yi)
+    for (let k = 0; k < 4; k++) {
+      const txi = cur.xi + DIRS[k].dx, tyi = cur.yi + DIRS[k].dy
+      if (txi < 0 || txi >= nx || tyi < 0 || tyi >= ny) continue
+      const to = at(txi, tyi)
+      if (!clearSeg(from, to)) continue
+      const nc = cur.c + Math.abs(to.x - from.x) + Math.abs(to.y - from.y) + (cur.dir !== k ? TURN : 0)
+      const nkey = `${txi},${tyi},${k}`
+      if (nc < (dist.get(nkey) ?? Infinity)) {
+        dist.set(nkey, nc)
+        prev.set(nkey, cur.key)
+        pq.push({ c: nc, xi: txi, yi: tyi, dir: k, key: nkey })
+      }
+    }
+  }
+  if (!goal) return null
+  const pts = []
+  let k = goal.key
+  while (k) {
+    const [xi, yi] = k.split(',').map(Number)
+    pts.push(at(xi, yi))
+    k = prev.get(k)
+  }
+  return pts.reverse()
+}
+// Full elbow route for an arrow, world coords: [edge, …bends…, edge].
+function elbowRoute(a) {
+  const fromC = endpointCenter(a.from)
+  const toC = endpointCenter(a.to)
+  const fEl = fromC.el, tEl = toC.el
+  const fSide = fEl ? attachSide(a.from, fEl, toC) : null
+  const tSide = tEl ? attachSide(a.to, tEl, fromC) : null
+  const fp = fEl ? sidePoint(fEl, fSide, a.from) : { x: fromC.x, y: fromC.y }
+  const tp = tEl ? sidePoint(tEl, tSide, a.to) : { x: toC.x, y: toC.y }
+  const fDir = fSide ? sideDir(fSide) : dirTowards(fp, tp)
+  const tDir = tSide ? sideDir(tSide) : dirTowards(tp, fp)
+  const s0 = { x: fp.x + fDir.x * ELBOW_STUB, y: fp.y + fDir.y * ELBOW_STUB }
+  const s1 = { x: tp.x + tDir.x * ELBOW_STUB, y: tp.y + tDir.y * ELBOW_STUB }
+  const boxes = []
+  if (fEl) boxes.push(inflateRect(fEl, ELBOW_INFLATE))
+  if (tEl) boxes.push(inflateRect(tEl, ELBOW_INFLATE))
+  const mid = routeOrth(s0, fDir, s1, boxes) || orthoConnect(s0, s1, boxes)
+  return simplifyPath([fp, ...mid, tp])
+}
+// Sample a polyline / quadratic bezier at fraction t (0..1) by arc length.
+function polylinePointAt(pts, t) {
+  const segs = []
+  let total = 0
+  for (let i = 0; i < pts.length - 1; i++) {
+    const l = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+    segs.push(l); total += l
+  }
+  let target = t * total
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i] || i === segs.length - 1) {
+      const f = segs[i] ? target / segs[i] : 0
+      return { x: pts[i].x + (pts[i + 1].x - pts[i].x) * f, y: pts[i].y + (pts[i + 1].y - pts[i].y) * f }
+    }
+    target -= segs[i]
+  }
+  return pts[pts.length - 1]
+}
+function quadPointAt(p0, c, p2, t) {
+  const u = 1 - t
+  return { x: u * u * p0.x + 2 * u * t * c.x + t * t * p2.x, y: u * u * p0.y + 2 * u * t * c.y + t * t * p2.y }
 }
 function endpointCenter(end) {
   if (end?.elementId != null) {
@@ -1448,23 +2099,30 @@ function curveControl(fc, tc, curve) {
 // point (null when straight) and the visual midpoint. Shared by the renderer
 // and by comment anchoring.
 function arrowWorldGeom(a) {
-  const from = endpointCenter(a.from)
-  const to = endpointCenter(a.to)
+  const fromC = endpointCenter(a.from)
+  const toC = endpointCenter(a.to)
   const curve = Number(a.curve) || 0
+  const mode = a.mode || (curve ? 'curved' : 'straight')
+  // Elbow: port-aware orthogonal route with outward stubs + box avoidance. The
+  // route already ends on each box's edge, so fp/tp are its endpoints.
+  if (mode === 'elbow') {
+    const pts = elbowRoute(a)
+    return { fp: pts[0], tp: pts[pts.length - 1], cw: null, pts, mode, mid: polylinePointAt(pts, 0.5) }
+  }
   // Control point; edges exit aiming toward it so the curve leaves each box
   // naturally. For curve 0 it sits on the chord → straight.
-  const ctrl = curveControl(from, to, curve)
-  const fp = from.el ? edgePoint(from.el, ctrl.x, ctrl.y) : { x: from.x, y: from.y }
-  const tp = to.el ? edgePoint(to.el, ctrl.x, ctrl.y) : { x: to.x, y: to.y }
+  const ctrl = curveControl(fromC, toC, curve)
+  const fp = resolveEndpoint(a.from, ctrl.x, ctrl.y)
+  const tp = resolveEndpoint(a.to, ctrl.x, ctrl.y)
   let cw = null, mid
-  if (curve) {
+  if (mode === 'curved' && curve) {
     // recompute control off the actual edge points so the bow is symmetric
     cw = curveControl(fp, tp, curve * 2)
     mid = { x: 0.25 * fp.x + 0.5 * cw.x + 0.25 * tp.x, y: 0.25 * fp.y + 0.5 * cw.y + 0.25 * tp.y }
   } else {
     mid = { x: (fp.x + tp.x) / 2, y: (fp.y + tp.y) / 2 }
   }
-  return { fp, tp, cw, mid }
+  return { fp, tp, cw, pts: null, mode, mid }
 }
 
 const arrowGeoms = computed(() => {
@@ -1472,22 +2130,32 @@ const arrowGeoms = computed(() => {
   void cam.x; void cam.y; void cam.zoom
   const out = []
   for (const a of model.arrows) {
-    const { fp, tp, cw } = arrowWorldGeom(a)
-    const s1 = worldToScreen(fp.x, fp.y)
-    const s2 = worldToScreen(tp.x, tp.y)
-    let d, mx, my
-    if (cw) {
-      const sc = worldToScreen(cw.x, cw.y)
+    const g = arrowWorldGeom(a)
+    const s1 = worldToScreen(g.fp.x, g.fp.y)
+    const s2 = worldToScreen(g.tp.x, g.tp.y)
+    const lp = a.labelPos != null ? clamp(Number(a.labelPos), 0, 1) : 0.5
+    let d, labelWorld
+    if (g.mode === 'elbow') {
+      d = 'M ' + g.pts.map((p) => { const s = worldToScreen(p.x, p.y); return `${s.x} ${s.y}` }).join(' L ')
+      labelWorld = polylinePointAt(g.pts, lp)
+    } else if (g.cw) {
+      const sc = worldToScreen(g.cw.x, g.cw.y)
       d = `M ${s1.x} ${s1.y} Q ${sc.x} ${sc.y} ${s2.x} ${s2.y}`
-      // midpoint of a quadratic bezier at t=0.5
-      mx = 0.25 * s1.x + 0.5 * sc.x + 0.25 * s2.x
-      my = 0.25 * s1.y + 0.5 * sc.y + 0.25 * s2.y - 6
+      labelWorld = quadPointAt(g.fp, g.cw, g.tp, lp)
     } else {
       d = `M ${s1.x} ${s1.y} L ${s2.x} ${s2.y}`
-      mx = (s1.x + s2.x) / 2
-      my = (s1.y + s2.y) / 2 - 6
+      labelWorld = { x: g.fp.x + (g.tp.x - g.fp.x) * lp, y: g.fp.y + (g.tp.y - g.fp.y) * lp }
     }
-    out.push({ id: a.id, d, mx, my, label: a.label })
+    const sl = worldToScreen(labelWorld.x, labelWorld.y)
+    out.push({
+      id: a.id, d,
+      mx: sl.x, my: sl.y - 6,
+      label: a.label,
+      labelSize: a.labelSize || 13,
+      strokeWidth: a.strokeWidth || 2,
+      heads: a.heads || { start: false, end: true },
+      x1: s1.x, y1: s1.y, x2: s2.x, y2: s2.y,
+    })
   }
   return out
 })
@@ -1643,10 +2311,10 @@ function onKey(e) {
     const k = e.key.toLowerCase()
     if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
     if (k === 'y') { e.preventDefault(); redo(); return }
-    if (k === 'c') { if (selectedIds.value.size) { e.preventDefault(); copySelected() } return }
-    // Paste is handled by the native `paste` event (onPaste) so it can read the
-    // clipboard HTML and import Miro data; don't also paste here.
-    if (k === 'v') return
+    // Copy/paste are handled by the native `copy`/`paste` events (onCopy/onPaste)
+    // so they can read/write clipboard HTML and round-trip Miro data. Don't
+    // preventDefault the Ctrl+C keydown here — that would suppress the copy event.
+    if (k === 'c' || k === 'v') return
     return
   }
 
@@ -1673,6 +2341,7 @@ function onKey(e) {
     else if (k === 't') { e.preventDefault(); emit('set-tool', 'text') }
     else if (k === 'c') { e.preventDefault(); emit('set-tool', 'comment') }
     else if (k === 's') { e.preventDefault(); emit('set-tool', 'sticky') }
+    else if (k === 'f') { e.preventDefault(); emit('set-tool', 'frame') }
     else if (k === 'p') { e.preventDefault(); emit('set-tool', props.tool === 'draw' ? null : 'draw') }
   }
 }
@@ -1701,6 +2370,7 @@ onMounted(() => {
   nextTick(fit)
   window.addEventListener('keydown', onKey)
   window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('copy', onCopy)
   window.addEventListener('paste', onPaste)
   if (window.ResizeObserver && wrap.value) {
     ro = new ResizeObserver(measure)
@@ -1710,9 +2380,36 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('copy', onCopy)
   window.removeEventListener('paste', onPaste)
   if (ro) ro.disconnect()
 })
+
+// Render the board to a PNG data URI for the AI round-trip. Clears transient UI
+// (selection outlines, handles, open comment popovers), frames the board, lets it
+// paint, then rasterises the .canvy-canvas root. Pass { frameIds } to fit just
+// those element ids (the selection) so the AI sees only the region it edited;
+// omit for the whole board.
+async function captureImage(opts = {}) {
+  if (!wrap.value) return null
+  const { frameIds = null } = opts
+  // Strip anything that would show up as chrome rather than board content.
+  selectedIds.value = new Set()
+  selectedArrowId.value = null
+  editingId.value = null
+  openCommentId.value = null
+  connecting.value = null
+  marqueeRect.value = null
+  fit(frameIds && frameIds.length ? frameIds : null)
+  await nextTick()
+  // Give the transform + any contenteditable reflow a frame to settle.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  return toPng(wrap.value, {
+    backgroundColor: '#faf9f7',
+    pixelRatio: Math.min(2, window.devicePixelRatio || 1),
+    cacheBust: true,
+  })
+}
 
 defineExpose({
   fit,
@@ -1722,6 +2419,7 @@ defineExpose({
   sendToBack,
   bringForward,
   sendBackward,
+  captureImage,
 })
 </script>
 
@@ -1777,6 +2475,50 @@ defineExpose({
 .el-text { background: transparent; }
 .el-shape { padding: 0; }
 .el-draw { background: transparent; }
+.el-frame { background: transparent; }
+
+/* frame: a titled container drawn behind other elements */
+.frame-box {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid;
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+.el-frame .el-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: auto;
+  flex: none;
+  padding: 0.25rem 0.5rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #55524c;
+  transform: translateY(-100%);
+}
+.el-frame .el-content:empty::before { color: #a7a39b; }
+
+/* lock badge (unlock affordance on locked elements) */
+.lock-badge {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #d9d6cf;
+  color: #6b665d;
+  font-size: 0.7rem;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.lock-badge:hover { color: var(--accent-600); border-color: var(--accent-400); }
 
 /* rotated visual layer: fills the element's content box; rotation pivots on its
    centre while the box, outline, handles and toolbar stay upright. */
@@ -2021,12 +2763,13 @@ defineExpose({
   pointer-events: none;
   overflow: visible;
 }
+/* stroke-width is set per-arrow via the :stroke-width attribute (a.strokeWidth);
+   don't set it here or CSS would override every arrow to one width. */
 .arrow-line {
   stroke: #6b6b6b;
-  stroke-width: 2;
   fill: none;
 }
-.arrow-line.on { stroke: var(--accent-600); stroke-width: 2.5; }
+.arrow-line.on { stroke: var(--accent-600); }
 .arrow-line.temp { stroke: var(--accent-500); stroke-width: 2; stroke-dasharray: 5 4; }
 .arrow-hit {
   stroke: transparent;
@@ -2036,13 +2779,65 @@ defineExpose({
   cursor: pointer;
 }
 .arrow-label {
-  font-size: 12px;
+  /* font-size comes from the :font-size attribute (a.labelSize) — don't set it in
+     CSS or it would override the per-arrow size. */
   fill: #3a3a3a;
   text-anchor: middle;
   paint-order: stroke;
   stroke: #faf9f7;
   stroke-width: 3px;
+  pointer-events: auto;
+  cursor: move;
 }
+/* draggable endpoint handles on the selected arrow */
+.arrow-endpoint {
+  fill: #fff;
+  stroke: var(--accent-500);
+  stroke-width: 2;
+  pointer-events: auto;
+  cursor: grab;
+}
+.arrow-endpoint:hover { fill: var(--accent-050); }
+/* inline label editor */
+.arrow-label-edit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 2ch;
+  padding: 1px 4px;
+  background: #fff;
+  border: 1px solid var(--accent-400);
+  border-radius: 4px;
+  color: #3a3a3a;
+  outline: none;
+  z-index: 8;
+  user-select: text;
+  -webkit-user-select: text;
+  white-space: nowrap;
+}
+/* font-size readout in the mini-toolbar */
+.font-size-readout {
+  min-width: 1.6rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #6b665d;
+  cursor: text;
+}
+.font-size-readout:hover { color: var(--accent-600); }
+/* inline manual size entry */
+.font-size-input {
+  width: 2.6rem;
+  text-align: center;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid var(--accent-400);
+  border-radius: 0.3rem;
+  outline: none;
+  color: #1a1a1a;
+  background: #fff;
+  -moz-appearance: textfield;
+}
+.font-size-input::-webkit-outer-spin-button,
+.font-size-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* ── Comment pins ── */
 .comment-pin {

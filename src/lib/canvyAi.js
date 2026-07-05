@@ -13,7 +13,8 @@ import { v4 as uuid } from 'uuid'
 
 const COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'gray']
 const SHAPES = ['rect', 'ellipse', 'diamond', 'cylinder', 'parallelogram']
-const TYPES = ['sticky', 'text', 'shape', 'draw']
+const TYPES = ['sticky', 'text', 'shape', 'draw', 'frame']
+const ARROW_MODES = ['straight', 'curved', 'elbow']
 
 // ── Prompt templates ──────────────────────────────────────────────────────────
 // `mode` drives how a reply is applied: 'edit' = constructive build (→ branch),
@@ -53,7 +54,7 @@ const clampN = (v, lo, hi) => Math.min(Math.max(v, lo), hi)
 // Pick the elements/arrows/comments to expose to the assistant. When `scopeIds`
 // is given, restrict to that selection: the selected elements, arrows whose both
 // endpoints are selected, and comments anchored within the selection.
-function scopedData(d, scopeIds) {
+export function scopedData(d, scopeIds) {
   const elements = Array.isArray(d.elements) ? d.elements : []
   const arrows = Array.isArray(d.arrows) ? d.arrows : []
   const comments = Array.isArray(d.comments) ? d.comments : []
@@ -115,7 +116,16 @@ function extractJson(text) {
 
 function normalizeEndpoint(end, ids) {
   if (!end || typeof end !== 'object') return null
-  if (end.elementId != null && ids.has(String(end.elementId))) return { elementId: String(end.elementId) }
+  if (end.elementId != null && ids.has(String(end.elementId))) {
+    const e = { elementId: String(end.elementId) }
+    // Optional fractional boundary anchor (0..1 across the element box). Absent =>
+    // the arrow exits directionally from the centre (legacy behaviour).
+    if (end.ax != null && end.ay != null) {
+      e.ax = clampN(num(end.ax), 0, 1)
+      e.ay = clampN(num(end.ay), 0, 1)
+    }
+    return e
+  }
   if (end.x != null && end.y != null) return { x: num(end.x), y: num(end.y) }
   return null
 }
@@ -147,7 +157,7 @@ function normalizeMessages(raw) {
 
 // Validate + clean a raw board spec into a board `data` object. Shared by the
 // full build and the scoped merge.
-function normalizeBoard(spec) {
+export function normalizeBoard(spec) {
   const warnings = []
 
   // ── elements ──
@@ -196,13 +206,13 @@ function normalizeBoard(spec) {
       type,
       x: num(raw.x),
       y: num(raw.y),
-      w: Math.max(60, num(raw.w, type === 'text' ? 220 : 180)),
-      h: Math.max(36, num(raw.h, type === 'text' ? 48 : type === 'sticky' ? 140 : 110)),
+      w: Math.max(60, num(raw.w, type === 'text' ? 220 : type === 'frame' ? 640 : 180)),
+      h: Math.max(36, num(raw.h, type === 'text' ? 48 : type === 'sticky' ? 140 : type === 'frame' ? 420 : 110)),
       text: str(raw.text),
     }
     if (type === 'shape') el.shape = SHAPES.includes(raw.shape) ? raw.shape : 'rect'
     if (type !== 'text') {
-      el.color = COLORS.includes(raw.color) ? raw.color : type === 'sticky' ? 'yellow' : 'blue'
+      el.color = COLORS.includes(raw.color) ? raw.color : type === 'sticky' ? 'yellow' : type === 'frame' ? 'gray' : 'blue'
       el.shade = clampN(num(raw.shade, 1), 0, 4)
     }
     applyCommonStyle(el, raw)
@@ -221,7 +231,13 @@ function normalizeBoard(spec) {
     if (arrowIds.has(id)) id = uuid()
     arrowIds.add(id)
     const curve = clampN(num(raw.curve, 0), -0.9, 0.9)
-    arrows.push({ id, from, to, label: str(raw.label), curve })
+    const mode = ARROW_MODES.includes(raw.mode) ? raw.mode : curve ? 'curved' : 'straight'
+    const hs = raw.heads && typeof raw.heads === 'object' ? raw.heads : null
+    const heads = { start: hs ? !!hs.start : false, end: hs ? hs.end !== false : true }
+    const arrow = { id, from, to, label: str(raw.label), curve, mode, heads }
+    if (raw.labelPos != null) arrow.labelPos = clampN(num(raw.labelPos, 0.5), 0, 1)
+    if (raw.labelSize != null) arrow.labelSize = clampN(num(raw.labelSize, 13), 6, 200)
+    arrows.push(arrow)
   }
 
   // ── comments ──
@@ -242,6 +258,10 @@ function normalizeBoard(spec) {
 function applyCommonStyle(el, raw) {
   if (raw.opacity != null) el.opacity = clampN(num(raw.opacity, 1), 0.1, 1)
   if (raw.rotation != null) el.rotation = ((num(raw.rotation, 0) % 360) + 360) % 360
+  if (raw.locked != null) el.locked = !!raw.locked
+  // Per-element font size (world units) for text-bearing elements; absent => the
+  // CSS default. Ignored for freehand draw.
+  if (raw.fontSize != null && el.type !== 'draw') el.fontSize = clampN(num(raw.fontSize, 16), 6, 240)
   if (el.type === 'shape') {
     if (raw.borderWidth != null) el.borderWidth = clampN(num(raw.borderWidth, 2), 0, 40)
     if (raw.borderStyle === 'dashed' || raw.borderStyle === 'solid') el.borderStyle = raw.borderStyle

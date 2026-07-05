@@ -154,6 +154,7 @@ function shapeElement(json) {
   }
   applyFill(el, style)
   applyBorder(el, style)
+  applyFontSize(el, style)
   return el
 }
 
@@ -171,7 +172,17 @@ function stencilElement(json) {
   }
   applyFill(el, style)
   applyBorder(el, style)
+  applyFontSize(el, style)
   return el
+}
+
+// Shapes/stencils/text store font size in Miro world units (~SCALE × the visual
+// px); Canvy's fontSize is in its own px, so divide by SCALE. (Stickies are the
+// exception — see stickyElement.)
+function applyFontSize(el, style) {
+  if (style.fs != null && Number(style.fs) > 0) {
+    el.fontSize = clamp(Math.round(Number(style.fs) / SCALE), 6, 240)
+  }
 }
 
 function stickyElement(json) {
@@ -191,6 +202,28 @@ function stickyElement(json) {
     el.color = c.hue
     el.shade = c.shade
   }
+  // Sticky font size maps 1:1 (Miro's sticky `fs` is the UI number). fs:0/fsa:1
+  // means auto-fit → leave Canvy's default.
+  if (Number(style.fsa) !== 1 && Number(style.fs) > 0) {
+    el.fontSize = clamp(Math.round(Number(style.fs)), 6, 240)
+  }
+  return el
+}
+
+// Miro frame widget (type 12) → Canvy frame element. Its text is a plain string
+// (not <p> HTML) and its size lives in `size`/`width`/`height`.
+function frameElement(json) {
+  const w = Math.round(num(json.size?.width ?? json.width) / SCALE)
+  const h = Math.round(num(json.size?.height ?? json.height) / SCALE)
+  const style = parseStyle(json.style)
+  const el = {
+    id: uuid(), type: 'frame',
+    ...centreBox(json, w, h), w, h,
+    color: 'gray', shade: DEFAULT_SHADE,
+    text: htmlToText(json.text),
+    rotation: rotationOf(json),
+  }
+  if (style.fs != null && Number(style.fs) > 0) el.fontSize = clamp(Math.round(Number(style.fs)), 6, 240)
   return el
 }
 
@@ -237,6 +270,32 @@ export function payloadToCanvy(payload) {
   const lines = []             // { json, index } deferred until element ids exist
   const idByIndex = new Map()  // objects[] index → new Canvy element id
 
+  // Frame-relative fix: a widget inside a frame stores `_position.schema:
+  // 'parentOffsetPx'` — its offset is the widget centre relative to the FRAME's
+  // top-left, not the group origin. Resolve those to canvas-space centres up front
+  // so centreBox() (which assumes group-relative offsets) places them correctly.
+  const frameByIndex = new Map()
+  objects.forEach((obj, i) => {
+    if (obj?.widgetData?.type === 'frame') {
+      const j = obj.widgetData.json
+      frameByIndex.set(i, {
+        off: j?._position?.offsetPx || { x: 0, y: 0 },
+        w: num(j?.size?.width ?? j?.width),
+        h: num(j?.size?.height ?? j?.height),
+      })
+    }
+  })
+  objects.forEach((obj) => {
+    const j = obj?.widgetData?.json
+    const pos = j?._position
+    if (!pos || pos.schema !== 'parentOffsetPx' || obj.widgetData.type === 'frame') return
+    const fr = j._parent?.index != null ? frameByIndex.get(j._parent.index) : null
+    if (fr && pos.offsetPx) {
+      // frame top-left (canvas) = frame centre − size/2, then add the child offset.
+      j._position = { offsetPx: { x: fr.off.x - fr.w / 2 + pos.offsetPx.x, y: fr.off.y - fr.h / 2 + pos.offsetPx.y } }
+    }
+  })
+
   objects.forEach((obj, index) => {
     const kind = obj?.widgetData?.type
     const json = obj?.widgetData?.json
@@ -247,20 +306,27 @@ export function payloadToCanvy(payload) {
     else if (kind === 'sticker') el = stickyElement(json)
     else if (kind === 'text') el = textElement(json)
     else if (kind === 'paint') el = drawElement(json)
+    else if (kind === 'frame') el = frameElement(json)
     else if (kind === 'line') { lines.push({ json, index }); return }
     else return // unknown widget type → skip
     idByIndex.set(index, el.id)
-    elements.push(el)
+    // Frames render behind everything else.
+    if (kind === 'frame') elements.unshift(el)
+    else elements.push(el)
   })
 
   const arrows = []
-  // Resolve one connector endpoint to a Canvy arrow end: attached → { elementId },
-  // floating (widgetIndex -1) → { x, y } in the same recentred group space.
+  // Resolve one connector endpoint to a Canvy arrow end: attached → { elementId,
+  // ax, ay } (fractional boundary anchor), floating (widgetIndex -1) → { x, y }.
   function resolveEnd(end) {
     if (!end) return null
     if (end.widgetIndex != null && end.widgetIndex >= 0) {
       const elementId = idByIndex.get(end.widgetIndex)
-      return elementId ? { elementId } : null
+      if (!elementId) return null
+      const p = end.point
+      const out = { elementId }
+      if (p && p.x != null && p.y != null) { out.ax = clamp(num(p.x), 0, 1); out.ay = clamp(num(p.y), 0, 1) }
+      return out
     }
     const p = end.point
     if (p && p.x != null && p.y != null) {
@@ -275,12 +341,24 @@ export function payloadToCanvy(payload) {
     if (!from || !to) continue // both ends must resolve
     const style = parseStyle(json.style)
     const caption = json?.line?.captions?.[0]
-    arrows.push({
+    // lt: 0=straight, 1=elbow, 2=curved.
+    const lt = Number(style.lt)
+    const mode = lt === 1 ? 'elbow' : lt === 2 ? 'curved' : 'straight'
+    const arrow = {
       id: uuid(),
       from, to,
       label: caption ? htmlToText(caption.text) : '',
-      curve: Number(style.lt) === 2 ? CURVE_DEFAULT : 0,
-    })
+      curve: mode === 'curved' ? CURVE_DEFAULT : 0,
+      mode,
+      heads: { start: Number(style.a_start) === 9, end: Number(style.a_end) !== 0 },
+    }
+    if (caption) {
+      if (caption.position?.x != null) arrow.labelPos = clamp(num(caption.position.x, 0.5), 0, 1)
+      if (Number(caption.fontSize) > 0) arrow.labelSize = clamp(Math.round(Number(caption.fontSize) / SCALE), 6, 200)
+    }
+    // Line width: Miro `t` (default 12) → Canvy strokeWidth (default 2), factor 6.
+    if (Number(style.t) > 0) arrow.strokeWidth = clamp(Math.round(Number(style.t) / 6), 1, 10)
+    arrows.push(arrow)
   }
 
   return { elements, arrows }

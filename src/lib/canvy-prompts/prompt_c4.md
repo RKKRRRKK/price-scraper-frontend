@@ -33,13 +33,15 @@ Every box's `text` should read as three lines: **Name**, then *[Type/Technology]
   "elements": [
     {
       "id": "string, unique and stable (reuse existing ids when editing)",
-      "type": "sticky | text | shape | draw",
+      "type": "sticky | text | shape | draw | frame",  // frame = titled container drawn behind (title in "text")
       "x": number, "y": number, "w": number, "h": number,
       "text": "string (Name / [Type] / responsibility — use \\n for line breaks)",
-      "color": "yellow | pink | blue | green | purple | gray   (sticky, shape & draw)",
+      "color": "yellow | pink | blue | green | purple | gray   (sticky, shape, draw & frame)",
       "shade": number,   // optional 0–4 shade of the hue (default 1)
       "opacity": number, // optional 0.1–1 (default 1)
       "rotation": number,// optional degrees clockwise (default 0)
+      "fontSize": number,// optional per-element text size in px
+      "locked": true,    // optional; true = can't be selected/moved by hand
       "shape": "rect | ellipse | diamond | cylinder | parallelogram   (only when type = shape)",
       // Optional shape border styling (type = shape only):
       "borderWidth": number,  // px, 0–40 (default 2; 0 = no border)
@@ -54,10 +56,12 @@ Every box's `text` should read as three lines: **Name**, then *[Type/Technology]
   "arrows": [
     {
       "id": "string, unique",
-      "from": { "elementId": "<an element id>" },   // or { "x": n, "y": n }
+      "from": { "elementId": "<an element id>" },   // or { "x": n, "y": n }; add "ax"/"ay" (0..1) to pin a side
       "to":   { "elementId": "<an element id>" },   // or { "x": n, "y": n }
       "label": "string — REQUIRED for C4: the relationship + protocol",
-      "curve": number   // optional, default 0 = straight. Signed bow, -0.9..0.9
+      "mode": "straight | curved | elbow",  // optional (elbow = right-angle)
+      "curve": number,  // optional signed bow -0.9..0.9 (mode = curved)
+      "heads": { "start": false, "end": true } // optional; both true = double-ended
     }
   ],
   "comments": [

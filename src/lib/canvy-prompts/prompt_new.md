@@ -18,13 +18,17 @@ JSON inside that block — no commentary inside it.
   "elements": [
     {
       "id": "string, unique and stable (reuse existing ids when editing)",
-      "type": "sticky | text | shape | draw",
+      "type": "sticky | text | shape | draw | frame",
       "x": number, "y": number, "w": number, "h": number,
-      "text": "string (the label / contents — not used by draw)",
-      "color": "yellow | pink | blue | green | purple | gray   (sticky, shape & draw)",
+      "text": "string (the label / contents — not used by draw; the title for a frame)",
+      "color": "yellow | pink | blue | green | purple | gray   (sticky, shape, draw & frame)",
       "shade": number,   // optional 0–4 shade of the hue: 0 lightest … 4 most saturated (default 1)
       "opacity": number, // optional 0.1–1 (default 1 = opaque)
       "rotation": number,// optional degrees clockwise (default 0)
+      "fontSize": number,// optional per-element text size in px (sticky/text/shape/frame); omit for default
+      "locked": boolean, // optional; true = the element can't be selected/moved by hand
+      // type = "frame": a titled container drawn BEHIND other elements. Put its title in "text";
+      //   place notes/shapes on top by giving them a later position in the elements array.
       "shape": "rect | ellipse | diamond | cylinder | parallelogram   (only when type = shape)",
       // Optional shape border styling (type = shape only; omit to inherit the fill's outline):
       "borderWidth": number,  // px, 0–40 (default 2; 0 = no border)
@@ -43,8 +47,14 @@ JSON inside that block — no commentary inside it.
       "id": "string, unique",
       "from": { "elementId": "<an element id>" },   // or a free point: { "x": n, "y": n }
       "to":   { "elementId": "<an element id>" },   // or { "x": n, "y": n }
+      // Optionally pin the attach point on the element with a fractional anchor
+      // (0..1 across its box): e.g. { "elementId":"e5", "ax":1, "ay":0.5 } = right side.
       "label": "string (optional, shown on the arrow)",
-      "curve": number   // optional, default 0 = straight. Signed bow, -0.9..0.9
+      "mode": "straight | curved | elbow",  // optional (default straight; elbow = right-angle)
+      "curve": number,  // optional, default 0. Signed bow -0.9..0.9 (only meaningful when mode = curved)
+      "heads": { "start": boolean, "end": boolean }, // optional arrowheads (default {start:false,end:true}; both true = double-ended)
+      "labelPos": number, // optional 0..1 position of the label along the line (default 0.5)
+      "labelSize": number // optional label font size in px
     }
   ],
   "comments": [
