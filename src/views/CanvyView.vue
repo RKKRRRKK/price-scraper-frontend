@@ -337,7 +337,8 @@ import { useCanvyStore, blankData } from '@/stores/canvy'
 import CanvyCanvas from '@/components/canvy/CanvyCanvas.vue'
 import CanvyAiModal from '@/components/canvy/CanvyAiModal.vue'
 import { boardToMarkdown } from '@/lib/canvyExport'
-import { parseBuild, applyScoped, parseCommentBuild } from '@/lib/canvyAi'
+import { applyOpsReply } from '@/lib/canvyOps'
+import { promptMode } from '@/lib/canvyPrompts'
 import { runLiveAi } from '@/lib/canvyAiLive'
 
 const store = useCanvyStore()
@@ -663,13 +664,16 @@ async function runAiLive(payload) {
   aiStatus.value = 'Starting…'
 
   const startData = activeData.value
+  const mode = promptMode(payload.promptKey)
 
-  // Commit a new board state to the branch. The canvasKey bump remounts the
-  // canvas so the next screenshot reflects the edit; await nextTick so canvasRef
-  // rebinds to the fresh instance before we capture.
+  // Commit a new board state. Edit runs land in the branch (the AI sandbox);
+  // comment runs add their notes straight to the current view. The canvasKey bump
+  // remounts the canvas so the next screenshot reflects the edit; await nextTick so
+  // canvasRef rebinds to the fresh instance before we capture.
   const commitData = async (data) => {
-    store.updateBoardData(b.id, data, 'branch')
-    if (activeView.value !== 'branch') setView('branch')
+    const view = mode === 'comment' ? activeView.value : 'branch'
+    store.updateBoardData(b.id, data, view)
+    if (mode !== 'comment' && activeView.value !== 'branch') setView('branch')
     canvasKey.value++
     await nextTick()
   }
@@ -683,6 +687,7 @@ async function runAiLive(payload) {
     const result = await runLiveAi({
       board: b,
       boardData: startData,
+      promptKey: payload.promptKey,
       instruction: payload.instruction,
       steering: payload.steering,
       scopeIds: payload.scoped ? new Set(payload.scopeIds) : null,
@@ -715,25 +720,28 @@ function buildFromText(payload) {
   const b = store.activeBoard
   if (!b) return
   const text = typeof payload === 'string' ? payload : payload.text
-  const mode = typeof payload === 'string' ? 'edit' : payload.mode
+  const promptKey = typeof payload === 'string' ? 'new' : (payload.promptKey || 'new')
   const scoped = typeof payload === 'string' ? false : payload.scoped
+  const context = typeof payload === 'string' ? false : payload.context
+  const mode = promptMode(promptKey)
 
-  // Comment-only review: merge comments into whichever view is shown — never
-  // restructures the board.
+  // Comment-only review: apply the pasted cmt/rep ops into whichever view is shown —
+  // never restructures the board (commentOnly filters out any stray structural op).
   if (mode === 'comment') {
-    const res = parseCommentBuild(text, activeData.value)
+    const res = applyOpsReply(text, activeData.value, { commentOnly: true })
     if (!res.ok) { aiError.value = res.error; return }
-    store.updateBoardData(b.id, { ...activeData.value, comments: res.comments }, activeView.value)
+    store.updateBoardData(b.id, res.data, activeView.value)
     aiOpen.value = false
     canvasKey.value++
     if (res.warnings?.length) console.warn('[Canvy] AI comment warnings:', res.warnings)
     return
   }
 
-  // Constructive edit: always lands in the branch. Scoped edits merge the
-  // assistant's section back into the data the prompt was built from (the current
-  // view); full builds replace it. Either way the result is stored as the branch.
-  const res = scoped ? applyScoped(text, activeData.value, new Set(selIds.value)) : parseBuild(text)
+  // Constructive edit: always lands in the branch. Aliases are re-derived from the
+  // current view (deterministic), so a scoped reply merges its section back and a
+  // full reply replaces it.
+  const scope = scoped ? new Set(selIds.value.map(String)) : null
+  const res = applyOpsReply(text, activeData.value, { scopeIds: scope, withContext: scoped && context })
   if (!res.ok) { aiError.value = res.error; return }
   store.updateBoardData(b.id, res.data, 'branch')
   if (activeView.value !== 'branch') {

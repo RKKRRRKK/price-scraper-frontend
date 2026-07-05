@@ -1544,8 +1544,8 @@ function cancelFontEdit() {
   fontEditId.value = null
 }
 // ── Lock ──
-// Locked elements can't be click-selected, dragged, resized or deleted; a small
-// always-visible badge unlocks them. Arrows/comments can still attach to them.
+// Locked elements can't be click-selected, dragged, resized or deleted, and are
+// invisible to new arrow connections; a small always-visible badge unlocks them.
 function toggleLock(el) {
   el.locked = !el.locked
   if (el.locked) {
@@ -2178,6 +2178,7 @@ function elementAt(wx, wy, excludeId = null) {
   for (let i = model.elements.length - 1; i >= 0; i--) {
     const el = model.elements[i]
     if (el.id === excludeId) continue
+    if (el.locked) continue // locked elements are invisible to arrow connections
     if (wx >= el.x && wx <= el.x + el.w && wy >= el.y && wy <= el.y + el.h) return el
   }
   return null
@@ -2393,6 +2394,7 @@ onBeforeUnmount(() => {
 async function captureImage(opts = {}) {
   if (!wrap.value) return null
   const { frameIds = null } = opts
+  const ids = frameIds && frameIds.length ? frameIds : null
   // Strip anything that would show up as chrome rather than board content.
   selectedIds.value = new Set()
   selectedArrowId.value = null
@@ -2400,14 +2402,71 @@ async function captureImage(opts = {}) {
   openCommentId.value = null
   connecting.value = null
   marqueeRect.value = null
-  fit(frameIds && frameIds.length ? frameIds : null)
+  fit(ids)
   await nextTick()
   // Give the transform + any contenteditable reflow a frame to settle.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-  return toPng(wrap.value, {
+  const pixelRatio = Math.min(2, window.devicePixelRatio || 1)
+  const full = await toPng(wrap.value, {
     backgroundColor: '#faf9f7',
-    pixelRatio: Math.min(2, window.devicePixelRatio || 1),
+    pixelRatio,
     cacheBust: true,
+  })
+  // Scoped capture: `fit` framed the selection but `toPng` still rasterised the
+  // whole viewport, so off-selection content bleeds in. Crop to the selection's
+  // on-screen box so the model sees only the region it may edit.
+  if (ids) {
+    const rect = scopedScreenRect(ids)
+    if (rect) return cropDataUri(full, rect, pixelRatio)
+  }
+  return full
+}
+
+// Screen-space bounding box (CSS px, clamped to the viewport) of the given element
+// ids, with padding. Frames are excluded when any non-frame element is present so a
+// full-width background frame the model added doesn't blow the crop back out.
+function scopedScreenRect(ids) {
+  const r = wrap.value?.getBoundingClientRect()
+  if (!r) return null
+  const idSet = new Set([...ids].map(String))
+  let els = model.elements.filter((el) => idSet.has(String(el.id)))
+  if (!els.length) return null
+  const nonFrame = els.filter((el) => el.type !== 'frame')
+  if (nonFrame.length) els = nonFrame
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const el of els) {
+    const a = worldToScreen(el.x, el.y)
+    const b = worldToScreen(el.x + el.w, el.y + el.h)
+    minX = Math.min(minX, a.x); minY = Math.min(minY, a.y)
+    maxX = Math.max(maxX, b.x); maxY = Math.max(maxY, b.y)
+  }
+  const pad = 40
+  minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad)
+  maxX = Math.min(r.width, maxX + pad); maxY = Math.min(r.height, maxY + pad)
+  const w = maxX - minX, h = maxY - minY
+  if (w < 1 || h < 1) return null
+  return { x: minX, y: minY, w, h }
+}
+
+// Crop a PNG data URI to `rect` (CSS px), scaling by the raster's pixelRatio.
+function cropDataUri(dataUri, rect, pixelRatio) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const sx = Math.round(rect.x * pixelRatio)
+      const sy = Math.round(rect.y * pixelRatio)
+      const sw = Math.round(rect.w * pixelRatio)
+      const sh = Math.round(rect.h * pixelRatio)
+      const c = document.createElement('canvas')
+      c.width = sw; c.height = sh
+      const ctx = c.getContext('2d')
+      ctx.fillStyle = '#faf9f7'
+      ctx.fillRect(0, 0, sw, sh)
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+      resolve(c.toDataURL('image/png'))
+    }
+    img.onerror = () => resolve(dataUri) // fall back to the uncropped image
+    img.src = dataUri
   })
 }
 
@@ -2485,7 +2544,10 @@ defineExpose({
   border-radius: 0.5rem;
   pointer-events: none;
 }
-.el-frame .el-content {
+/* Compound `.el.el-frame` out-specifies `.el .el-content` below, which would
+   otherwise reset position/flex and stretch the title to the full frame height
+   (sending translateY(-100%) hundreds of px above the frame). */
+.el.el-frame .el-content {
   position: absolute;
   top: 0;
   left: 0;

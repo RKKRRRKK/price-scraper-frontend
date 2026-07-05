@@ -15,9 +15,8 @@
 
 import { supabase } from './supabase'
 import { serializeBoard, parseOps, applyOps } from './canvyOps'
-import { logCall } from './canvyAiDebug'
-import promptOpsRaw from './canvy-prompts/prompt_ops.md?raw'
-import promptVerifyOpsRaw from './canvy-prompts/prompt_verify_ops.md?raw'
+import { buildConstructivePrompt, buildVerifyPrompt, layoutIssuesBlock, promptMode } from './canvyPrompts'
+import { logCall, logRunSummary } from './canvyAiDebug'
 
 // Call the edge function for one turn. Returns { text, usage }, or throws with a
 // human-readable message (surfaced in the modal).
@@ -47,34 +46,6 @@ export function isOkReply(reply) {
   return /^\s*ok[.!]?\s*$/i.test(reply || '')
 }
 
-function scopeNote(scopeIds, context) {
-  if (!scopeIds || !scopeIds.size) return ''
-  if (context) {
-    return `\n> Scope: the board below is split into **EDIT THESE** (a selected section, ${scopeIds.size} item(s)) and **CONTEXT** (the rest of the board, read-only). Improve only the EDIT-THESE items — restructure, restyle, add, delete within them. You may draw arrows connecting them to CONTEXT ids, but must NOT move, restyle or delete anything under CONTEXT, and must not \`clear\`.\n`
-  }
-  return `\n> Scope: you were given only a SELECTED SECTION (${scopeIds.size} item(s)). Edit only these ids; do not \`clear\` or touch the rest of the board.\n`
-}
-function steeringBlock(steering) {
-  const s = (steering || '').trim()
-  if (!s) return ''
-  return `\n## Plan to execute\nA senior assistant already planned this change — execute the plan below rather than inventing your own approach:\n\n${s}\n`
-}
-
-function buildOpsPrompt(board, compact, { instruction, steering, scopeIds, context }) {
-  return promptOpsRaw
-    .replace('{{BOARD_NAME}}', board?.name || 'Untitled board')
-    .replace('{{SCOPE_NOTE}}', scopeNote(scopeIds, context))
-    .replace('{{STEERING}}', steeringBlock(steering))
-    .replace('{{BOARD_COMPACT}}', compact || '(empty board)')
-    .replace('{{INSTRUCTION}}', (instruction || '').trim() || '_describe your change here_')
-}
-function buildVerifyPrompt(board, compact, instruction) {
-  return promptVerifyOpsRaw
-    .replace('{{BOARD_NAME}}', board?.name || 'Untitled board')
-    .replace('{{INSTRUCTION}}', (instruction || '').trim() || '(the change described earlier)')
-    .replace('{{BOARD_COMPACT}}', compact || '(empty board)')
-}
-
 // Run the full generate → apply → screenshot → verify loop.
 //
 // Injected callbacks:
@@ -88,6 +59,7 @@ function buildVerifyPrompt(board, compact, instruction) {
 export async function runLiveAi({
   board,
   boardData,
+  promptKey = 'new',
   instruction,
   steering = '',
   scopeIds = null,
@@ -101,16 +73,19 @@ export async function runLiveAi({
 }) {
   const runId = `run-${Date.now()}`
   const boardName = board?.name || 'board'
+  const mode = promptMode(promptKey)
+  const isComment = mode === 'comment'
   let current = boardData || { elements: [], arrows: [], comments: [] }
   const usageTotal = { in: 0, out: 0, cost: 0 }
   const says = []
   const issues = []
   const warnings = []
 
-  // When a section is selected, the whole run stays scoped: the model only sees
-  // (and only screenshots) that section, and may only edit it. The scope grows to
-  // include elements the model adds, so verify rounds still show its own work.
-  let liveScope = scoped && scopeIds && scopeIds.size ? new Set([...scopeIds].map(String)) : null
+  // When a section is selected, an *edit* run stays scoped: the model only sees (and
+  // only screenshots) that section, and may only edit it. The scope grows to include
+  // elements the model adds, so verify rounds still show its own work. A comment run
+  // is always whole-board (you review anything) and never scoped.
+  let liveScope = !isComment && scoped && scopeIds && scopeIds.size ? new Set([...scopeIds].map(String)) : null
   const withContext = !!(liveScope && context)
   // The screenshot exists only so the model can validate its own edits, so it
   // ALWAYS frames just the selection when one is active (context or not) — the
@@ -124,7 +99,9 @@ export async function runLiveAi({
   }
   const applyScoped = (ops, maps) => {
     const prevIds = new Set((current.elements || []).map((e) => String(e.id)))
-    const out = applyOps(ops, current, maps, { scoped: !!liveScope, scopeIds: liveScope })
+    // Comment runs only add comments/replies — filter out any stray structural op.
+    const use = isComment ? ops.filter((o) => o.verb === 'cmt' || o.verb === 'rep') : ops
+    const out = applyOps(use, current, maps, { scoped: !!liveScope, scopeIds: liveScope })
     current = out.data
     growScope(prevIds)
     return out
@@ -137,21 +114,28 @@ export async function runLiveAi({
   }
 
   // 1 — constructive turn.
-  onStatus({ phase: 'sending', text: 'Sending the board to the AI…' })
-  const { text: compact, fromAlias } = serializeBoard(current, { scopeIds: liveScope, withContext })
-  const prompt = buildOpsPrompt(board, compact, { instruction, steering, scopeIds: liveScope, context: withContext })
-  let image = await capture(captureOpts())
+  onStatus({ phase: 'sending', text: isComment ? 'Sending the board for review…' : 'Sending the board to the AI…' })
+  const { text: compact, fromAlias, toAlias } = serializeBoard(current, { scopeIds: liveScope, withContext })
+  const editIssues = isComment ? '' : layoutIssuesBlock(current, { scopeIds: liveScope, toAlias }, 'Problems in the current board to fix')
+  const prompt = buildConstructivePrompt({ board, compact, promptKey, instruction, steering, scopeIds: liveScope, context: withContext, issues: editIssues })
+  // Comment mode is a single, cheap, text-only call — no screenshot, no review loop.
+  let image = isComment ? null : await capture(captureOpts())
   let res = await call({ prompt, imageBase64: image })
-  const u0 = await logCall({ runId, round: 0, phase: 'edit', boardName, prompt, imageDataUri: image, reply: res.text, usage: res.usage })
+  const u0 = await logCall({ runId, round: 0, phase: isComment ? 'comment' : 'edit', boardName, prompt, imageDataUri: image, reply: res.text, usage: res.usage })
   addUsage(u0)
 
-  onStatus({ phase: 'applying', text: 'Applying the edits…' })
+  onStatus({ phase: 'applying', text: isComment ? 'Adding the comments…' : 'Applying the edits…' })
   let parsed = parseOps(res.text)
   if (parsed.say) says.push(parsed.say)
   if (parsed.issues?.length) issues.push(...parsed.issues)
   let applied = applyScoped(parsed.ops, { fromAlias })
   warnings.push(...parsed.warnings, ...applied.warnings)
   await commitData(current)
+
+  if (isComment) {
+    onStatus({ phase: 'done', text: 'Review complete — comments added ✓' })
+    return await finish({ ok: true, verified: true, rounds: 0 })
+  }
 
   // 2 — verify rounds: show the model what it actually produced (scoped to the
   // same section when a selection is active, full board otherwise).
@@ -161,14 +145,15 @@ export async function runLiveAi({
       text: maxRounds > 1 ? `Reviewing the result (round ${round}/${maxRounds})…` : 'Reviewing the result…',
     })
     const ser = serializeBoard(current, { scopeIds: liveScope, withContext })
+    const verifyIssues = layoutIssuesBlock(current, { scopeIds: liveScope, toAlias: ser.toAlias }, 'Problems your edit produced')
     image = await capture(captureOpts())
-    res = await call({ prompt: buildVerifyPrompt(board, ser.text, instruction), imageBase64: image })
+    res = await call({ prompt: buildVerifyPrompt({ board, compact: ser.text, promptKey, instruction, issues: verifyIssues }), imageBase64: image })
     const u = await logCall({ runId, round, phase: 'review', boardName, prompt: '(verify)', imageDataUri: image, reply: res.text, usage: res.usage })
     addUsage(u)
 
     if (isOkReply(res.text)) {
       onStatus({ phase: 'done', text: 'The AI is happy with the result ✓' })
-      return finish({ ok: true, verified: true, rounds: round })
+      return await finish({ ok: true, verified: true, rounds: round })
     }
 
     onStatus({ phase: 'applying', text: 'Applying the correction…' })
@@ -181,12 +166,15 @@ export async function runLiveAi({
   }
 
   onStatus({ phase: 'done', text: 'Finished — applied all corrections.' })
-  return finish({ ok: true, verified: false, rounds: maxRounds })
+  return await finish({ ok: true, verified: false, rounds: maxRounds })
 
-  function finish(base) {
+  async function finish(base) {
     const warning = warnings.length ? warnings.slice(0, 3).join(' ') + (warnings.length > 3 ? ` (+${warnings.length - 3} more)` : '') : ''
     // De-dupe issues (the model often repeats the same concern across rounds).
     const uniqueIssues = [...new Set(issues.map((s) => s.trim()).filter(Boolean))]
-    return { ...base, say: says.join(' ').trim(), issues: uniqueIssues, usage: usageTotal, warning }
+    const result = { ...base, say: says.join(' ').trim(), issues: uniqueIssues, usage: usageTotal, warning }
+    // Persist the same summary the modal renders, next to the per-call dumps.
+    await logRunSummary({ runId, boardName, instruction, promptKey, mode, result })
+    return result
   }
 }

@@ -56,16 +56,17 @@ The manual copy/paste flow needs neither the function nor the key.
 |------|----------------|
 | `src/views/CanvyView.vue` | Main view: board rail + folders, header (Main/Branch toggle, Merge, Copy for AI, AI assist), toolbar, canvas host. Owns the active view/data, applies AI replies, and drives the **Run with AI** loop (`runAiLive`). |
 | `src/components/canvy/CanvyCanvas.vue` | The interactive canvas: DOM elements + inline SVG in a panned/zoomed "world"; select/move/resize/rotate, draw arrows, comment pins, pen strokes. Exposes `fit()`, layer/rotate ops, and **`captureImage()`** (screenshot → PNG data URI). |
-| `src/components/canvy/CanvyAiModal.vue` | The **AI assist** dialog: prompt picker, section-scope toggle (+ a **context** sub-toggle: edit the selection but see the rest as read-only reference), instruction box, optional **steering** box, **Run with AI** button + **1×/2× review** switch + status line (with token/cost), the model's **note** and a **flagged-issues** callout, a **debug folder** picker + **debug log** panel, and the manual copy/paste controls. Emits `run` (direct) and `build` (manual). |
+| `src/components/canvy/CanvyAiModal.vue` | The **AI assist** dialog: prompt picker (General / BPMN / C4 / Comment), section-scope toggle (+ a **context** sub-toggle: edit the selection but see the rest as read-only reference), instruction box, optional **steering** box, **Run with AI** button (**Review with AI** in comment mode) + **1×/2× review** switch + status line (with token/cost), the model's **note** and a **flagged-issues** callout, a **debug folder** picker + **debug log** panel, and the manual copy/paste controls. Emits `run` (direct) and `build` (manual). |
 | `src/stores/canvy.js` | Pinia store: Supabase CRUD, debounced autosave, folders, `updateBoardData(id, data, view)`, `mergeBranch(id)`, `blankData()`. |
-| `src/lib/canvyAi.js` | Prompt builder (`buildPromptMarkdown`) + reply parsers (`parseBuild`, `applyScoped`, `parseCommentBuild`) + `PROMPTS`/`promptMode` + shared `normalizeBoard`/`scopedData` (reused by the op-DSL). Used by the manual flow. |
-| `src/lib/canvyOps.js` | **The op-DSL** for the direct run: `serializeBoard(data)` (board → compact alias notation), `parseOps(reply)` (reply → command list + `say` note + flagged `issues`), `applyOps(ops, data, maps)` (commands → new board `data`, validated via `normalizeBoard`). |
-| `src/lib/canvyAiLive.js` | **The direct-run orchestrator**: `callGemini()` (invokes the edge function, returns `{ text, usage }`) and `runLiveAi()` (serialize → generate → apply ops → screenshot → verify → correct). DOM/store-free; the view injects `capture` and `commitData`. |
+| `src/lib/canvyPrompts.js` | **Prompt catalogue + builders** shared by both flows: `PROMPTS`/`promptMode`, per-mode **semantics** (General/BPMN/C4/Comment) injected into the op-DSL shell, `buildConstructivePrompt`/`buildVerifyPrompt` (live), and `buildManualPrompt` (copy/paste). |
+| `src/lib/canvyAi.js` | Shared board **validation/normalisation** (`normalizeBoard`, `scopedData`) that every reply funnels through. No prompt/JSON parsing lives here any more. |
+| `src/lib/canvyOps.js` | **The op-DSL** used by both flows: `serializeBoard(data)` (board → compact alias notation), `parseOps(reply)` (reply → command list + `say` + `issues`), `applyOps(ops, data, maps)` (commands → new `data`, validated via `normalizeBoard`), `applyOpsReply()` (manual paste: re-derive aliases + apply), and `computeLayoutIssues()` (overlap / arrow-clutter detection fed back to the model). |
+| `src/lib/canvyAiLive.js` | **The direct-run orchestrator**: `callGemini()` (invokes the edge function, returns `{ text, usage }`) and `runLiveAi()` (serialize → generate → apply ops → screenshot → verify → correct; comment mode is a single text-only call, no screenshot/verify). DOM/store-free; the view injects `capture` and `commitData`. |
 | `src/lib/canvyAiDebug.js` | Logging: a reactive ring buffer (`debugLog`) for the in-app panel, console groups, and optional File System Access dumps (`pickDebugFolder`) of each turn's prompt/reply `.md` + screenshot `.png`. |
 | `src/lib/canvyExport.js` | `boardToMarkdown(board)` — human-readable board summary (Copy for AI). |
 | `src/lib/canvyToMiro.js` / `miroToCanvy.js` | Miro clipboard interop (paste into/out of miro.com). |
 | `src/lib/canvyClipboard.js` | Lossless native Canvy clipboard payload, written alongside the Miro one on Ctrl+C so an internal paste keeps exact fidelity. |
-| `src/lib/canvy-prompts/*.md` | Prompt templates. Manual constructive: `prompt_new`, `prompt_old`, `prompt_bpmn`, `prompt_c4`; review: `prompt_comment`; `prompt_verify.md` (JSON verify). Direct run uses **`prompt_ops.md`** (op-DSL edit) + **`prompt_verify_ops.md`** (op-DSL review). |
+| `src/lib/canvy-prompts/*.md` | Op-DSL prompt templates (both flows). **`prompt_ops.md`** = the edit shell with a `{{SEMANTICS}}` slot (General/BPMN/C4 injected by `canvyPrompts.js`); **`prompt_ops_comment.md`** = comment-only review; **`prompt_verify_ops.md`** = the screenshot-review turn. |
 | `supabase/functions/canvy-ai/index.ts` | Stateless OpenRouter proxy (Deno). `{ prompt, imageBase64 }` → `google/gemini-3.5-flash` → `{ text, usage }` (asks OpenRouter for token counts + cost). Holds the key; adds CORS. |
 
 Wired in: `src/router/index.js` (`/canvy` route) and `src/App.vue` (**Tools** nav + store
@@ -105,9 +106,9 @@ A board's whole layout lives in the `data` (Main) and `branch_data` (Branch) JSO
 }
 ```
 
-The board `data` **is** the AI build spec — no translation layer. `parseBuild`/`applyScoped`
-validate and normalise a reply back into this shape (clamping sizes, dropping arrows with
-missing endpoints, deriving draw bounding boxes, etc.).
+The board `data` **is** the AI build spec — no translation layer. `normalizeBoard` (in
+`canvyAi.js`) validates and normalises every applied reply back into this shape (clamping
+sizes, dropping arrows with missing endpoints, deriving draw bounding boxes, etc.).
 
 ---
 

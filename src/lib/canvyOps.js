@@ -26,6 +26,9 @@ const KIND_TO_TYPE = {
 }
 // Named boundary anchors → fractional (ax,ay) across the element box.
 const SIDE_TO_ANCHOR = { t: [0.5, 0], b: [0.5, 1], l: [0, 0.5], r: [1, 0.5], c: [0.5, 0.5] }
+// Lenient side lookup for *parsing* replies — also accepts the up/down synonyms the
+// model reaches for (`:u`, `:d`) on top of the canonical t/b/l/r/c.
+const PARSE_SIDE = { ...SIDE_TO_ANCHOR, u: [0.5, 0], d: [0.5, 1] }
 const round2 = (n) => Math.round(n * 100) / 100
 const KIND_TO_SHAPE = { rect: 'rect', ell: 'ellipse', dia: 'diamond', cyl: 'cylinder', par: 'parallelogram' }
 const SHAPE_TO_KIND = { rect: 'rect', ellipse: 'ell', diamond: 'dia', cylinder: 'cyl', parallelogram: 'par' }
@@ -211,6 +214,25 @@ export function parseOps(replyText) {
   return { ops, say: sayLines.join(' ').trim(), issues, warnings }
 }
 
+// ── Manual paste: parse an ops reply and apply it to the current board ─────────
+// The copy-prompt and the pasted reply are two separate user actions, so the
+// alias↔uuid map isn't kept in memory. We re-derive it by re-serializing the current
+// board with the SAME scope/context the prompt used — deterministic, so as long as
+// the board hasn't changed between copy and paste the ids line up. `commentOnly`
+// (comment mode) keeps only cmt/rep commands so a stray structural op can't slip in.
+export function applyOpsReply(text, currentData, { scopeIds = null, withContext = false, commentOnly = false } = {}) {
+  const scope = scopeIds && scopeIds.size ? new Set([...scopeIds].map(String)) : null
+  const { fromAlias } = serializeBoard(currentData || {}, { scopeIds: scope, withContext })
+  const parsed = parseOps(text)
+  let ops = parsed.ops
+  if (commentOnly) ops = ops.filter((o) => o.verb === 'cmt' || o.verb === 'rep')
+  if (!ops.length) {
+    return { ok: false, error: 'No usable commands found. Paste the assistant’s ```ops block.' }
+  }
+  const out = applyOps(ops, currentData, { fromAlias }, { scoped: !!scope, scopeIds: scope })
+  return { ok: true, data: out.data, warnings: [...parsed.warnings, ...out.warnings], say: parsed.say, issues: parsed.issues }
+}
+
 // ── Apply ops to board data ───────────────────────────────────────────────────
 // `maps` is the { fromAlias } from the serialization the model was shown this
 // turn. `opts`: { scoped, scopeIds } — scoped runs reject `clear` and edits to
@@ -272,7 +294,8 @@ export function applyOps(ops, currentData, maps, { scoped = false, scopeIds = nu
   for (const op of ops) {
     if ((op.verb === 'add' || op.verb === 'arw' || op.verb === 'cmt') && op.tokens[0]) {
       const t = op.tokens[0]
-      if (!fromAlias.has(t) && !knownUuid(String(t)) && !local.has(t)) {
+      // Skip when the first token is an id-less arrow's `from->to` link, not an id.
+      if (!t.includes('->') && !fromAlias.has(t) && !knownUuid(String(t)) && !local.has(t)) {
         const id = uuid()
         local.set(t, id)
         if (editable) editable.add(id)
@@ -310,6 +333,11 @@ export function applyOps(ops, currentData, maps, { scoped = false, scopeIds = nu
         const m = pos && POS_RE.exec(pos)
         if (!m) { warnings.push(`mov: missing @x,y for "${op.tokens[0]}".`); break }
         el.x = Number(m[1]); el.y = Number(m[2])
+        // Optional trailing size (`mov e5 @x,y 260x180`) — the model routinely writes
+        // it, so honour it as a resize instead of silently dropping it.
+        const size = op.tokens.slice(1).find((t) => SIZE_RE.test(t))
+        const sm = size && SIZE_RE.exec(size)
+        if (sm) { el.w = Number(sm[1]); el.h = Number(sm[2]) }
         break
       }
       case 'set': {
@@ -387,9 +415,14 @@ function buildAdd(tokens, resolveOrMint, warnings) {
 }
 
 function buildArrow(tokens, resolveOrMint, resolveExisting, warnings) {
-  const id = resolveOrMint(tokens[0])
-  const link = tokens.slice(1).find((t) => t.includes('->'))
-  if (!link) { warnings.push(`arw: missing from->to for "${tokens[0]}".`); return null }
+  // The leading id is optional. The model very often omits it and writes the
+  // `from->to` link as the first token (`arw e1->e2 "label" elbow`); when it does,
+  // mint an id and treat every token as an option/link.
+  const hasId = tokens[0] != null && !tokens[0].includes('->')
+  const id = resolveOrMint(hasId ? tokens[0] : `arw-${uuid()}`)
+  const rest = hasId ? tokens.slice(1) : tokens
+  const link = rest.find((t) => t.includes('->'))
+  if (!link) { warnings.push(`arw: missing from->to for "${tokens.join(' ')}".`); return null }
   const [fromTok, toTok] = link.split('->')
   // Endpoint: `@x,y` free point, or `alias` / `alias:side` / `alias:ax,ay` attached
   // with an optional fractional boundary anchor.
@@ -403,16 +436,16 @@ function buildArrow(tokens, resolveOrMint, resolveExisting, warnings) {
     if (!uid) return null
     const end = { elementId: uid }
     if (anchor) {
-      if (SIDE_TO_ANCHOR[anchor]) { end.ax = SIDE_TO_ANCHOR[anchor][0]; end.ay = SIDE_TO_ANCHOR[anchor][1] }
+      if (PARSE_SIDE[anchor]) { end.ax = PARSE_SIDE[anchor][0]; end.ay = PARSE_SIDE[anchor][1] }
       else { const fm = /^(-?\d*\.?\d+),(-?\d*\.?\d+)$/.exec(anchor); if (fm) { end.ax = Number(fm[1]); end.ay = Number(fm[2]) } }
     }
     return end
   }
   const from = endpoint(fromTok)
   const to = endpoint(toTok)
-  if (!from || !to) { warnings.push(`arw: endpoint of "${tokens[0]}" references a missing element.`); return null }
+  if (!from || !to) { warnings.push(`arw: endpoint of "${link}" references a missing element.`); return null }
   const ar = { id, from, to, label: '', curve: 0, mode: 'straight', heads: { start: false, end: true } }
-  for (const tok of tokens.slice(1)) {
+  for (const tok of rest) {
     if (tok === link) continue
     if (isQuoted(tok)) ar.label = unquote(tok)
     else if (tok.startsWith('~')) { ar.curve = Number(tok.slice(1)) || 0; ar.mode = 'curved' }
@@ -489,6 +522,145 @@ function applySet(target, tokens, warnings) {
       default: warnings.push(`set: unknown key "${key}".`)
     }
   }
+}
+
+// ── Layout diagnostics ────────────────────────────────────────────────────────
+// Deterministic overlap / arrow-clutter detection, computed purely from the board
+// coordinates the loop already has. We do NOT prevent these — the loop stays free
+// to lay things out however it likes — we just hand the model an explicit, reliable
+// list of problems so it doesn't have to spot them in a low-res screenshot.
+//
+//   computeLayoutIssues(data, { scopeIds, toAlias, max }) → string[]
+//
+// Each string is a short, alias-named problem, e.g. "e3 overlaps e4",
+// "a5 label sits on e8", "a9 crosses e10". `toAlias` (uuid→alias, from
+// serializeBoard) names the items the same way the model saw them; only items that
+// have an alias are considered, so the report matches the prompt. When `scopeIds`
+// is set, only issues touching an in-scope id are reported.
+function rectOf(el) { return { x: el.x, y: el.y, w: Math.max(1, el.w), h: Math.max(1, el.h) } }
+function areaOf(r) { return r.w * r.h }
+function intersectArea(a, b) {
+  const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+  const iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+  return ix > 0 && iy > 0 ? ix * iy : 0
+}
+function pointInRect(p, r) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h }
+// Orientation-based segment↔segment intersection (used for arrow-through-box).
+function segIntersect(p1, p2, p3, p4) {
+  const d = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4)
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+}
+function segCrossesRect(p1, p2, r) {
+  if (pointInRect(p1, r) || pointInRect(p2, r)) return true
+  const c = [
+    { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+  ]
+  for (let i = 0; i < 4; i++) if (segIntersect(p1, p2, c[i], c[(i + 1) % 4])) return true
+  return false
+}
+// World point of an arrow endpoint: the pinned boundary anchor, else the element
+// centre, else a free-floating point.
+function endpointPoint(end, elById) {
+  if (!end) return null
+  if (end.elementId != null) {
+    const el = elById.get(String(end.elementId))
+    if (!el) return null
+    const ax = end.ax != null ? end.ax : 0.5
+    const ay = end.ay != null ? end.ay : 0.5
+    return { x: el.x + ax * el.w, y: el.y + ay * el.h }
+  }
+  if (end.x != null && end.y != null) return { x: end.x, y: end.y }
+  return null
+}
+
+export function computeLayoutIssues(data, { scopeIds = null, toAlias = null, max = 12 } = {}) {
+  const elements = Array.isArray(data?.elements) ? data.elements : []
+  const arrows = Array.isArray(data?.arrows) ? data.arrows : []
+  const scope = scopeIds && scopeIds.size ? new Set([...scopeIds].map(String)) : null
+  const name = (id) => (toAlias ? toAlias.get(String(id)) || null : String(id))
+  const elById = new Map(elements.map((el) => [String(el.id), el]))
+  const inScope = (id) => !scope || scope.has(String(id))
+
+  // Only reason about items the model was actually shown (have an alias) and can
+  // see/move: skip frames (containers — notes inside them are fine) and freehand.
+  const named = (el) =>
+    el && el.type !== 'frame' && el.type !== 'draw' && (!toAlias || toAlias.has(String(el.id)))
+  const boxes = elements.filter(named)
+
+  const issues = []
+  const seen = new Set()
+  const push = (key, text) => { if (text && !seen.has(key)) { seen.add(key); issues.push(text) } }
+
+  // ── element ↔ element overlaps ──
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j]
+      if (!inScope(a.id) && !inScope(b.id)) continue
+      const na = name(a.id), nb = name(b.id)
+      if (!na || !nb) continue
+      const ra = rectOf(a), rb = rectOf(b)
+      const inter = intersectArea(ra, rb)
+      if (inter <= 0) continue
+      if (inter >= 0.15 * Math.min(areaOf(ra), areaOf(rb))) {
+        push(`ov:${[na, nb].sort().join('|')}`, `${na} overlaps ${nb}`)
+      }
+    }
+  }
+
+  // Precompute the drawable segment + label point of every named arrow (linear
+  // approximation; curve/elbow routing ignored — good enough to flag tangles).
+  const segs = []
+  for (const ar of arrows) {
+    const an = name(ar.id)
+    if (!an) continue
+    const fromId = ar.from?.elementId != null ? String(ar.from.elementId) : null
+    const toId = ar.to?.elementId != null ? String(ar.to.elementId) : null
+    const p1 = endpointPoint(ar.from, elById)
+    const p2 = endpointPoint(ar.to, elById)
+    if (!p1 || !p2) continue
+    const t = ar.labelPos != null ? ar.labelPos : 0.5
+    const labelPt = ar.label ? { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) } : null
+    segs.push({ an, fromId, toId, p1, p2, labelPt, edit: !scope || inScope(fromId) || inScope(toId) })
+  }
+
+  // ── arrow ↔ box: label over, or segment through, a non-endpoint box ──
+  for (const s of segs) {
+    if (!s.edit) continue
+    if (s.labelPt) {
+      for (const el of boxes) {
+        const id = String(el.id)
+        if (id === s.fromId || id === s.toId) continue
+        if (pointInRect(s.labelPt, rectOf(el))) { push(`lbl:${s.an}|${name(id)}`, `${s.an} label sits on ${name(id)}`); break }
+      }
+    }
+    for (const el of boxes) {
+      const id = String(el.id)
+      if (id === s.fromId || id === s.toId) continue
+      if (segCrossesRect(s.p1, s.p2, rectOf(el))) { push(`cx:${s.an}|${name(id)}`, `${s.an} crosses ${name(id)}`); break }
+    }
+  }
+
+  // ── arrow ↔ arrow: crossing lines and colliding labels (the "tangle") ──
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const s = segs[i], t = segs[j]
+      if (!s.edit && !t.edit) continue
+      const key = [s.an, t.an].sort().join('|')
+      // Arrows that share an endpoint element meet legitimately — not a tangle.
+      const share = (s.fromId && (s.fromId === t.fromId || s.fromId === t.toId)) ||
+        (s.toId && (s.toId === t.fromId || s.toId === t.toId))
+      if (!share && segIntersect(s.p1, s.p2, t.p1, t.p2)) push(`ax:${key}`, `${s.an} crosses ${t.an}`)
+      if (s.labelPt && t.labelPt) {
+        const dx = s.labelPt.x - t.labelPt.x, dy = s.labelPt.y - t.labelPt.y
+        if (dx * dx + dy * dy < 55 * 55) push(`ll:${key}`, `${s.an} and ${t.an} labels collide`)
+      }
+    }
+    if (issues.length >= max) break
+  }
+
+  return issues.slice(0, max)
 }
 
 // ── small array utils ─────────────────────────────────────────────────────────

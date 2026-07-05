@@ -143,3 +143,43 @@ export async function logCall({ runId, round = 0, phase = '', boardName = '', pr
 export function clearDebugLog() {
   debugLog.value = []
 }
+
+// Write the run-level summary the modal shows (the model's combined note, the
+// deduped flagged issues, warnings, verified/rounds, and total token/cost) as one
+// `summary.md` alongside the per-call dumps. No-ops when no debug folder is chosen.
+export async function logRunSummary({ runId, boardName = '', instruction = '', promptKey = '', mode = '', result = {} }) {
+  const dir = await runDir(runId, boardName)
+  if (!dir) return
+  const u = result.usage || {}
+  const issues = Array.isArray(result.issues) ? result.issues : []
+  const md = [
+    '---',
+    'kind: summary',
+    `prompt: ${promptKey}`,
+    `mode: ${mode}`,
+    `verified: ${result.verified ? 'yes' : 'no'}`,
+    `rounds: ${result.rounds ?? ''}`,
+    `tokens_in: ${u.in ?? ''}`,
+    `tokens_out: ${u.out ?? ''}`,
+    `cost_usd: ${u.cost ?? ''}`,
+    '---',
+    '',
+    '## Instruction',
+    '',
+    instruction || '(none)',
+    '',
+    "## Model note (what it says it did)",
+    '',
+    result.say || '(none)',
+    '',
+    '## Flagged issues',
+    '',
+    issues.length ? issues.map((s) => `- ${s}`).join('\n') : '(none)',
+    '',
+    '## Warnings',
+    '',
+    result.warning || '(none)',
+    '',
+  ].join('\n')
+  await writeFile(dir, 'summary.md', md)
+}

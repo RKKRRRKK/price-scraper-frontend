@@ -57,13 +57,14 @@
             ></textarea>
           </details>
 
-          <!-- Direct run (constructive edits only — the review step is about visual layout) -->
-          <div v-if="!isComment" class="run-row">
+          <!-- Direct run. Edit modes screenshot-review their result; comment mode is a
+               single text-only call that adds comments to the current view. -->
+          <div class="run-row">
             <button class="add-btn run-btn" :disabled="running" @click="runAi">
               <i :class="running ? 'pi pi-spin pi-spinner' : 'pi pi-sparkles'" style="font-size: 0.8rem"></i>
-              {{ running ? 'Running…' : 'Run with AI' }}
+              {{ running ? (isComment ? 'Reviewing…' : 'Running…') : (isComment ? 'Review with AI' : 'Run with AI') }}
             </button>
-            <div class="rounds" title="How many times Gemini reviews a screenshot of its result and fixes it">
+            <div v-if="!isComment" class="rounds" title="How many times Gemini reviews a screenshot of its result and fixes it">
               <span class="rounds-label">Review</span>
               <button class="round-seg" :class="{ on: verifyRounds === 1 }" :disabled="running" @click="verifyRounds = 1">1×</button>
               <button class="round-seg" :class="{ on: verifyRounds === 2 }" :disabled="running" @click="verifyRounds = 2">2×</button>
@@ -93,7 +94,7 @@
           </div>
 
           <div class="ai-actions">
-            <button class="add-btn" @click="copyPrompt" title="Board JSON + schema + your instruction">
+            <button class="add-btn" @click="copyPrompt" title="Board (compact op-DSL) + rules + your instruction">
               <i :class="copied ? 'pi pi-check' : 'pi pi-copy'" style="font-size: 0.8rem"></i>
               {{ copied ? 'Copied!' : 'Copy prompt' }}
             </button>
@@ -107,7 +108,7 @@
           </div>
 
           <!-- Debug: dump each call to a local folder + inspect what was sent -->
-          <div class="debug-row" v-if="!isComment">
+          <div class="debug-row">
             <button v-if="supportsFolder" class="btn-ghost btn-sm" @click="chooseFolder"
               :title="debugFolderName ? 'Dumps go to: ' + debugFolderName : 'Pick a folder for prompt/screenshot dumps'">
               <i class="pi pi-folder-open" style="font-size: 0.75rem"></i>
@@ -116,6 +117,9 @@
             <button class="btn-ghost btn-sm" @click="showDebug = !showDebug">
               <i :class="showDebug ? 'pi pi-chevron-down' : 'pi pi-chevron-right'" style="font-size: 0.7rem"></i>
               Debug log{{ debugLog.length ? ` (${debugLog.length})` : '' }}
+            </button>
+            <button v-if="debugLog.length" class="btn-ghost btn-sm" @click="downloadLog" title="Download the log as a .zip (prompts, replies, screenshots + summary)">
+              <i class="pi pi-download" style="font-size: 0.7rem"></i>
             </button>
             <button v-if="debugLog.length" class="btn-ghost btn-sm" @click="clearLog" title="Clear the log">
               <i class="pi pi-trash" style="font-size: 0.7rem"></i>
@@ -144,15 +148,15 @@
         <section class="ai-section">
           <h3 class="ai-h">2 · Apply a reply</h3>
           <p class="hint">
-            Paste the assistant's reply here. The app reads the <code>json</code> block and
+            Paste the assistant's reply here. The app reads the <code>ops</code> block and
             <template v-if="isComment">merges its comments into the current view.</template>
-            <template v-else>rebuilds the board <strong>into the branch</strong>.</template>
+            <template v-else>applies its edits <strong>into the branch</strong>.</template>
           </p>
           <textarea
             v-model="importText"
             rows="8"
             class="import-area"
-            placeholder="Paste the assistant's reply (it should contain a ```json block)…"
+            placeholder="Paste the assistant's reply (it should contain a ```ops block)…"
           ></textarea>
           <p v-if="buildError" class="import-error">{{ buildError }}</p>
         </section>
@@ -171,11 +175,12 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { buildPromptMarkdown, promptMode, PROMPTS } from '@/lib/canvyAi'
+import { buildManualPrompt, promptMode, PROMPTS } from '@/lib/canvyPrompts'
 import { boardToMarkdown } from '@/lib/canvyExport'
 import {
   debugLog, debugFolderName, pickDebugFolder, supportsDebugFolder, clearDebugLog,
 } from '@/lib/canvyAiDebug'
+import { zipFiles, dataUriToBytes } from '@/lib/canvyZip'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -235,8 +240,14 @@ watch(
   },
 )
 
-function buildOpts() {
-  return { instruction: instruction.value, scopeIds: scopeSet.value, data: props.boardData }
+function manualOpts() {
+  return {
+    promptKey: selectedPrompt.value,
+    instruction: instruction.value,
+    steering: steering.value,
+    scopeIds: scopeSet.value,
+    context: useContext.value,
+  }
 }
 
 function flash(flag) {
@@ -245,7 +256,7 @@ function flash(flag) {
 }
 async function copyPrompt() {
   try {
-    await navigator.clipboard.writeText(buildPromptMarkdown(props.board, selectedPrompt.value, buildOpts()))
+    await navigator.clipboard.writeText(buildManualPrompt(props.board, props.boardData, manualOpts()))
     flash(copied)
   } catch (e) { console.error(e) }
 }
@@ -255,24 +266,77 @@ async function copySummary() {
     flash(copiedSummary)
   } catch (e) { console.error(e) }
 }
-function downloadMd() {
-  const name = (props.board?.name || 'canvy-board').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'canvy-board'
-  const blob = new Blob([buildPromptMarkdown(props.board, selectedPrompt.value, buildOpts())], { type: 'text/markdown' })
+function boardSlug() {
+  return (props.board?.name || 'canvy-board').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'canvy-board'
+}
+function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${name}.md`
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
+function downloadMd() {
+  const blob = new Blob([buildManualPrompt(props.board, props.boardData, manualOpts())], { type: 'text/markdown' })
+  saveBlob(blob, `${boardSlug()}.md`)
+}
+// Bundle the whole debug log into a .zip — the escape hatch for when no debug
+// folder was picked before the run. Mirrors the on-disk dump: one .md + .png per
+// call plus a summary.md with the model's note, flagged issues and warnings.
+// Calls are numbered oldest-first (the panel shows newest-first).
+function downloadLog() {
+  if (!debugLog.value.length) return
+  const files = []
+  const entries = [...debugLog.value].reverse()
+  const pad = (n) => String(n).padStart(2, '0')
+
+  // summary.md — errors / corrections / extra info the run surfaced.
+  files.push({
+    name: 'summary.md',
+    data: [
+      `# Canvy AI run — ${props.board?.name || 'board'}`,
+      `_exported ${new Date().toISOString()} · ${entries.length} call(s)_`,
+      '',
+      '## Instruction', '', instruction.value || '(none)', '',
+      '## Result', '', (props.runStatus || '(none)') + (props.runError ? ' [error]' : ''), '',
+      '## Model note (what it says it did)', '', props.aiNote || '(none)', '',
+      '## Flagged issues', '',
+      props.aiIssues.length ? props.aiIssues.map((s) => `- ${s}`).join('\n') : '(none)', '',
+      '## Usage', '', usageText.value || '(none)', '',
+    ].join('\n'),
+  })
+
+  entries.forEach((e, i) => {
+    const base = `${pad(i + 1)}-${e.phase || 'call'}${e.round ? `-r${e.round}` : ''}`
+    files.push({
+      name: `${base}.md`,
+      data: [
+        `# ${e.phase || 'call'}${e.round ? ` · round ${e.round}` : ''}`,
+        '',
+        `- tokens: ${e.tokensIn ?? '?'} in / ${e.tokensOut ?? '?'} out${e.cost != null ? ` · $${e.cost.toFixed(4)}` : ''}`,
+        e.image ? `- screenshot: ${base}.png` : '',
+        '',
+        '## Prompt', '', e.prompt || '(none)', '',
+        '## Reply', '', e.reply || '(none)', '',
+      ].join('\n'),
+    })
+    if (e.image) {
+      try { files.push({ name: `${base}.png`, data: dataUriToBytes(e.image) }) } catch { /* skip bad image */ }
+    }
+  })
+
+  saveBlob(zipFiles(files), `${boardSlug()}-debug-log.zip`)
+}
 function submitBuild() {
   if (!importText.value.trim()) return
   emit('build', {
     text: importText.value,
-    mode: promptMode(selectedPrompt.value),
+    promptKey: selectedPrompt.value,
     scoped: !!scopeSet.value,
+    context: !!scopeSet.value && useContext.value,
   })
 }
 function runAi() {
