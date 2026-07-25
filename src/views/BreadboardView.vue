@@ -669,7 +669,13 @@ function buildFromText(text) {
 
   display: grid;
   grid-template-columns: 17rem 1fr;
-  height: calc(100vh - 4rem);
+  /* This tool lives in a growable min-h-screen column (App.vue), so content
+     even a hair taller than its box grows the column past 100vh and the whole
+     PAGE scrolls. The app navbar + its mb-3 margin is ~6.7rem tall (two-line
+     nav at the 15px base font), not 4rem. Cap + clip so the tool always fits
+     its own area. */
+  height: calc(100vh - 6.75rem);
+  overflow: hidden;
   background: var(--bb-sunken);
   color: var(--bb-text);
 }
@@ -1200,6 +1206,13 @@ function buildFromText(text) {
 
 .mobile-only {
   display: none;
+}
+
+/* Below 768px the app navbar collapses to a single row, so it's much shorter
+   — this is the navbar's own breakpoint, independent of this tool's 900px
+   layout breakpoint below. */
+@media (max-width: 767.98px) {
+  .bb-app { height: calc(100vh - 4.75rem); }
 }
 
 /* ── responsive ── */

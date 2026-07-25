@@ -322,9 +322,12 @@
       :run-error="aiRunError"
       :ai-note="aiNote"
       :ai-issues="aiIssues"
+      :ai-thinking="aiThinking"
+      :can-resume="canResume"
       :run-usage="aiRunUsage"
       @build="buildFromText"
       @run="runAiLive"
+      @more="runMore"
       @close="aiOpen = false"
     />
   </div>
@@ -355,7 +358,28 @@ const aiStatus = ref('')       // progress / result text shown in the modal
 const aiRunError = ref(false)  // style aiStatus as an error
 const aiNote = ref('')         // the model's own summary of what it did
 const aiIssues = ref([])       // real problems the model flagged (broken screenshot, big inference…)
+const aiThinking = ref([])     // [{ pass, note }] live reason-act-observe trace for the modal
+const aiProgressNotes = ref('') // the last run's threaded notes — seed for "Build more"/"Correct"
+const lastAiPayload = ref(null) // scope/instruction of the last run, reused on resume
+const aiRunBoardId = ref(null) // which board the resumable run belongs to
 const aiRunUsage = ref(null)   // { in, out, cost } totals for the last run
+
+// A finished, non-error run for the CURRENTLY-active board can be extended. Persists
+// across closing/reopening the modal (only a board switch or a fresh run clears it).
+const canResume = computed(() =>
+  !aiRunning.value && !!lastAiPayload.value && aiRunBoardId.value === store.activeBoard?.id,
+)
+function resetAiRunState() {
+  aiStatus.value = ''
+  aiRunError.value = false
+  aiNote.value = ''
+  aiIssues.value = []
+  aiThinking.value = []
+  aiProgressNotes.value = ''
+  lastAiPayload.value = null
+  aiRunBoardId.value = null
+  aiRunUsage.value = null
+}
 const canvasRef = ref(null)
 const canvasKey = ref(0) // bump to force the canvas to reload after an AI build
 
@@ -601,6 +625,8 @@ watch(
     if (b) activeView.value = loadViewMap()[b.id] === 'branch' ? 'branch' : 'main'
     selCount.value = 0
     selIds.value = []
+    // A switch invalidates the previous run's resume/trace state.
+    resetAiRunState()
   },
   { immediate: true },
 )
@@ -639,19 +665,17 @@ async function copyForAi() {
 
 // ── AI assist (copy prompt / build from reply) ──
 function openAi() {
+  // Keep the last run's results + resume state so closing the modal to view the board
+  // and reopening doesn't lose "Build more"/"Correct mistakes". Only the transient
+  // paste error is cleared here; a fresh run or a board switch resets the rest.
   aiError.value = ''
-  aiStatus.value = ''
-  aiRunError.value = false
-  aiNote.value = ''
-  aiIssues.value = []
-  aiRunUsage.value = null
   aiOpen.value = true
 }
 
 // Direct "Run with AI": send the board (as a compact op-DSL prompt) + a screenshot
-// to the model, apply the edit commands it returns to the branch, then screenshot
-// the result and let it review/correct its own work. commitData + capture wire the
-// loop (in canvyAiLive) to the store and canvas here.
+// to the model, which reasons, builds and fixes across several self-paced passes.
+// commitData + capture wire the loop (in canvyAiLive) to the store and canvas here.
+// `resume` continues a finished build with its threaded notes ("I want more").
 async function runAiLive(payload) {
   const b = store.activeBoard
   if (!b || aiRunning.value) return
@@ -659,6 +683,7 @@ async function runAiLive(payload) {
   aiRunError.value = false
   aiNote.value = ''
   aiIssues.value = []
+  if (!payload.resume) { aiThinking.value = []; lastAiPayload.value = payload }
   aiRunUsage.value = null
   aiRunning.value = true
   aiStatus.value = 'Starting…'
@@ -693,10 +718,14 @@ async function runAiLive(payload) {
       scopeIds: payload.scoped ? new Set(payload.scopeIds) : null,
       scoped: payload.scoped,
       context: payload.context,
-      maxRounds: payload.verifyRounds || 1,
+      maxPasses: payload.maxPasses || 5,
+      resume: !!payload.resume,
+      moreMode: payload.moreMode || '',
+      priorNotes: payload.resume ? aiProgressNotes.value : '',
       capture,
       commitData,
       onStatus: ({ text }) => { aiStatus.value = text },
+      onNote: ({ pass, note }) => { aiThinking.value.push({ pass, note }) },
     })
     if (!result.ok) {
       aiRunError.value = true
@@ -704,7 +733,10 @@ async function runAiLive(payload) {
     } else {
       aiNote.value = result.say || ''
       aiIssues.value = result.issues || []
+      aiProgressNotes.value = result.progressNotes || result.say || ''
       aiRunUsage.value = result.usage || null
+      // Mark this board as having a resumable run (enables Build more / Correct).
+      if (mode !== 'comment') aiRunBoardId.value = b.id
       if (result.warning) aiStatus.value = `${aiStatus.value} (${result.warning})`
     }
   } catch (e) {
@@ -714,6 +746,23 @@ async function runAiLive(payload) {
   } finally {
     aiRunning.value = false
   }
+}
+
+// "Build more" / "Correct mistakes": resume the finished build from the current branch
+// state, reusing the last run's scope/instruction and threading its progress notes back
+// in. `payload.mode` ('build'|'fix') tells the model whether to expand or to correct.
+function runMore(payload = {}) {
+  if (aiRunning.value || !lastAiPayload.value) return
+  // The AI's work lives in the branch — make sure we resume from there, not main.
+  if (activeView.value !== 'branch') setView('branch')
+  // Mark the new phase in the trace so it reads distinctly from the earlier run.
+  aiThinking.value.push({ pass: 0, note: payload.mode === 'fix' ? '— Correcting mistakes —' : '— Building more —' })
+  runAiLive({
+    ...lastAiPayload.value,
+    maxPasses: payload.maxPasses || lastAiPayload.value.maxPasses || 5,
+    resume: true,
+    moreMode: payload.mode || '',
+  })
 }
 function buildFromText(payload) {
   aiError.value = ''
@@ -781,7 +830,13 @@ function buildFromText(payload) {
   font-size: 0.9375rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  height: calc(100vh - 5rem);
+  /* This tool lives in a growable min-h-screen column (App.vue), so content
+     even a hair taller than its box grows the column past 100vh and the whole
+     PAGE scrolls. The app navbar + its mb-3 margin is ~6.7rem tall (two-line
+     nav at the 15px base font), not 5rem. Cap + clip so the tool always fits
+     its own area. */
+  height: calc(100vh - 6.75rem);
+  overflow: hidden;
   display: flex;
   align-items: stretch;
 }
@@ -1079,6 +1134,10 @@ function buildFromText(payload) {
 
 /* ── Mobile ── */
 .canvy-app .mobile-only { display: none; }
+/* Below 768px the app navbar collapses to a single row, so it's much shorter. */
+@media (max-width: 767.98px) {
+  .canvy-app { height: calc(100vh - 4.75rem); }
+}
 @media (max-width: 47.99em) {
   .canvy-app .mobile-only { display: inline-flex; }
   .rail {

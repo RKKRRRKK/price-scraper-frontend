@@ -894,7 +894,13 @@ function versionCount(id) {
   font-size: 0.9375rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  min-height: calc(100vh - 5rem);
+  /* Unlike Bawu/Canvy, `.main` here has no internal scroll of its own — a long
+     diff is meant to grow the PAGE, so this stays `min-height` (not a fixed,
+     clipped height). But the floor was under-budgeted: the app navbar + its
+     mb-3 margin is ~6.7rem tall (two-line nav at the 15px base font), not
+     5rem, so even short content (e.g. the empty state) was ~1.75rem taller
+     than the viewport, forcing a sliver of page scroll on every screen. */
+  min-height: calc(100vh - 6.75rem);
   display: flex;
   align-items: stretch;
 }
@@ -1273,6 +1279,8 @@ function versionCount(id) {
   .panes { grid-template-columns: 1fr; }
 }
 @media (max-width: 47.99em) {
+  /* The app navbar collapses to a single row below this width, so it's shorter. */
+  .squell-app { min-height: calc(100vh - 4.75rem); }
   .squell-app .mobile-only { display: inline-flex; }
   .rail {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 90;

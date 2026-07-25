@@ -62,22 +62,48 @@
           <div class="run-row">
             <button class="add-btn run-btn" :disabled="running" @click="runAi">
               <i :class="running ? 'pi pi-spin pi-spinner' : 'pi pi-sparkles'" style="font-size: 0.8rem"></i>
-              {{ running ? (isComment ? 'Reviewing…' : 'Running…') : (isComment ? 'Review with AI' : 'Run with AI') }}
+              {{ running ? (isComment ? 'Reviewing…' : 'Building…') : (isComment ? 'Review with AI' : 'Run with AI') }}
             </button>
-            <div v-if="!isComment" class="rounds" title="How many times Gemini reviews a screenshot of its result and fixes it">
-              <span class="rounds-label">Review</span>
-              <button class="round-seg" :class="{ on: verifyRounds === 1 }" :disabled="running" @click="verifyRounds = 1">1×</button>
-              <button class="round-seg" :class="{ on: verifyRounds === 2 }" :disabled="running" @click="verifyRounds = 2">2×</button>
+            <div v-if="!isComment" class="passes" title="Maximum build passes — the AI reasons, builds and fixes across passes and stops early once it's satisfied">
+              <span class="passes-label">Max passes</span>
+              <input type="range" min="1" max="8" step="1" v-model.number="maxPasses" :disabled="running" class="passes-slider" />
+              <span class="passes-val">{{ maxPasses }}×</span>
             </div>
           </div>
+
+          <!-- After a run: push it further. Two explicit modes so the model knows
+               whether to EXPAND or to CORRECT — closing the modal to view the board
+               doesn't lose these (canResume persists on the parent). -->
+          <div v-if="!isComment && canResume" class="run-row run-sub">
+            <span class="run-sub-label">Keep going:</span>
+            <button class="add-btn more-btn" :disabled="running" @click="runMore('build')" title="Resume and add substantial new content — expansion is required">
+              <i class="pi pi-plus-circle" style="font-size: 0.72rem"></i> Build more
+            </button>
+            <button class="btn-ghost more-btn" :disabled="running" @click="runMore('fix')" title="Resume and correct mistakes — fix overlaps, arrows, wrong connections">
+              <i class="pi pi-wrench" style="font-size: 0.72rem"></i> Correct mistakes
+            </button>
+          </div>
+
           <p v-if="runStatus" class="run-status" :class="{ err: runError }">
             <i v-if="!runError && !running" class="pi pi-check" style="font-size: 0.72rem"></i>
             {{ runStatus }}
             <span v-if="usageText" class="usage">· {{ usageText }}</span>
           </p>
 
-          <!-- What the model says it did (its own summary / reasoning) -->
-          <div v-if="aiNote" class="ai-note">
+          <!-- Live reason-act-observe trace: the model's ! note per pass -->
+          <div v-if="!isComment && aiThinking.length" class="ai-think">
+            <div class="ai-think-head"><i class="pi pi-bolt" style="font-size: 0.72rem"></i> Thinking</div>
+            <ol class="ai-think-list">
+              <li v-for="(t, i) in aiThinking" :key="i">
+                <span v-if="t.pass" class="ai-think-pass">pass {{ t.pass }}</span>{{ t.note }}
+              </li>
+            </ol>
+          </div>
+
+          <!-- What the model says it did. For edit runs the Thinking trace already
+               shows each pass's note, so only surface this bubble for comment mode
+               (or when there's no trace) to avoid duplicating it. -->
+          <div v-if="aiNote && (isComment || !aiThinking.length)" class="ai-note">
             <i class="pi pi-comment" style="font-size: 0.72rem"></i>
             <span>{{ aiNote }}</span>
           </div>
@@ -102,18 +128,10 @@
               <i :class="copiedSummary ? 'pi pi-check' : 'pi pi-clipboard'" style="font-size: 0.8rem"></i>
               {{ copiedSummary ? 'Copied!' : 'Copy summary only' }}
             </button>
-            <button class="btn-ghost" @click="downloadMd" title="Download the prompt as a .md file">
-              <i class="pi pi-download" style="font-size: 0.8rem"></i> Download .md
-            </button>
           </div>
 
-          <!-- Debug: dump each call to a local folder + inspect what was sent -->
+          <!-- Debug: inspect what was sent + download the whole run as a .zip -->
           <div class="debug-row">
-            <button v-if="supportsFolder" class="btn-ghost btn-sm" @click="chooseFolder"
-              :title="debugFolderName ? 'Dumps go to: ' + debugFolderName : 'Pick a folder for prompt/screenshot dumps'">
-              <i class="pi pi-folder-open" style="font-size: 0.75rem"></i>
-              {{ debugFolderName ? debugFolderName : 'Choose debug folder' }}
-            </button>
             <button class="btn-ghost btn-sm" @click="showDebug = !showDebug">
               <i :class="showDebug ? 'pi pi-chevron-down' : 'pi pi-chevron-right'" style="font-size: 0.7rem"></i>
               Debug log{{ debugLog.length ? ` (${debugLog.length})` : '' }}
@@ -177,9 +195,7 @@
 import { ref, computed, watch } from 'vue'
 import { buildManualPrompt, promptMode, PROMPTS } from '@/lib/canvyPrompts'
 import { boardToMarkdown } from '@/lib/canvyExport'
-import {
-  debugLog, debugFolderName, pickDebugFolder, supportsDebugFolder, clearDebugLog,
-} from '@/lib/canvyAiDebug'
+import { debugLog, clearDebugLog } from '@/lib/canvyAiDebug'
 import { zipFiles, dataUriToBytes } from '@/lib/canvyZip'
 
 const props = defineProps({
@@ -193,9 +209,11 @@ const props = defineProps({
   runError: { type: Boolean, default: false },      // style runStatus as an error
   aiNote: { type: String, default: '' },            // the model's own summary of what it did
   aiIssues: { type: Array, default: () => [] },      // real problems the model flagged
+  aiThinking: { type: Array, default: () => [] },    // [{ pass, note }] live reason-act-observe trace
+  canResume: { type: Boolean, default: false },      // a finished run for THIS board exists to extend
   runUsage: { type: Object, default: null },        // { in, out, cost } totals for the last run
 })
-const emit = defineEmits(['build', 'run', 'close'])
+const emit = defineEmits(['build', 'run', 'more', 'close'])
 
 const importText = ref('')
 const instruction = ref('')
@@ -205,11 +223,9 @@ const copiedSummary = ref(false)
 const selectedPrompt = ref('new') // the enhanced constructive prompt
 const useScope = ref(true)
 const useContext = ref(false)     // scoped edit, but give the rest of the board as context
-const verifyRounds = ref(1)       // how many screenshot-review rounds after the first edit
+const maxPasses = ref(5)          // ceiling on build passes; the AI self-stops earlier
 const showDebug = ref(false)
 
-const supportsFolder = supportsDebugFolder()
-async function chooseFolder() { await pickDebugFolder() }
 function clearLog() { clearDebugLog() }
 
 const usageText = computed(() => {
@@ -279,13 +295,8 @@ function saveBlob(blob, filename) {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
-function downloadMd() {
-  const blob = new Blob([buildManualPrompt(props.board, props.boardData, manualOpts())], { type: 'text/markdown' })
-  saveBlob(blob, `${boardSlug()}.md`)
-}
-// Bundle the whole debug log into a .zip — the escape hatch for when no debug
-// folder was picked before the run. Mirrors the on-disk dump: one .md + .png per
-// call plus a summary.md with the model's note, flagged issues and warnings.
+// Bundle the whole debug log into a .zip: one .md + .png per call plus a
+// summary.md with the model's note, flagged issues and warnings.
 // Calls are numbered oldest-first (the panel shows newest-first).
 function downloadLog() {
   if (!debugLog.value.length) return
@@ -348,8 +359,15 @@ function runAi() {
     scoped: !!scopeSet.value,
     context: !!scopeSet.value && useContext.value,
     scopeIds: scopeSet.value ? [...scopeSet.value] : [],
-    verifyRounds: verifyRounds.value,
+    maxPasses: maxPasses.value,
   })
+}
+// Resume the finished build. mode 'build' = add substantial new content (expansion
+// required); mode 'fix' = correct mistakes only. The parent reuses the last run's
+// scope/instruction and threads its progress notes back in.
+function runMore(mode) {
+  if (props.running) return
+  emit('more', { maxPasses: maxPasses.value, mode })
 }
 </script>
 
@@ -414,19 +432,33 @@ function runAi() {
 .run-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .run-btn { flex: 0 0 auto; }
 .run-btn:disabled { opacity: 0.6; cursor: default; }
-.rounds {
-  display: inline-flex; align-items: center; gap: 0.3rem;
+.passes {
+  display: inline-flex; align-items: center; gap: 0.4rem;
   border: 1px solid #e5e4e1; border-radius: 0.5rem;
-  padding: 0.2rem 0.35rem; background: #faf9f7;
+  padding: 0.25rem 0.5rem; background: #faf9f7;
 }
-.rounds-label { font-size: 0.72rem; color: #5c5c5c; padding: 0 0.15rem; }
-.round-seg {
-  border: none; background: transparent; cursor: pointer;
-  padding: 0.2rem 0.5rem; border-radius: 0.35rem;
-  font-size: 0.76rem; font-weight: 600; color: #5c5c5c;
+.passes-label { font-size: 0.72rem; color: #5c5c5c; }
+.passes-slider { width: 6rem; accent-color: #ef4444; cursor: pointer; }
+.passes-slider:disabled { cursor: default; opacity: 0.6; }
+.passes-val { font-size: 0.76rem; font-weight: 600; color: #b91c1c; min-width: 1.6rem; text-align: right; }
+.run-sub { margin-top: 0.15rem; gap: 0.4rem; }
+.run-sub-label { font-size: 0.72rem; color: #5c5c5c; }
+.more-btn { font-size: 0.75rem; }
+.ai-think {
+  border: 1px solid #eee7d8; background: #fffdf6; border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
 }
-.round-seg.on { background: #fff; color: #b91c1c; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
-.round-seg:disabled { cursor: default; opacity: 0.6; }
+.ai-think-head {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.72rem; font-weight: 600; color: #92700f; margin-bottom: 0.35rem;
+}
+.ai-think-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.ai-think-list li { font-size: 0.78rem; color: #4a4a4a; line-height: 1.35; }
+.ai-think-pass {
+  display: inline-block; margin-right: 0.4rem; padding: 0.02rem 0.35rem;
+  font-size: 0.66rem; font-weight: 600; color: #92700f;
+  background: #fbf1d3; border-radius: 0.3rem;
+}
 .run-status {
   margin: 0; font-size: 0.78rem; color: #5c5c5c;
   display: inline-flex; align-items: center; gap: 0.35rem;

@@ -1,38 +1,67 @@
 <template>
   <div class="dashboard-page">
-    <div class="dashboard-card">
-      <!-- Header -->
-      <div class="card-header">
-        <div class="title-block">
-          <h2 class="card-title">Price Spread</h2>
-          <p class="card-subtitle">
-            Every offer over time for the selected product. The cheapest live offer is ringed.
-          </p>
+    <!-- Page header (outside the chart box) -->
+    <div class="page-header">
+      <h2 class="page-title">Price Spread</h2>
+      <p class="page-subtitle">
+        Every offer over time for the selected product. The cheapest live offer is ringed.
+      </p>
+    </div>
+
+    <div class="dashboard-body">
+      <!-- Stats modules (outside the chart box, on the left) -->
+      <aside v-if="stats" class="stats-panel">
+        <div class="stat-module accent-module">
+          <span class="stat-value accent">{{ fmtPrice(stats.min) }}</span>
+          <span class="stat-label">cheapest</span>
+        </div>
+        <div class="stat-module">
+          <span class="stat-value">{{ fmtPrice(stats.mean) }}</span>
+          <span class="stat-label">average</span>
+        </div>
+        <div class="stat-module">
+          <span class="stat-value">{{ fmtPrice(stats.median) }}</span>
+          <span class="stat-label">median</span>
+        </div>
+        <div class="stat-module">
+          <span class="stat-value">±{{ fmtPrice(stats.stdDev) }}</span>
+          <span class="stat-label">std dev</span>
+        </div>
+        <div
+          class="stat-module"
+          title="Least-squares trend line fitted across every offer in the window (slope × span). It's how much the fitted price fell or rose start-to-end — negative means the item got cheaper. Uses all points, so a single odd day doesn't skew it. The % is relative to the average price."
+        >
+          <span class="stat-value" :class="changeClass">{{ fmtChange(stats.totalChange) }}</span>
+          <span class="stat-label">
+            trend / {{ stats.spanDays }}d
+            <template v-if="stats.pctChange != null">· {{ fmtPct(stats.pctChange) }}</template>
+          </span>
+        </div>
+        <div v-if="outlierStat" class="stat-module outlier-module">
+          <span class="stat-value outlier">{{ outlierStat.count }}</span>
+          <span class="stat-label">outliers · {{ fmtPct(outlierStat.pct) }}</span>
+        </div>
+        <div class="stat-module muted-module">
+          <span class="stat-value">{{ stats.count }}</span>
+          <span class="stat-label">
+            {{ hideOutliers ? 'shown' : 'offers' }} · {{ stats.spanDays }}d
+          </span>
         </div>
 
-        <!-- quick stats -->
-        <div v-if="stats" class="stats">
-          <div class="stat">
-            <span class="stat-value">{{ stats.count }}</span>
-            <span class="stat-label">offers</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value accent">{{ fmtPrice(stats.min) }}</span>
-            <span class="stat-label">cheapest</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{{ fmtPrice(stats.median) }}</span>
-            <span class="stat-label">median</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{{ stats.spanDays }}d</span>
-            <span class="stat-label">span</span>
-          </div>
-        </div>
-      </div>
+        <!-- how outliers are defined -->
+        <p class="outlier-note">
+          <strong>Outliers</strong> are offers beyond the Tukey fences — below
+          <em>Q1 − 1.5×IQR</em> or above <em>Q3 + 1.5×IQR</em>.
+          <span class="swatch swatch--low"></span> unusually cheap ·
+          <span class="swatch swatch--high"></span> unusually dear ·
+          <span class="swatch swatch--normal"></span> within range.
+        </p>
+      </aside>
 
-      <!-- Controls -->
-      <div class="controls-toolbar">
+      <!-- Chart box -->
+      <div class="dashboard-card">
+        <!-- Controls -->
+        <div class="controls-toolbar">
         <div class="filters">
           <!-- Folder (by name) -->
           <div class="filter-item">
@@ -83,6 +112,7 @@
               optionValue="value"
               filter
               placeholder="Choose a product…"
+              :loading="termsLoading"
               :disabled="termOptions.length === 0"
               class="ctl"
               emptyMessage="No products in this scope"
@@ -102,14 +132,34 @@
             class="time-buttons"
           />
         </div>
+
+        <!-- Overlays / outliers -->
+        <div class="filter-item">
+          <label>Overlays</label>
+          <div class="toggle-row">
+            <ToggleButton v-model="showIqr" onLabel="IQR shown" offLabel="Show IQR" class="ov-toggle" />
+            <ToggleButton
+              v-model="hideOutliers"
+              onLabel="Outliers hidden"
+              offLabel="Hide outliers"
+              :disabled="!outlierStat"
+              class="ov-toggle"
+            />
+          </div>
+        </div>
       </div>
 
-      <!-- Chart -->
-      <div class="chart-container">
-        <v-chart v-if="hasData" :option="option" autoresize />
-        <div v-else class="empty-state">
-          <i class="pi pi-chart-scatter" />
-          <p>{{ emptyMessage }}</p>
+        <!-- Chart -->
+        <div class="chart-container">
+          <v-chart v-if="hasData" :option="option" autoresize @click="onChartClick" />
+          <div v-else-if="dataLoading" class="empty-state">
+            <i class="pi pi-spin pi-spinner" />
+            <p>Loading…</p>
+          </div>
+          <div v-else class="empty-state">
+            <i class="pi pi-chart-scatter" />
+            <p>{{ emptyMessage }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -121,44 +171,43 @@ import { ref, computed, onMounted, watch } from 'vue'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
+import ToggleButton from 'primevue/togglebutton'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { ScatterChart } from 'echarts/charts'
+import { ScatterChart, LineChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
   TitleComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
 } from 'echarts/components'
-import { useListingsTable } from '@/stores/listingsTable'
-import { useSearchTerms } from '@/stores/searchTerms'
 import { useSidebarStore } from '@/stores/sidebar'
+import { useDashboardData } from '@/stores/dashboardData'
 
 use([
   CanvasRenderer,
   ScatterChart,
+  LineChart,
   GridComponent,
   TooltipComponent,
   TitleComponent,
   LegendComponent,
   DataZoomComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
 ])
 
 /* ----------------------------------------------------------------  stores  */
-const listings = useListingsTable()
-const searchTerms = useSearchTerms()
 const sidebar = useSidebarStore()
+const dashboardData = useDashboardData()
 
-onMounted(() => {
-  listings.fetchAll()
-  searchTerms.fetchAll()
-  sidebar.fetchFolders()
-})
+onMounted(() => sidebar.fetchFolders())
 
 /* ----------------------------------------------------- folder / file scope */
-// folder id -> name, file id -> { name, folderId, folderName }
 const folderOptions = computed(() =>
   [...sidebar.folders]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -189,58 +238,62 @@ watch(fileGroups, (groups) => {
   selectedFiles.value = selectedFiles.value.filter((id) => valid.has(id))
 })
 
-// The set of file ids the chart is restricted to (null = no restriction).
-const allowedFileIds = computed(() => {
-  if (selectedFiles.value.length) return new Set(selectedFiles.value)
+// File ids the queries are restricted to: null = unrestricted (no folder/file
+// picked), [] = restricted to nothing (folder picked has zero files), [...]
+// = restricted to exactly these. This goes straight to the RPCs as
+// `p_file_ids`, which do the folder/file <-> search-term matching as a real
+// SQL join against scrape_jobs — no more client-side Map lookups to drift
+// out of sync with the DB.
+const scopeFileIds = computed(() => {
+  if (selectedFiles.value.length) return selectedFiles.value
   if (selectedFolders.value.length) {
-    const ids = sidebar.folders
+    return sidebar.folders
       .filter((f) => selectedFolders.value.includes(f.id))
       .flatMap((f) => (f.files ?? []).map((file) => file.id))
-    return new Set(ids)
   }
   return null
 })
 
-// search term -> set of file ids it is configured under (from scrape_jobs)
-const termFileIds = computed(() => {
-  const map = new Map()
-  for (const t of searchTerms.terms) {
-    if (t.fileId == null) continue
-    if (!map.has(t.term)) map.set(t.term, new Set())
-    map.get(t.term).add(t.fileId)
-  }
-  return map
-})
-
 /* ------------------------------------------------------ term selector  --- */
 const ALL_TERMS = '__ALL_TERMS__'
+const termOptions = ref([])
+const termsLoading = ref(false)
 
-const termOptions = computed(() => {
-  const allowed = allowedFileIds.value
-  const counts = {}
-  for (const r of listings.rows) {
-    if (allowed) {
-      const fileIds = termFileIds.value.get(r.search_term)
-      if (!fileIds || ![...fileIds].some((id) => allowed.has(id))) continue
-    }
-    counts[r.search_term] = (counts[r.search_term] || 0) + 1
+let termsToken = 0
+async function loadTerms() {
+  const token = ++termsToken
+  termsLoading.value = true
+  try {
+    const terms = await dashboardData.fetchTerms(scopeFileIds.value)
+    if (token !== termsToken) return
+    const opts = terms
+      .sort((a, b) => b.count - a.count)
+      .map((t) => ({ label: `${t.term} (${t.count})`, value: t.term }))
+    termOptions.value = opts.length > 1 ? [{ label: 'All search terms', value: ALL_TERMS }, ...opts] : opts
+  } catch (err) {
+    console.error('[Dashboard] loadTerms error:', err)
+    if (token === termsToken) termOptions.value = []
+  } finally {
+    if (token === termsToken) termsLoading.value = false
   }
-  const terms = Object.keys(counts).sort((a, b) => counts[b] - counts[a])
-  const opts = terms.map((t) => ({ label: t, value: t }))
-  if (opts.length > 1) opts.unshift({ label: 'All search terms', value: ALL_TERMS })
-  return opts
-})
+}
+watch(scopeFileIds, loadTerms, { immediate: true })
 
 const selectedTerm = ref(null)
-watch(
-  termOptions,
-  (opts) => {
-    if (!opts.some((o) => o.value === selectedTerm.value)) {
-      selectedTerm.value = opts.length ? opts[0].value : null
-    }
-  },
-  { immediate: true },
-)
+watch(termOptions, (opts) => {
+  if (!opts.some((o) => o.value === selectedTerm.value)) {
+    selectedTerm.value = opts.length ? opts[0].value : null
+  }
+})
+
+// 'item'    -> a single search term is chosen: query & plot its raw listings.
+// 'perItem' -> file(s) chosen, no single term: server-grouped avg/day per item.
+// 'perFile' -> only folder(s) (or nothing) chosen: server-grouped avg/day per file.
+const viewMode = computed(() => {
+  if (selectedTerm.value && selectedTerm.value !== ALL_TERMS) return 'item'
+  if (selectedFiles.value.length) return 'perItem'
+  return 'perFile'
+})
 
 /* ---------------------------------------------------------- time range  --- */
 const timeRangeOptions = [
@@ -251,134 +304,350 @@ const timeRangeOptions = [
   { label: 'All', value: null },
 ]
 const timeRange = ref(null)
-
-/* ---------------------------------------------- rows after all selections */
-// names of the search terms currently in scope (excludes the "All" sentinel)
-const scopedTerms = computed(() =>
-  termOptions.value.map((o) => o.value).filter((v) => v !== ALL_TERMS),
+const sinceIso = computed(() =>
+  timeRange.value ? new Date(Date.now() - timeRange.value * 24 * 60 * 60 * 1000).toISOString() : null,
 )
 
-const rows = computed(() => {
-  if (!selectedTerm.value) return []
-  const keep =
-    selectedTerm.value === ALL_TERMS
-      ? new Set(scopedTerms.value)
-      : new Set([selectedTerm.value])
-  let arr = listings.rows.filter((r) => keep.has(r.search_term))
-  if (timeRange.value) {
-    const cutoff = Date.now() - timeRange.value * 24 * 60 * 60 * 1000
-    arr = arr.filter((r) => new Date(r.date_inserted).getTime() >= cutoff)
-  }
-  return arr.sort((a, b) => new Date(a.date_inserted) - new Date(b.date_inserted))
-})
+/* ---------------------------- IQR fences + outliers (Tukey 1.5×IQR) ----- */
+const hideOutliers = ref(false)
+const showIqr = ref(false)
 
-/* ------------------------ outlier filter (±5× median, per product) ----- */
-// Group by search_term so price scales of different products don't mix.
-const groupedRows = computed(() => {
-  const groups = new Map()
-  for (const r of rows.value) {
-    if (!groups.has(r.search_term)) groups.set(r.search_term, [])
-    groups.get(r.search_term).push(r)
-  }
-  return groups
-})
+/* ------------------------------------------------- server-backed data  --- */
+// raw listings (item mode) or day-grouped averages (perFile/perItem mode),
+// plus the summary stats — all fetched fresh whenever the scope changes.
+const itemRows = ref([])
+const aggGroups = ref([]) // [{ key, name, points: [...], totalCount }]
+const statsData = ref(null)
+const dataLoading = ref(false)
+const dataError = ref(null)
 
-const filteredRows = computed(() => {
-  const out = []
-  for (const arr of groupedRows.value.values()) {
-    if (arr.length < 5) {
-      out.push(...arr)
-      continue
+// flatten day-grouped points into per-key groups, sorted by total offers
+function groupPoints(points) {
+  const map = new Map()
+  for (const p of points) {
+    if (!map.has(p.key)) map.set(p.key, { key: p.key, name: p.name, points: [], totalCount: 0 })
+    const g = map.get(p.key)
+    g.points.push(p)
+    g.totalCount += p.count
+  }
+  return [...map.values()].sort((a, b) => b.totalCount - a.totalCount)
+}
+
+let reloadToken = 0
+async function reload() {
+  const token = ++reloadToken
+  dataLoading.value = true
+  dataError.value = null
+  try {
+    if (viewMode.value === 'item') {
+      const term = selectedTerm.value
+      const [rows, stats] = await Promise.all([
+        dashboardData.fetchTermRows(term, sinceIso.value),
+        dashboardData.fetchStats({ term, sinceIso: sinceIso.value, excludeOutliers: hideOutliers.value }),
+      ])
+      if (token !== reloadToken) return
+      itemRows.value = rows
+      statsData.value = stats
+      aggGroups.value = []
+    } else {
+      const fetchAgg =
+        viewMode.value === 'perFile'
+          ? dashboardData.fetchAggByFile.bind(dashboardData)
+          : dashboardData.fetchAggByTerm.bind(dashboardData)
+      const [points, stats] = await Promise.all([
+        fetchAgg(scopeFileIds.value, sinceIso.value, hideOutliers.value),
+        dashboardData.fetchStats({
+          fileIds: scopeFileIds.value,
+          sinceIso: sinceIso.value,
+          excludeOutliers: hideOutliers.value,
+        }),
+      ])
+      if (token !== reloadToken) return
+      aggGroups.value = groupPoints(points)
+      statsData.value = stats
+      itemRows.value = []
     }
-    const prices = arr.map((r) => r.price).sort((a, b) => a - b)
-    const median = prices[Math.floor(prices.length / 2)]
-    out.push(...arr.filter((r) => r.price >= median / 5 && r.price <= median * 5))
+  } catch (err) {
+    console.error('[Dashboard] reload error:', err)
+    if (token === reloadToken) {
+      dataError.value = err.message ?? 'Failed to load dashboard data.'
+      itemRows.value = []
+      aggGroups.value = []
+      statsData.value = null
+    }
+  } finally {
+    if (token === reloadToken) dataLoading.value = false
   }
-  return out
-})
+}
+watch([viewMode, selectedTerm, scopeFileIds, sinceIso, hideOutliers], reload, { immediate: true })
 
-// cheapest live offer per product (one orange ring each)
-const minRows = computed(() => {
-  const mins = new Map()
-  for (const r of filteredRows.value) {
-    const cur = mins.get(r.search_term)
-    if (!cur || r.price < cur.price) mins.set(r.search_term, r)
-  }
-  return [...mins.values()]
+// outliers were server-excluded from itemRows only when fetched that way —
+// they weren't, so filter client-side using the stable (pre-exclusion) fences
+const displayItemRows = computed(() => {
+  const lower = statsData.value?.fenceLower
+  const upper = statsData.value?.fenceUpper
+  if (!hideOutliers.value || lower == null || upper == null) return itemRows.value
+  return itemRows.value.filter((r) => r.price >= lower && r.price <= upper)
 })
 
 /* -------------------------------------------------------------- stats  --- */
-const fmtPrice = (v) => (typeof v === 'number' ? v.toFixed(0) : '—')
+const fmtPrice = (v) => (typeof v === 'number' ? `${v.toFixed(0)}€` : '—')
+const fmtChange = (v) => {
+  if (typeof v !== 'number') return '—'
+  const sign = v > 0 ? '+' : v < 0 ? '−' : ''
+  return `${sign}${Math.abs(v).toFixed(0)}€`
+}
+const fmtPct = (v) => {
+  if (typeof v !== 'number') return '—'
+  const sign = v > 0 ? '+' : v < 0 ? '−' : ''
+  return `${sign}${Math.abs(v).toFixed(1)}%`
+}
+// falling price = good (green), rising price = bad (red); no change = neutral
+const changeClass = computed(() => {
+  const v = stats.value?.totalChange
+  if (typeof v !== 'number' || v === 0) return ''
+  return v < 0 ? 'stat-value--good' : 'stat-value--bad'
+})
 
-const stats = computed(() => {
-  const arr = filteredRows.value
-  if (!arr.length) return null
-  const prices = arr.map((r) => r.price).sort((a, b) => a - b)
-  const median = prices[Math.floor(prices.length / 2)]
-  const first = new Date(arr[0].date_inserted).getTime()
-  const last = new Date(arr[arr.length - 1].date_inserted).getTime()
-  return {
-    count: arr.length,
-    min: prices[0],
-    median,
-    spanDays: Math.max(1, Math.round((last - first) / (24 * 60 * 60 * 1000))),
-  }
+const stats = computed(() => statsData.value)
+
+// share of the (pre-hide) population flagged as outliers
+const outlierStat = computed(() => {
+  const s = statsData.value
+  if (!s || !s.outlierCount) return null
+  return { count: s.outlierCount, pct: (s.outlierCount / s.rawCount) * 100 }
 })
 
 /* ------------------------------------------------------ chart options  --- */
 const primaryColor = 'rgb(249, 115, 22)'
+// categorical slots (light-mode, all-pairs-validated first 4 — dataviz skill default palette)
+const CATEGORY_COLORS = ['#2a78d6', '#008300', '#e87ba4', '#eda100']
+const OTHER_COLOR = '#9ca3af'
+// IQR overlay shares the orange brand ramp
+const IQR_LINE = 'rgba(234, 88, 12, 0.9)' // orange-600, median line
+const IQR_EDGE = 'rgba(249, 115, 22, 0.45)' // quartile edges / fences
+const IQR_FILL = 'rgba(249, 115, 22, 0.12)' // Q1–Q3 band
+const OUTLIER_COLOR = '#b91c1c' // deep red, outlier-count label
+// circle fill by IQR zone
+const ZONE_NORMAL = 'rgba(171, 176, 184, 0.26)' // light, desaturated gray — within range
+const ZONE_HIGH = 'rgba(249, 115, 22, 0.55)' // brand orange — dear outliers
+const ZONE_LOW = 'rgba(30, 143, 110, 0.55)' // sensors green (#1e8f6e) — cheap outliers
 
-const hasData = computed(() => filteredRows.value.length > 0)
+const hasData = computed(() => {
+  if (viewMode.value === 'item') return displayItemRows.value.length > 0
+  return aggGroups.value.length > 0
+})
 const emptyMessage = computed(() => {
+  if (dataError.value) return dataError.value
   if (!termOptions.value.length) return 'No products match the selected folders / files.'
-  if (!selectedTerm.value) return 'Pick a search term to see its price spread.'
+  if (viewMode.value === 'item' && !selectedTerm.value)
+    return 'Pick a search term to see its price spread.'
   return 'No offers in the selected time range.'
 })
 
 const makeItem = (r) => [r.date_inserted, r.price, r]
+const makeAggItem = (p) => [p.date, p.avgPrice, p]
+
+// Clicking a circle either opens the listing (raw item view) or drills one
+// level deeper into the folder->file->item hierarchy (aggregate views).
+const onChartClick = (params) => {
+  const d = params?.data?.[2]
+  if (!d) return
+  if (viewMode.value === 'item') {
+    if (d.url) window.open(d.url, '_blank', 'noopener')
+    return
+  }
+  if (viewMode.value === 'perFile') {
+    selectedFiles.value = [d.key]
+    return
+  }
+  if (viewMode.value === 'perItem') {
+    selectedTerm.value = d.key
+  }
+}
 
 const tooltipFmt = (p) => {
-  const r = p.data[2]
+  const d = p.data[2]
+  if (viewMode.value === 'item') {
+    return `
+      <strong>${d.title}</strong><br/>
+      Price: ${d.price}€<br/>
+      Date:  ${new Date(d.date_inserted).toLocaleDateString()}<br/>
+      Source: ${d.source}<br/>
+      <span style="opacity:.7;font-style:italic;">Click to open listing ↗</span>
+    `
+  }
+  const noun = viewMode.value === 'perFile' ? 'file' : 'item'
   return `
-    <strong>${r.title}</strong><br/>
-    Price: ${r.price} ${r.currency ?? ''}<br/>
-    Date:  ${new Date(r.date_inserted).toLocaleDateString()}<br/>
-    Source: ${r.source}<br/>
-    <a href="${r.url}" target="_blank">open listing ↗</a>
+    <strong>${d.name}</strong><br/>
+    Avg price: ${fmtPrice(d.avgPrice)}<br/>
+    Date: ${new Date(d.date).toLocaleDateString()}<br/>
+    ${d.count} offer${d.count === 1 ? '' : 's'}<br/>
+    <span style="opacity:.7;font-style:italic;">Click to drill into this ${noun}</span>
   `
 }
 
 const option = computed(() => {
-  const minIds = new Set(minRows.value.map((r) => r.id))
-  const series = [
-    {
-      name: 'Offers',
-      type: 'scatter',
-      data: filteredRows.value.filter((r) => !minIds.has(r.id)).map(makeItem),
-      symbolSize: 40,
-      symbol: 'circle',
-      itemStyle: { color: 'rgba(177, 128, 93, 0.15)', borderWidth: 0 },
-    },
-  ]
+  let series = []
 
-  if (minRows.value.length) {
-    series.push({
-      name: 'Min price',
-      type: 'scatter',
-      data: minRows.value.map(makeItem),
-      symbolSize: 42,
-      z: 10,
-      itemStyle: {
-        color: 'rgba(249, 115, 22, 0.3)',
-        borderWidth: 3,
-        borderType: 'dotted',
-        borderColor: primaryColor,
+  if (viewMode.value === 'item') {
+    const rows = displayItemRows.value
+    const lower = stats.value?.fenceLower
+    const upper = stats.value?.fenceUpper
+    const isHigh = (r) => upper != null && r.price > upper
+    const isLow = (r) => lower != null && r.price < lower
+
+    let minRow = null
+    for (const r of rows) if (!minRow || r.price < minRow.price) minRow = r
+    const base = minRow ? rows.filter((r) => r.id !== minRow.id) : rows
+
+    // one circle style, split into three same-shape series coloured by IQR zone
+    series = [
+      {
+        name: 'Within range',
+        type: 'scatter',
+        data: base.filter((r) => !isHigh(r) && !isLow(r)).map(makeItem),
+        symbolSize: 40,
+        symbol: 'circle',
+        itemStyle: { color: ZONE_NORMAL, borderWidth: 0 },
       },
-    })
+    ]
+    const lows = base.filter(isLow)
+    if (lows.length) {
+      series.push({
+        name: 'Cheap outlier',
+        type: 'scatter',
+        data: lows.map(makeItem),
+        symbolSize: 40,
+        symbol: 'circle',
+        itemStyle: { color: ZONE_LOW, borderWidth: 0 },
+      })
+    }
+    const highs = base.filter(isHigh)
+    if (highs.length) {
+      series.push({
+        name: 'Dear outlier',
+        type: 'scatter',
+        data: highs.map(makeItem),
+        symbolSize: 40,
+        symbol: 'circle',
+        itemStyle: { color: ZONE_HIGH, borderWidth: 0 },
+      })
+    }
+    if (minRow) {
+      series.push({
+        name: 'Min price',
+        type: 'scatter',
+        data: [minRow].map(makeItem),
+        symbolSize: 42,
+        z: 10,
+        itemStyle: {
+          color: 'rgba(249, 115, 22, 0.3)',
+          borderWidth: 3,
+          borderType: 'dotted',
+          borderColor: primaryColor,
+        },
+      })
+    }
+  } else {
+    // Aggregate views: first 4 groups (by offer count) get a distinct
+    // categorical color + legend entry; the rest fold into a muted "Other"
+    // series so the legend/color count stays readable (dataviz: past 4
+    // categorical slots, fold to "Other" rather than cycling hues).
+    const groups = aggGroups.value
+    const featured = groups.slice(0, CATEGORY_COLORS.length)
+    const rest = groups.slice(CATEGORY_COLORS.length)
+
+    series = featured.map((g, i) => ({
+      name: g.name,
+      type: 'scatter',
+      data: g.points.map(makeAggItem),
+      symbolSize: 22,
+      itemStyle: { color: CATEGORY_COLORS[i], opacity: 0.75 },
+    }))
+
+    if (rest.length) {
+      series.push({
+        name: `Other (${rest.length})`,
+        type: 'scatter',
+        data: rest.flatMap((g) => g.points.map(makeAggItem)),
+        symbolSize: 18,
+        itemStyle: { color: OTHER_COLOR, opacity: 0.6 },
+      })
+    }
+  }
+
+  // real, legend-worthy series (the overlay below is added on top of these)
+  const legendNames = series.map((s) => s.name).filter(Boolean)
+
+  if (showIqr.value && stats.value) {
+    const s = stats.value
+
+    // x-span of the current plot so the horizontal overlay lines run full width
+    const times =
+      viewMode.value === 'item'
+        ? displayItemRows.value.map((r) => new Date(r.date_inserted).getTime())
+        : aggGroups.value.flatMap((g) => g.points.map((p) => new Date(p.date).getTime()))
+
+    if (times.length) {
+      const x0 = Math.min(...times) - 24 * 60 * 60 * 1000
+      const x1 = Math.max(...times)
+
+      // Each overlay line is its OWN line series at a high z. Real series honour
+      // z-order over scatter points (markArea/markLine do not), so these — plus
+      // the band fill (an areaStyle anchored to Q1) and the end labels — reliably
+      // sit ABOVE the circles. `verticalAlign: bottom` lifts each label just
+      // above its line so the line doesn't strike through the text.
+      const hLine = (y, style, labelText, labelColor, extra = {}) => ({
+        type: 'line',
+        data: [
+          [x0, y],
+          [x1, y],
+        ],
+        showSymbol: false,
+        silent: true,
+        z: 30,
+        lineStyle: style,
+        endLabel: {
+          show: !!labelText,
+          formatter: labelText,
+          color: labelColor,
+          fontSize: 13,
+          fontWeight: 700,
+          align: 'right',
+          verticalAlign: 'bottom',
+          offset: [-6, -5],
+        },
+        tooltip: { show: false },
+        ...extra,
+      })
+
+      series.push(
+        // Q3 edge carries the shaded band down to Q1 (fill rides on top too)
+        hLine(s.q3, { color: IQR_EDGE, type: 'dashed', width: 2 }, `IQR ${fmtPrice(s.q1)}–${fmtPrice(s.q3)}`, IQR_LINE, {
+          areaStyle: { color: IQR_FILL, origin: s.q1 },
+        }),
+        hLine(s.q1, { color: IQR_EDGE, type: 'dashed', width: 2 }, '', IQR_LINE),
+        hLine(s.median, { color: IQR_LINE, type: 'solid', width: 3 }, `median ${fmtPrice(s.median)}`, IQR_LINE),
+      )
+      if (!hideOutliers.value && s.fenceLower != null && s.fenceUpper != null) {
+        series.push(
+          hLine(s.fenceUpper, { color: IQR_EDGE, type: 'dotted', width: 4 }, '', OUTLIER_COLOR),
+          hLine(s.fenceLower, { color: IQR_EDGE, type: 'dotted', width: 4 }, '', OUTLIER_COLOR),
+        )
+      }
+    }
   }
 
   return {
-    grid: { top: 30, bottom: 80, left: 64, right: 32 },
+    grid: { top: 56, bottom: 80, left: 64, right: 32 },
+    legend: {
+      top: 4,
+      type: 'scroll',
+      show: legendNames.length > 1,
+      data: legendNames,
+      textStyle: { fontSize: 11, color: '#4b5563' },
+    },
     tooltip: {
       trigger: 'item',
       confine: true,
@@ -400,6 +669,7 @@ const option = computed(() => {
       nameLocation: 'middle',
       nameGap: 48,
       scale: true,
+      axisLabel: { formatter: '{value}€' },
     },
     dataZoom: [
       { type: 'inside', xAxisIndex: 0 },
@@ -412,12 +682,41 @@ const option = computed(() => {
 
 <style scoped>
 .dashboard-page {
-  max-width: 1400px;
+  /* keep the chart at its original ~1400px and widen the page by the
+     stats panel (13rem) + gap (1.5rem) so the cards sit alongside it
+     instead of eating into the chart's width */
+  max-width: calc(1400px + 14.5rem);
   margin: 2rem auto;
   padding: 0 1.5rem;
 }
 
+/* page header (outside the chart box) */
+.page-header {
+  margin-bottom: 1.25rem;
+}
+.page-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+.page-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+  max-width: 32rem;
+}
+
+/* body: stats panel (left, outside box) + chart card (right) */
+.dashboard-body {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
 .dashboard-card {
+  flex: 1 1 auto;
+  min-width: 0;
   background: #fff;
   border: 1px solid #eef2f7;
   border-radius: 0.75rem;
@@ -428,56 +727,93 @@ const option = computed(() => {
   gap: 1.25rem;
 }
 
-/* header */
-.card-header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1.5rem;
-}
-.card-title {
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 700;
-  color: #1f2937;
-}
-.card-subtitle {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-  color: #6b7280;
-  max-width: 32rem;
-}
-
-/* stats */
-.stats {
-  display: flex;
-  gap: 0.75rem;
-}
-.stat {
+/* stats side panel (left of chart, outside the box) */
+.stats-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  min-width: 4.5rem;
-  padding: 0.5rem 0.75rem;
+  gap: 1rem;
+  width: 13rem;
+  flex: 0 0 13rem;
+}
+.stat-module {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.15rem;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 0.625rem;
+  border-radius: 0.75rem;
+}
+.stat-module[title] {
+  cursor: help;
+}
+.stat-module.accent-module {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+.stat-module.muted-module {
+  background: transparent;
+  border-style: dashed;
+}
+.stat-module.outlier-module {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.stat-value.outlier {
+  color: #b91c1c;
 }
 .stat-value {
-  font-size: 1.125rem;
+  font-size: 1.625rem;
   font-weight: 700;
   color: #1f2937;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .stat-value.accent {
   color: rgb(249, 115, 22);
+}
+.stat-value--good {
+  color: #006300;
+}
+.stat-value--bad {
+  color: #d03b3b;
 }
 .stat-label {
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #9ca3af;
+}
+
+/* outlier definition note */
+.outlier-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: #9ca3af;
+}
+.outlier-note strong {
+  color: #6b7280;
+}
+.outlier-note em {
+  font-style: normal;
+  font-weight: 600;
+  color: #6b7280;
+}
+.swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.swatch--normal {
+  background: rgba(171, 176, 184, 0.6);
+}
+.swatch--high {
+  background: rgba(249, 115, 22, 0.85);
+}
+.swatch--low {
+  background: rgba(30, 143, 110, 0.85);
 }
 
 /* controls */
@@ -512,9 +848,18 @@ const option = computed(() => {
 .time-range .time-buttons {
   align-self: flex-start;
 }
+.toggle-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.toggle-row :deep(.ov-toggle) {
+  white-space: nowrap;
+}
 
 /* chart */
 .chart-container {
+  flex: 1 1 auto;
+  min-width: 0;
   height: 65vh;
   min-height: 26rem;
 }
@@ -522,6 +867,25 @@ const option = computed(() => {
 .chart-container :deep(canvas) {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* stack the stats above the chart on narrow screens */
+@media (max-width: 48rem) {
+  .dashboard-body {
+    flex-direction: column;
+  }
+  .stats-panel {
+    width: 100%;
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .stats-panel .stat-module {
+    flex: 1 1 6rem;
+  }
+  .outlier-note {
+    flex: 1 1 100%;
+  }
 }
 
 .empty-state {

@@ -102,6 +102,11 @@
             <i class="pi pi-clone mr-2" />Canvy
           </a>
         </router-link>
+        <router-link :to="{ name: 'bawu' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-headphones mr-2" />Bawu
+          </a>
+        </router-link>
       </div>
     </div>
   </div>
@@ -223,6 +228,11 @@
               <i class="pi pi-clone mr-2" />Canvy
             </a>
           </router-link>
+          <router-link :to="{ name: 'bawu' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-headphones mr-2" />Bawu
+            </a>
+          </router-link>
         </div>
       </AccordionContent>
     </AccordionPanel>
@@ -269,6 +279,7 @@ import { useSquellStore } from '@/stores/squell'
 import { useBreadboardStore } from '@/stores/breadboard'
 import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 import { useCanvyStore } from '@/stores/canvy'
+import { useBawuStore } from '@/stores/bawu'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -283,6 +294,7 @@ const squellStore = useSquellStore()
 const breadboardStore = useBreadboardStore()
 const breadboardLibraryStore = useBreadboardLibraryStore()
 const canvyStore = useCanvyStore()
+const bawuStore = useBawuStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -357,6 +369,7 @@ async function fetchDataForUser() {
       breadboardStore.fetchSheets(), // Fetch Breadboard sheets
       breadboardLibraryStore.fetchLibrary(), // Fetch Breadboard parts library + stock
       canvyStore.fetchBoards(), // Fetch Canvy whiteboard boards
+      bawuStore.fetchScores(), // Fetch Bawu practice scores
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -381,6 +394,7 @@ function resetStores() {
   breadboardStore.reset()
   breadboardLibraryStore.reset()
   canvyStore.reset()
+  bawuStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {
@@ -462,7 +476,7 @@ function goLogin() {
 .app-navbar {
   display: flex;
   align-items: center;
-  padding: 0.75rem 2rem;
+  padding: 0.55rem 2rem;
   border: none;
   gap: 1.5rem;
 }

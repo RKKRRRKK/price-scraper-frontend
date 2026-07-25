@@ -14,6 +14,7 @@ import DocumentsView from '@/views/DocumentsView.vue'
 import SquellView from '@/views/SquellView.vue'
 import BreadboardView from '@/views/BreadboardView.vue'
 import CanvyView from '@/views/CanvyView.vue'
+import BawuView from '@/views/BawuView.vue'
 
 const routes = [
   {
@@ -89,6 +90,12 @@ const routes = [
     path: '/canvy',
     name: 'canvy',
     component: CanvyView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/bawu',
+    name: 'bawu',
+    component: BawuView,
     meta: { requiresAuth: true },
   },
 ]

@@ -1,0 +1,99 @@
+# Handoff: Bawu Tool Redesign
+
+## Overview
+A UI/UX redesign of the **Bawu practice tool** (Tools → Bawu) in the Kumquant app. It keeps every existing feature and restructures the screen around practice: collapsible score rail, a central mode switcher (Follow me / Steady / Listen / **Edit**), a full-width practice roll with a docked transcribed-jianpu panel, a readable karaoke lyric band with Chinese/Pīnyīn switching, a rebuilt note-editing mode (window-select, copy/paste, keyboard step-entry, inspector), a glanceable tuner, an AI-convert modal with a free-text "Notes for the AI" field, and two drastically simplified phone layouts.
+
+## About the Design Files
+The file in this bundle (`Bawu Combined.dc.html` + `support.js`) is a **design reference created in HTML** — an interactive prototype showing intended look and behavior, **not production code**. The task is to **recreate this design inside the existing Vue 3 codebase** (`price-scraper-frontend`, Vue 3 + Pinia + PrimeIcons + Supabase), reusing its established patterns: `src/views/BawuView.vue`, `src/components/bawu/*`, `src/lib/bawu/*`, `src/stores/bawu.js`. Open the HTML file in a browser to explore it (resize the window below ~900px wide / ~500px tall to see the phone layouts). See `INTEGRATION.md` for a file-by-file implementation plan.
+
+## Fidelity
+**High-fidelity.** Colors, typography, spacing, radii and interaction states are final and match the app's existing token set. Recreate pixel-perfectly with the codebase's existing CSS-variable system. The prototype's playback/mic/tuner data is simulated — wire the real engines (`src/lib/bawu/audio.js`, `notes.js`, `edit.js`) behind the same UI.
+
+## Layouts
+The design has three responsive layouts (prototype switches on viewport):
+- **Desktop** — default; `vw ≥ 900` and not short-landscape.
+- **Phone portrait** ("vertical mode") — `vw < 900 && vh ≥ vw`: jianpu **reader only**.
+- **Phone landscape** — `vw > vh && vh < 500` (covers large phones like 932×430): **roll-only practice**.
+
+---
+
+## Screens / Views
+
+### 1. Desktop
+**Purpose:** everything the current BawuView does, restructured.
+
+**Layout** (top → bottom):
+1. **App navbar** — unchanged from the rest of the app (App.vue).
+2. **Icon rail**, left, 64px wide, white, right border `#e5e4e1`. Contents top→bottom: hamburger (opens rail overlay), red **+** New score (opens AI convert modal), divider, one 42×42px rounded-12px chip per score showing the first character of its name (active: border `#ef4444`, bg `#fef2f2`, text `#b91c1c`; inactive: border `#e5e4e1`, text `#5c5c5c`), then a gauge icon at the bottom (opens Tuner).
+3. **Rail overlay** (on hamburger): 300px panel sliding over the stage with scrim `rgba(26,26,26,0.15)`. Contains the full current rail feature set: TOOLS/Bawu header + score count, New score + **blank sheet** + new folder buttons, filter input, score list (icon, name, `1=F · 147 notes` meta, relative time). *Blank sheet lives here — it was removed from the roll toolbar.*
+4. **Stage** (fills rest), padding 12px 16px, gap 10px, column:
+   - **Header row**: title block left (song name 19px/800 + English subtitle 12.5px `#9a9a9a`; below: `1=F` in red 700 · note count · ✨ model name, 11px `#9a9a9a`). Center: **mode switcher** — white pill (border `#e5e4e1`, radius 999, padding 4px, shadow `0 2px 10px rgba(0,0,0,0.06)`) with segments *Follow me* (mic icon) / *Steady* (metronome) / *Listen* (volume) — active segment bg `#ef4444`, white text, shadow `0 2px 8px rgba(239,68,68,0.4)` — then a divider and *Edit* (pencil; active bg `#1a1a1a`, white). Right: `.mid` ghost button, **AI convert** button (bg `#fef2f2`, border `#fecaca`, text `#b91c1c`), kebab.
+   - **Content row** (flex, gap 12px): **roll card** (flex 1) + **docked jianpu panel** (392px).
+   - **Transport dock**: centered floating white pill below the content row (see Interactions).
+
+**Roll card** (border `#e5e4e1`, radius 14px, white, shadow `0 2px 12px rgba(0,0,0,0.05)`), column:
+- **Practice toolbar** (hidden in Edit mode), padding 7px 12px, bottom border `#eeede9`: `1 | C` notation segment (jianpu/western labels, app-wide segmented style: track `#f3f2f0`, active thumb white + `#b91c1c` + shadow `0 1px 2px rgba(0,0,0,0.08)`); divider; **Lyrics** chip (toggle; on = green style `#dcfce7`/`#166534` + inset ring `rgba(22,163,74,0.25)`); when lyrics on: **中文 | Pīnyīn** segment and **Lyric line | On notes** segment (where syllables render); right-aligned mode hint text 11.5px `#9a9a9a`. **No Blank-sheet button here.**
+- **Deck**: fingering axis (216px, bg `#fcfcfb`, 8 rows: big jianpu digit `clamp(12px,2.2vh,19px)`/800 + mono pitch `clamp(9px,1.25vh,11px)` + hole diagram — square thumb + 3+3 circles, filled `#1a1a1a`; active row: left border 3px `#ef4444`, bg `#fef2f2`, red digits/holes; zebra rows `rgba(243,242,240,0.65)`) + **roll**: 8 zebra lanes, bar lines `#efeeeb` with mono bar numbers, 56px per beat. Notes are **pills** (radius 999, height 30px, font 13px/700): upcoming white w/ `1.5px solid #d6d4d0` border + `#44403c` text; played `#bbf7d0`/`#86efac`/`#166534`; current `#ef4444` bg, white, shadow `0 3px 12px rgba(239,68,68,0.4)`; out-of-range `#fffbeb` bg, `1.5px dashed #d97706`, ⚠ suffix. Playhead is a solid 2px `#ef4444` **NOW line** at x=168 with glow `0 0 14px rgba(239,68,68,0.45)` and a soft red gradient halo band; "NOW" label 9px/800. Legend chip bottom-right: `T back · 1–3 · 4–6 · ● cover`. When "On notes" is chosen, each pill shows its syllable inline after the digit (10.5px/500, 85% opacity).
+- **Karaoke band** (when Lyrics on + "Lyric line"): bg `#1a1a1a`, padding 15px 24px, top border `#eeede9`. "LYRICS" eyebrow 10px `#8a8a8a`; centered window of ±2…+4 syllables around the current note: current 34px/800 `#f87171`, others 19px/500 (past `#5a5a5a`, upcoming `#d4d4d4`); under each, the *other* script 13px (current `#f87171`, else `#6a6a6a`) — i.e. Chinese with pinyin beneath, or swapped when Pīnyīn is primary. Right: `line N · bar N` 700 `#f87171`.
+
+**Docked jianpu panel** (392px column, gap 9px) — *docked, not floating*:
+- Header row: "TRANSCRIBED JIANPU"/"ORIGINAL SCORE" eyebrow, image/list view segment, `line N · bar N` locator in `#b91c1c`.
+- **Sheet card** (flex 1, border `#e5e4e1`, radius 10px, shadow): jianpu view = mono font sheet on `linear-gradient(180deg,#fffcf7,#fff 30%)`, centered title + `Jianpu · 1=F · 4/4 · via <model>` subline, lines of digits 16px/600 with octave dots, duration underlines, `–` dashes, syllables 12px under each digit; current line outlined `1px dashed #d97706` on `rgba(217,119,6,0.04)`. **Pinyin spacing rule:** when Pīnyīn is active, each note reserves `min-width:34px` and line gaps widen so romanized syllables never overlap. **Picture view**: the original photo in a scrollable container with a floating dark zoom pill (−, %, ＋; 50%–300%, 25% steps, % resets), `transform: scale()` + native scroll for panning.
+- **Key & transpose card**: eyebrow + Copy/Adjust mini buttons; key buttons F/G/C/B♭ (active solid `#ef4444`) + dashed `C · adj`; ▾½/▴½ semitone shift; fit line `Playable C4–D5 (no natural B) · 63 of 147 out of range` (warn part `#d97706`).
+
+**Transport dock** — white pill, border `#e5e4e1`, radius 999, shadow `0 8px 28px rgba(0,0,0,0.12)`, padding 7px 14px: ⏮ ◀ **Play** (46px round `#ef4444`; playing → pause icon + `#b91c1c`) ▶ ⏹ | position `34 / 147` mono + seek slider | **BPM** number + slider + | voice `Bawu ▾` | **Metronome** chip (custom metronome SVG glyph: trapezoid + pendulum), **Reverb** chip (echo-waves icon = `pi-wifi` rotated 90°; when on, reveals a 0–100% amount slider + % readout), **Mic detect** chip (dot LED) — toggled chips use the green on-state | record button (red ring + dot) | `Takes 0`. **Compact variant below 1350px viewport width:** Metronome/Reverb/Mic collapse to 28px icon-only round chips with tooltips, sliders shorten, voice + Takes labels hide.
+
+### 2. Edit mode (desktop, replaces practice toolbar)
+- **Red toolbar**: bg `#fef2f2`, bottom border 2px `#ef4444`. Contents: **Done** (solid red, returns to Listen) · **Undo** (disabled tint `#e5b5b5` when history empty) · divider · **Copy ⌘C** / **Paste ⌘V** buttons (white, border `#fecaca`, text `#b91c1c`; Paste disabled-tinted until clipboard has notes) · `N selected ×` pill (clears selection) · right-aligned shortcut hint: `drag empty space to select many · 1–7 insert · ↑↓ row · ←→ length · Del`.
+- **Roll behavior**: cursor crosshair; click a note to select (shift-click adds/removes); **drag on empty space draws a dashed red marquee** (`1.5px dashed #ef4444` on `rgba(239,68,68,0.06)`) that selects every intersecting note; selected notes: bg `#fef2f2`, border `1.5px solid #ef4444`, outline `2px solid rgba(239,68,68,0.6)`; each note gets a right-edge resize handle.
+- **Keyboard step-entry**: `1–7` inserts that degree at the playhead (advances cursor ½ beat), `↑/↓` moves selection a row, `←/→` ∓¼ beat, `Del` removes, `⌘C/⌘V/⌘Z`.
+- **Inspector bar** (bottom of roll card, bg `#fcfcfb`): selection label (`1 note · bar 7` / `N notes selected`) · **Degree** segment 1–7 · **Row** stepper with pitch label · **Length** segment `¼ ½ ¾ 1 1½ 2 4` · **Lyric** text input (edits the selected note's syllable in the active script) · **Delete**. All controls apply to the whole selection.
+- Karaoke band is hidden in Edit mode. Edits save as the `data.adjusted` variant (existing behavior — never overwrite the AI transcription).
+
+### 3. Tuner popup (desktop)
+Opens from the rail gauge icon; anchored bottom-left over the stage (320px, radius 16px, shadow `0 16px 44px rgba(0,0,0,0.18)`). Header: gauge icon + "Tuner", `A4 = 440 Hz`, close. Giant note name **46px/800** with neighbor notes either side (14px `#c9c7c2`); needle gauge (±50¢ → ±60°, green in-tune wedge ±8¢, red zero tick); needle + note + cents turn **green `#16a34a` when |cents| ≤ 8**, red otherwise; cents readout 20px + Hz 12px; red **TARGET** strip (`#fef2f2`/`#fee2e2`): `6̣ · D4 (current note)` — wired to the score's current note.
+
+### 4. AI convert modal (all layouts)
+480px modal, radius 16px. Header "Add score" + close. **Picture | Manual** tabs + **# Jianpu | Western staff** source segment (picture tab only). Dashed drop zone (hover → `#f87171`/`#fef2f2`). Model + Effort selects (unchanged options). One row of checkboxes: **Extract lyrics** and **+ Pīnyīn** *(new — adds a per-note `py` romanization to the schema)*. **Notes for the AI** *(new)*: textarea, border `#fecaca`, bg `#fffcf7`, placeholder examples ("only transcribe the top voice", "the repeat sign means play lines 1–2 twice"); appended to the conversion prompt. Score name + Folder row. Footer: ⚡ streaming hint left, Cancel + red **Convert & open** (disabled until an image is set; Manual tab → "Create score").
+
+### 5. Phone portrait — "vertical mode" (reader)
+Simplified to reading only — **no editing, no downloads, no AI options**. Top bar: hamburger (score list drawer), title + `1=F · 4/4 · 147 notes`, **中文 | Pīnyīn** segment (44px touch targets). Body: scrollable jianpu sheet on `#fffcf7`, digits 21px, syllables 14px, generous gaps (wider in pinyin). Bottom: dark toast "Rotate to landscape to practice on the roll".
+
+### 6. Phone landscape — roll-only practice
+Full-screen roll: slim 44px axis (digits only), lanes, NOW line at x=90. **Karaoke band** always visible at the bottom (44px, `#1a1a1a`, current syllable 21px `#f87171`, neighbors 14px, locator right). **Tap the roll to show/hide chrome.** Chrome = top row: **← Exit** (opens the app-navigation sheet with all Kumquant sections — the way "out" of fullscreen), title chip, **Scores** (score/folder drawer), **AI** (convert modal); bottom floating dark dock: ◀ **Play** ▶ · position · BPM + slider · metronome / reverb / mic round toggles (on = green `#dcfce7`; mic on = red `#fee2e2`). All buttons ≥ 34px (44px preferred).
+
+---
+
+## Interactions & Behavior
+- Modes are mutually exclusive; switching stops playback; Edit is entered/left via the mode switcher (Done = back to Listen).
+- Playback: lane translates left at `bpm/60` beats/s (`translateX(NOW_X − t·56px)`); current note/row/karaoke/locator/seek all derive from `t`. Space toggles play (outside Edit).
+- All toggled chips: 120ms background/color transitions. Segmented controls: white thumb slides per active option.
+- Marquee select: pointerdown on empty roll space (edit only) → live dashed rect → pointerup selects intersecting notes; a <5px drag counts as a click and clears selection. Notes stopPropagation on pointerdown.
+- Picture zoom: buttons ±25% (50–300%), % label resets to 100%; container scrolls to pan.
+- Tuner needle transitions 90ms linear; updates ~4×/s from the pitch tracker.
+- Landscape chrome: tap roll toggles; taps on chrome/dock/drawers must not bubble to the toggle.
+- Responsive selection: `phone-landscape` when `vw > vh && vh < 500`; else `phone-portrait` when `vw < 900`; else desktop. Dock compacts below `vw 1350`.
+
+## State Management
+Per current BawuView state plus: `lyricsScript: 'chinese'|'pinyin'` and `lyricsPosition: 'band'|'notes'` (persist in localStorage like `bawu.notation`), `selIds` (multi-select set), `clipboard` (copied notes), edit history stack (undo), `picZoom`, `railOpen`, `chromeOn` (landscape), `reverbLevel` (exists). Score data gains an optional per-note `py` field alongside `ly`.
+
+## Design Tokens
+Identical to the existing `.bawu-app` tokens: accents `#ef4444 / #b91c1c / #f87171 / #fee2e2 / #fef2f2`; surfaces `#ffffff / #f3f2f0 / #fcfcfb / #fffcf7`; borders `#e5e4e1 / #eeede9`; text `#1a1a1a / #5c5c5c / #9a9a9a`; ok `#16a34a / #dcfce7 / #166534`; warn `#d97706 / #fffbeb`; dark band `#1a1a1a` (band text `#f87171 / #d4d4d4 / #8a8a8a / #5a5a5a`); radii 6–16px + 999 pills; shadows as listed inline above; system font stack + `ui-monospace` for numbers/jianpu.
+
+## Assets
+- PrimeIcons (already in the codebase). New glyphs: metronome = inline SVG (trapezoid + pendulum line), reverb = `pi pi-wifi` rotated 90°.
+- `assets/everything.webp` — existing app logo (from `public/everything.webp`), included only so the prototype renders.
+- Lyrics in the prototype are **placeholder syllables**, not the real song's lyrics.
+
+## Files
+- `Bawu Combined.dc.html` — the full interactive prototype (all three layouts, edit mode, tuner, AI modal). Open directly in a browser; `support.js` must sit beside it.
+- `INTEGRATION.md` — implementation plan for Claude Code against `price-scraper-frontend`.
+- `screenshots/` — captured states (taken at desktop preview width; the prototype itself is the source of truth for exact phone proportions):
+  - `01-desktop-listen.png` — default Listen mode, Chinese lyric band
+  - `02-desktop-pinyin-band.png` — Pīnyīn script active in the band + jianpu panel
+  - `03-edit-mode.png` — Edit mode, red toolbar
+  - `04-edit-selection-inspector.png` — multi-selection + inspector bar
+  - `05-tuner-popup.png` — tuner open
+  - `06-ai-convert-modal.png` — AI convert modal (notes-for-AI + Pīnyīn checkbox)
+  - `07-phone-portrait-reader.png` — vertical-mode jianpu reader
+  - `08-phone-landscape-roll.png` — roll-only landscape practice mode with chrome

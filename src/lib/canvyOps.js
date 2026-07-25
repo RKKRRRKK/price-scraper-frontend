@@ -194,19 +194,27 @@ export function serializeBoard(data, { scopeIds = null, withContext = false } = 
 // something it believes is wrong).
 export function parseOps(replyText) {
   const warnings = []
-  let body = replyText || ''
-  const fenced = body.match(/```(?:ops|canvy[a-z-]*)?\s*([\s\S]*?)```/i)
-  if (fenced) body = fenced[1]
+  const full = replyText || ''
+  const fenced = full.match(/```(?:ops|canvy[a-z-]*)?\s*([\s\S]*?)```/i)
+  const opsBody = fenced ? fenced[1] : full
 
   const stripQuotes = (s) => s.replace(/^["']|["']$/g, '').trim()
-  const ops = []
   const sayLines = []
   const issues = []
-  for (const rawLine of body.split('\n')) {
+  // `!` notes and `?` problems are collected from the WHOLE reply — models routinely
+  // put the `!` summary line ABOVE the ```ops fence, and a fenced-only scan silently
+  // dropped it, which broke the threaded progress note AND the live thinking trace.
+  for (const rawLine of full.split('\n')) {
+    const line = rawLine.trim()
+    if (line.startsWith('!')) { const t = line.slice(1).trim(); if (t) sayLines.push(t) }
+    else if (line.startsWith('?')) { const t = stripQuotes(line.slice(1).trim()); if (t) issues.push(t) }
+  }
+  // Commands come only from the fenced block (or the whole reply when there's no fence).
+  const ops = []
+  for (const rawLine of opsBody.split('\n')) {
     const line = rawLine.trim()
     if (!line || line.startsWith('#') || line.startsWith('//')) continue
-    if (line.startsWith('!')) { sayLines.push(line.slice(1).trim()); continue }
-    if (line.startsWith('?')) { const t = stripQuotes(line.slice(1).trim()); if (t) issues.push(t); continue }
+    if (line.startsWith('!') || line.startsWith('?')) continue // already handled above
     const tokens = tokenize(line)
     if (!tokens.length) continue
     ops.push({ verb: tokens[0].toLowerCase(), tokens: tokens.slice(1), line })

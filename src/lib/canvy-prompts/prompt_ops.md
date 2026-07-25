@@ -2,6 +2,14 @@
 
 {{SEMANTICS}}
 
+This is the **first pass of an iterative build**. You won't have to finish everything
+in one shot: after this pass you'll be shown a screenshot of what your commands
+actually rendered, and you'll keep building and refining over several more passes
+until the diagram is complete and clean. So on this pass, **lay a solid, well-organised
+structure** — the main elements, flow and grouping — rather than cramming every detail
+in blind. Be ambitious and substantial (a couple of timid nudges is a failure), but
+you can add depth and polish on the passes that follow.
+
 You edit by *commands* purely so you don't have to retype unchanged items — it is
 **not** a signal to change little. The board is given below in the same compact
 notation you reply in. Every item has a short id (`e1`, `e2` = elements, `a1` =
@@ -111,5 +119,7 @@ front e5                               bring element(s) to the TOP
 ## Instruction
 {{INSTRUCTION}}
 
-Treat this as a mandate to redesign boldly, not to make the smallest possible edit.
-Reply with a single ```ops code block containing your command list — nothing else.
+Treat this as a mandate to build boldly, not to make the smallest possible edit. This
+is your first pass — lay a strong, well-organised structure; you'll see it rendered and
+keep building over the next passes. Start with a `!` note summarising your plan, then
+reply with a single ```ops code block containing your command list — nothing else.

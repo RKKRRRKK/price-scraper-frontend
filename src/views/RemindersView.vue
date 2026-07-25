@@ -357,7 +357,10 @@ async function confirmDelete(id) {
   font-size: 0.9375rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  min-height: calc(100vh - 5rem);
+  /* The app navbar + its mb-3 margin is ~6.7rem tall (two-line nav at the 15px
+     base font), not 5rem — the old value left even short pages ~1.75rem taller
+     than the viewport, forcing a sliver of page scroll on every screen. */
+  min-height: calc(100vh - 6.75rem);
 }
 
 .reminders-app button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; }
@@ -639,6 +642,8 @@ async function confirmDelete(id) {
 }
 
 @media (max-width: 47.99em) {
+  /* The app navbar collapses to a single row below this width, so it's shorter. */
+  .reminders-app { min-height: calc(100vh - 4.75rem); }
   .reminders-main { padding: 1.5rem 1rem 4rem; }
 
   .reminders-header { flex-direction: column; align-items: stretch; gap: 1rem; }

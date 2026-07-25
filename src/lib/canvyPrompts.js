@@ -7,13 +7,13 @@
 // mechanical shell so the notation/command reference isn't duplicated per mode.
 //
 //   PROMPTS / promptMode          — the menu + each entry's apply-mode
-//   buildConstructivePrompt(…)    — the edit/comment turn (live + manual)
-//   buildVerifyPrompt(…)          — the screenshot-review turn (live, edit modes)
+//   buildConstructivePrompt(…)    — the first build pass / comment turn (live + manual)
+//   buildBuildPrompt(…)           — a continuation build pass (live, edit modes)
 //   buildManualPrompt(board,data) — the full copy/download prompt for the paste flow
 
 import promptOpsRaw from './canvy-prompts/prompt_ops.md?raw'
 import promptOpsCommentRaw from './canvy-prompts/prompt_ops_comment.md?raw'
-import promptVerifyOpsRaw from './canvy-prompts/prompt_verify_ops.md?raw'
+import promptBuildOpsRaw from './canvy-prompts/prompt_verify_ops.md?raw'
 import { serializeBoard, computeLayoutIssues } from './canvyOps'
 
 // `mode` drives how a reply is applied: 'edit' = constructive build, 'comment' =
@@ -118,13 +118,33 @@ export function buildConstructivePrompt({ board, compact, promptKey = 'new', ins
     .replace('{{INSTRUCTION}}', (instruction || '').trim() || '_describe your change here_')
 }
 
-// The screenshot-review turn (edit modes only). Re-states the mode's conventions so
-// corrections stay in style.
-export function buildVerifyPrompt({ board, compact, promptKey = 'new', instruction, issues = '' }) {
-  return promptVerifyOpsRaw
+// A continuation build pass (edit modes only). The model sees a screenshot of what
+// it has built so far plus its own prior note, then keeps building + fixing. Re-states
+// the mode's conventions so additions stay in style.
+//   progressNotes — the model's `!` note from the previous pass (threaded reasoning)
+//   pass/maxPasses — where we are in the self-stopping loop
+//   moreMode      — a user "keep going" resume: 'build' (expansion REQUIRED) or 'fix'
+//                   (correction only). Empty for ordinary continuation passes.
+export function buildBuildPrompt({ board, compact, promptKey = 'new', instruction, issues = '', progressNotes = '', pass = 1, maxPasses = 5, moreMode = '' }) {
+  const passInfo = `You are on **pass ${pass} of at most ${maxPasses}**. Don't stop early — only reply \`done\` once the diagram is genuinely thorough AND clean.`
+  const progressBlock = progressNotes
+    ? `\n## Progress so far (your own note from the previous pass)\n${progressNotes}\n`
+    : ''
+  let moreBlock = ''
+  if (moreMode === 'build') {
+    moreBlock = `\n> ## BUILD MORE — you MUST add new content this pass\n> The user looked at the board and wants it **substantially expanded**. This pass is for **adding**, not tidying:\n> - Add **at least 5 brand-new elements** — new tasks/services/branches/sub-steps/data stores/notes — plus the arrows that connect them. Put them in open space (extend to the right or downward).\n> - Create them with the \`add\` command, e.g. \`add n1 rect @2600,120 200x120 b1 "New Service"\` and \`arw n1:l->e13:r "label"\`. **\`mov\` only repositions items that ALREADY exist — it does nothing for a new id, so never try to "add" with \`mov\`.** Coin fresh ids like \`n1 n2 n3\`.\n> - Do **not** spend this pass fixing minor overlaps or rerouting existing arrows, and you are **forbidden from replying \`done\`**. Adding real new content is the only goal.\n> - If you think it's already complete, invent plausible extensions anyway (edge cases, retries, monitoring, supporting services, related subsystems) — expansion is required regardless.\n> - Reply **only** in the line-command DSL below. **Never reply with JSON.**\n`
+  } else if (moreMode === 'fix') {
+    moreBlock = `\n> ## CORRECT MISTAKES — this is a correction pass\n> Focus entirely on what is **wrong** in the screenshot: overlapping boxes, crossing/cluttered arrows, arrows attached to the wrong element or pointing the wrong way, mislabeled / misplaced / clipped items, anything that reads as broken. **Repair** them — pull boxes ≥100px apart, reroute arrows (\`elbow\`/\`~curve\`/pin a side), fix connections and labels. Do **not** add new scope this pass. Reply \`done\` only once it genuinely looks clean.\n`
+  } else {
+    moreBlock = `\n> There is almost always more you can add or tighten — keep **enriching** the diagram this pass (missing steps/detail, clearer grouping, cleaner layout). Prefer making real progress over stopping; reply \`done\` only when it's genuinely complete and clean.\n`
+  }
+  return promptBuildOpsRaw
     .replace('{{SEMANTICS}}', SEMANTICS[promptKey] || SEMANTICS.new)
     .replace(/\{\{BOARD_NAME\}\}/g, board?.name || 'Untitled board')
     .replace('{{INSTRUCTION}}', (instruction || '').trim() || '(the change described earlier)')
+    .replace('{{PASS_INFO}}', passInfo)
+    .replace('{{PROGRESS_NOTES}}', progressBlock)
+    .replace('{{MORE_NUDGE}}', moreBlock)
     .replace('{{LAYOUT_ISSUES}}', issues)
     .replace('{{BOARD_COMPACT}}', compact || '(empty board)')
 }
