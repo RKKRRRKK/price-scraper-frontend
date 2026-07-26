@@ -1,17 +1,8 @@
 <template>
-  <div class="bawu-app" :class="'layout-' + layout">
+  <div class="bawu-app" :class="['layout-' + layout, { 'rail-open': railOpen }]">
     <!-- ══════════ DESKTOP ══════════ -->
     <template v-if="layout === 'desktop'">
-      <!-- Floating controls: expand the rail (top-left) + tuner (bottom-left) -->
-      <button v-show="!railOpen" class="rail-fab rail-fab-top" @click="railOpen = true" title="Scores">
-        <i class="pi pi-angle-double-right"></i>
-      </button>
-      <button class="rail-fab rail-fab-tuner" :class="{ on: tunerOpen }" @click="toggleTuner" title="Tuner">
-        <i class="pi pi-gauge"></i>
-      </button>
-
-      <!-- Expanded rail overlay -->
-      <div v-if="railOpen" class="rail-scrim" @click="railOpen = false"></div>
+      <!-- Rail: in-flow, so opening it pushes the stage aside rather than covering it -->
       <aside class="rail-overlay" :class="{ open: railOpen }">
         <div class="rail-head">
           <div class="rail-head-text">
@@ -160,17 +151,25 @@
         </div>
       </aside>
 
-      <!-- Tuner popup (anchored bottom-left, over the icon rail) -->
-      <BawuTuner
-        :open="tunerOpen"
-        :pitch="pitch"
-        :mic-on="micActive"
-        :target-note="score ? targetNote : null"
-        @close="tunerOpen = false"
-      />
-
       <!-- Stage -->
       <main class="stage">
+        <!-- Floating controls: expand the rail (top-left) + tuner (bottom-left) -->
+        <button v-show="!railOpen" class="rail-fab rail-fab-top" @click="railOpen = true" title="Scores">
+          <i class="pi pi-angle-double-right"></i>
+        </button>
+        <button class="rail-fab rail-fab-tuner" :class="{ on: tunerOpen }" @click="toggleTuner" title="Tuner">
+          <i class="pi pi-gauge"></i>
+        </button>
+
+        <!-- Tuner popup (anchored bottom-left, over the tuner button) -->
+        <BawuTuner
+          :open="tunerOpen"
+          :pitch="pitch"
+          :mic-on="micActive"
+          :target-note="score ? targetNote : null"
+          @close="tunerOpen = false"
+        />
+
         <div v-if="!score" class="empty">
           <div class="empty-art"><i class="pi pi-headphones" style="font-size: 3.5rem; color: var(--text-faint);"></i></div>
           <div class="empty-title">No score selected</div>
@@ -254,6 +253,12 @@
                   <button :class="{ on: notation === 'western' }" @click="notation = 'western'">C</button>
                 </div>
                 <span class="tb-div"></span>
+                <div class="seg seg-zoom" :title="'Roll zoom — ' + PX + 'px per beat'">
+                  <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
+                  <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
+                  <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
+                </div>
+                <span class="tb-div"></span>
                 <button
                   v-if="lyricsPresent"
                   class="chip chip-sm"
@@ -283,6 +288,12 @@
                 <button class="eb-btn" @click="copySelection" :disabled="!selCount"><i class="pi pi-clone" style="font-size: 0.7rem;"></i> Copy <b class="kbd">⌘C</b></button>
                 <button class="eb-btn" @click="pasteSelection" :disabled="!clipboard"><i class="pi pi-file-import" style="font-size: 0.7rem;"></i> Paste <b class="kbd">⌘V</b></button>
                 <button v-if="selCount" class="eb-selchip" @click="clearSelection">{{ selCount }} selected <i class="pi pi-times" style="font-size: 0.6rem;"></i></button>
+                <span class="eb-div"></span>
+                <div class="seg seg-zoom" :title="'Roll zoom — ' + PX + 'px per beat'">
+                  <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
+                  <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
+                  <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
+                </div>
                 <div class="spacer"></div>
                 <span class="eb-hint"><b class="kbd">drag</b> to select · <b class="kbd">1–7</b> insert · <b class="kbd">↑↓</b> row · <b class="kbd">←→</b> length · <b class="kbd">Del</b></span>
               </div>
@@ -626,12 +637,22 @@
           </div>
         </div>
 
-        <div v-if="score" class="pp-sheet" :class="{ pinyin: lyricsScript === 'pinyin' }">
+        <div v-if="score" class="pp-sheet" ref="ppSheetEl" :class="{ pinyin: lyricsScript === 'pinyin' }">
           <div class="a4-title">{{ score.name }}</div>
           <div class="a4-sub">Jianpu · 1={{ keyLabel }} · {{ activeData?.timeSig || '4/4' }}</div>
           <div class="a4-staff has-ly" :class="{ pinyin: lyricsScript === 'pinyin' }">
-            <div v-for="(line, li) in jianpuLines" :key="li" class="a4-line">
-              <span v-for="(n, ni) in line" :key="ni" class="a4-n">
+            <div
+              v-for="(line, li) in jianpuLines"
+              :key="li"
+              class="a4-line"
+              :class="{ zone: currentNote && currentNote.lineIdx === li }"
+            >
+              <span
+                v-for="(n, ni) in line"
+                :key="ni"
+                class="a4-n"
+                :class="{ cur: currentNote && n.start === currentNote.start && !n.rest }"
+              >
                 <span v-if="n.art" class="art">{{ artLabel(n.art) }}</span>
                 <span class="num" :class="'u' + jianpuDuration(n.beats).underlines">
                   <span v-if="octDots(n.oct, true)" class="dots dots-hi"><i v-for="d in octDots(n.oct, true)" :key="'h' + d"></i></span>
@@ -648,6 +669,34 @@
         <div v-else class="pp-empty">Pick a score from the drawer.</div>
 
         <div class="pp-hint"><i class="pi pi-mobile"></i> Rotate to landscape to practise on the roll</div>
+
+        <!-- Transport -->
+        <div v-if="score" class="pp-dock">
+          <div class="ppd-row">
+            <button class="ppd-nav" @click="goToStart" title="Back to start"><i class="pi pi-step-backward"></i></button>
+            <button class="ppd-nav" @click="stepBy(-1)" title="Previous note"><i class="pi pi-chevron-left"></i></button>
+            <button class="ppd-play" :class="{ playing }" @click="togglePlay" :title="playing ? 'Pause' : 'Play'">
+              <i :class="playing ? 'pi pi-pause' : 'pi pi-play'"></i>
+            </button>
+            <button class="ppd-nav" @click="stepBy(1)" title="Next note"><i class="pi pi-chevron-right"></i></button>
+            <span class="ppd-pos">{{ posLabel }}</span>
+            <button class="ppd-icon" :class="{ on: metroOn }" @click="toggleMetro" title="Metronome">
+              <svg width="14" height="14" viewBox="0 0 12 12" class="metro-svg"><path d="M4.2 1.5 L7.8 1.5 L10 10.5 L2 10.5 Z" /><line x1="6" y1="8.6" x2="8.8" y2="2.6" /></svg>
+            </button>
+          </div>
+          <div class="ppd-row ppd-row-bpm">
+            <span class="ppd-bpm"><b>{{ bpm }}</b> BPM</span>
+            <input class="slider" type="range" min="40" max="160" v-model.number="bpm" />
+            <input
+              class="slider seek"
+              type="range"
+              min="0"
+              :max="Math.max(0, playableNotes.length - 1)"
+              :value="uiIdx"
+              @input="onSeek($event.target.value)"
+            />
+          </div>
+        </div>
 
         <!-- Scores drawer -->
         <div v-if="railOpen" class="drawer-scrim" @click="railOpen = false"></div>
@@ -666,6 +715,17 @@
 
     <!-- ══════════ PHONE · LANDSCAPE (roll only) ══════════ -->
     <template v-else>
+      <!-- Scores drawer: in flow, so it pushes the roll across instead of covering it -->
+      <div class="drawer" :class="{ open: railOpen }" @click.stop>
+        <div class="drawer-head"><b>Scores</b><button @click="railOpen = false"><i class="pi pi-times"></i></button></div>
+        <div class="drawer-list">
+          <button v-for="s in store.scores" :key="s.id" class="drawer-item" :class="{ active: s.id === store.activeScoreId }" @click="selectScore(s.id)">
+            <span class="di-name">{{ s.name }}</span>
+            <span class="di-meta">1={{ s.data?.key || 'F' }} · {{ noteCount(s) }}</span>
+          </button>
+        </div>
+      </div>
+
       <div class="pl" @click="chromeOn = !chromeOn">
         <div class="pl-stage">
           <div class="pl-axis">
@@ -736,18 +796,6 @@
             <button class="pld-icon" :class="{ on: micOn }" @click="toggleMic" title="Mic detect"><i class="pi pi-microphone"></i></button>
           </div>
         </template>
-
-        <!-- Scores drawer -->
-        <div v-if="railOpen" class="drawer-scrim" @click.stop="railOpen = false"></div>
-        <div class="drawer" :class="{ open: railOpen }" @click.stop>
-          <div class="drawer-head"><b>Scores</b><button @click="railOpen = false"><i class="pi pi-times"></i></button></div>
-          <div class="drawer-list">
-            <button v-for="s in store.scores" :key="s.id" class="drawer-item" :class="{ active: s.id === store.activeScoreId }" @click="selectScore(s.id)">
-              <span class="di-name">{{ s.name }}</span>
-              <span class="di-meta">1={{ s.data?.key || 'F' }} · {{ noteCount(s) }}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </template>
 
@@ -795,17 +843,38 @@ const router = useRouter()
 const store = useBawuStore()
 
 // ── Layout constants ────────────────────────────────────────────────────────
-const PX = 90 // px per beat on the roll (also sets scroll speed: PX × bpm/60 px/s)
+// Roll scale. `PX` (px per beat, and so the scroll speed: PX × bpm/60 px/s) is
+// computed further down from the shortest note in the piece — see `PX`.
+const PX_MIN = 90 // the historical fixed scale; scores of quarters and longer keep it
+const PX_MAX = 300
+const MIN_NOTE_PX = 40 // the shortest note's pill must be at least this wide to read
+const NOTE_GAP = 8 // px trimmed off a pill so neighbours don't touch
 const PLAYHEAD_X = 168 // px from the desktop roll's left edge → the NOW line
 const PLAYHEAD_X_PHONE = 90 // px from the phone-landscape roll's left edge
 
 // ── Viewport / layout ───────────────────────────────────────────────────────
-const vw = ref(typeof window !== 'undefined' ? window.innerWidth : 1600)
-const vh = ref(typeof window !== 'undefined' ? window.innerHeight : 900)
+// documentElement.clientWidth/Height — not window.innerWidth/Height — because on
+// mobile the inner* pair tracks the *visual* viewport: pinch-zooming out (or a
+// "desktop site" toggle) inflates them and the app would pick the desktop layout
+// while CSS still lays out against a phone-sized viewport.
+function viewportW() {
+  return document.documentElement?.clientWidth || window.innerWidth || 1600
+}
+function viewportH() {
+  return document.documentElement?.clientHeight || window.innerHeight || 900
+}
+const vw = ref(typeof window !== 'undefined' ? viewportW() : 1600)
+const vh = ref(typeof window !== 'undefined' ? viewportH() : 900)
+const coarsePointer = ref(
+  typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false,
+)
 const layout = computed(() => {
-  if (vw.value > vh.value && vh.value < 500) return 'phone-landscape'
-  if (vw.value < 900) return vw.value > vh.value ? 'phone-landscape' : 'phone-portrait'
-  return 'desktop'
+  // Landscape is decided by height: a phone on its side is short no matter how
+  // many CSS pixels wide it claims to be.
+  if (vw.value > vh.value) {
+    return vh.value < 560 || (coarsePointer.value && vh.value < 720) ? 'phone-landscape' : 'desktop'
+  }
+  return vw.value < 900 ? 'phone-portrait' : 'desktop'
 })
 const dockCompact = computed(() => vw.value < 1350)
 const chromeOn = ref(true) // phone-landscape chrome visibility
@@ -846,6 +915,9 @@ const lyricsPosition = ref(localStorage.getItem('bawu.lyricsPosition') === 'note
 watch(lyricsScript, (v) => localStorage.setItem('bawu.lyricsScript', v))
 watch(lyricsPosition, (v) => localStorage.setItem('bawu.lyricsPosition', v))
 const picZoom = ref(1) // original-picture zoom (0.5–3)
+// Roll zoom (0.5–2) on top of the auto-fitted beat width — sticky across sessions.
+const rollZoom = ref(Math.min(2, Math.max(0.5, Number(localStorage.getItem('bawu.rollZoom')) || 1)))
+watch(rollZoom, (v) => localStorage.setItem('bawu.rollZoom', String(v)))
 const editMode = ref(false) // direct note editing on the roll (a fourth "mode")
 const selectedIds = ref(new Set()) // playable-note indices selected in edit mode
 const undoStack = ref([]) // edit snapshots ({ key,bpm,timeSig,lines }), cap 30
@@ -853,7 +925,7 @@ const clipboard = ref(null) // copied events, relative to their earliest start
 const marquee = ref(null) // { x0,y0,x1,y1 } in roll-local coords while box-selecting
 let mqRect = null // roll bounding rect captured at marquee start
 const GRID = 0.25 // edit snap grid, in beats
-const LEN_PRESETS = [['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1], ['1½', 1.5], ['2', 2], ['4', 4]]
+const LEN_PRESETS = [['⅛', 0.125], ['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1], ['1½', 1.5], ['2', 2], ['4', 4]]
 const liveEdit = ref(null) // edited { key,bpm,timeSig,lines } shown live during a drag
 const uiIdx = ref(0) // reactive mirror of the current note index (UI only)
 const pitch = ref(null) // latest mic pitch { name, midi, cents, freq, midiFloat }
@@ -888,6 +960,7 @@ const rollElPhone = ref(null)
 const laneElPhone = ref(null)
 const traceCanvas = ref(null)
 const pageImgWrap = ref(null)
+const ppSheetEl = ref(null)
 
 // ── Score derived data ──────────────────────────────────────────────────────
 const score = computed(() => draft.value || store.activeScore)
@@ -940,7 +1013,33 @@ const beatsPerBar = computed(() => {
   return m ? Math.max(1, Number(m[1])) : 4
 })
 const barCount = computed(() => Math.max(1, Math.ceil((totalBeats.value + 0.01) / beatsPerBar.value)))
-const laneWidth = computed(() => Math.max(400, totalBeats.value * PX + 200))
+
+// ── Roll scale ──────────────────────────────────────────────────────────────
+// The roll stretches to fit the shortest note in the piece rather than squashing
+// short notes: at a fixed 90px/beat a 1/16 was 14px wide — too small for its
+// label and indistinguishable from a 1/8. So a piece with 1/16s simply gets a
+// wider beat, and everything (bars, spacing, scroll speed) grows with it.
+// The shortest duration the piece actually leans on — a lone grace note or one
+// stray 1/32 shouldn't stretch the whole roll, so a duration has to turn up in
+// at least 5% of the notes before it sets the scale.
+const shortestBeats = computed(() => {
+  const notes = laneNotes.value
+  const counts = new Map()
+  for (const n of notes) if (n.beats > 0) counts.set(n.beats, (counts.get(n.beats) || 0) + 1)
+  const durations = [...counts.keys()].sort((a, b) => a - b)
+  if (!durations.length) return 1
+  const floor = Math.max(1, notes.length * 0.05)
+  return durations.find((d) => counts.get(d) >= floor) ?? durations[0]
+})
+const PX = computed(() => {
+  const fit = (MIN_NOTE_PX + NOTE_GAP) / shortestBeats.value
+  return Math.round(Math.min(PX_MAX, Math.max(PX_MIN, fit)) * rollZoom.value)
+})
+function zoomRoll(delta) {
+  rollZoom.value = Math.min(2, Math.max(0.5, Math.round((rollZoom.value + delta) * 100) / 100))
+}
+
+const laneWidth = computed(() => Math.max(400, totalBeats.value * PX.value + 200))
 const currentNote = computed(() => playableNotes.value[uiIdx.value] || null)
 const lineCount = computed(() => score.value?.data?.lines?.length || 0)
 const hasPicture = computed(() => (isDraft.value ? !!draft.value.previewUrl : !!score.value?.image_path))
@@ -1089,8 +1188,8 @@ function frame(ts) {
   }
 
   // lane transforms (direct DOM — no reactivity at 60fps)
-  if (laneEl.value) laneEl.value.style.transform = `translateX(${PLAYHEAD_X - t * PX}px)`
-  if (laneElPhone.value) laneElPhone.value.style.transform = `translateX(${PLAYHEAD_X_PHONE - t * PX}px)`
+  if (laneEl.value) laneEl.value.style.transform = `translateX(${PLAYHEAD_X - t * PX.value}px)`
+  if (laneElPhone.value) laneElPhone.value.style.transform = `translateX(${PLAYHEAD_X_PHONE - t * PX.value}px)`
   drawTrace(ts)
 
   if (uiIdx.value !== curIdx) uiIdx.value = curIdx
@@ -1113,7 +1212,7 @@ function drawTrace() {
 
   const now = performance.now()
   while (traceSamples.length && now - traceSamples[0].at > 6000) traceSamples.shift()
-  const pxPerSec = PX * (bpm.value / 60)
+  const pxPerSec = PX.value * (bpm.value / 60)
   const rows = BAWU_NOTES.length
   const yOf = (mf) => ((rowFloatOfMidi(mf) + 0.5) / rows) * h
   const xOf = (at) => PLAYHEAD_X - ((now - at) / 1000) * pxPerSec
@@ -1428,20 +1527,31 @@ function nearestRow(midi) {
   })
   return best
 }
+// A note's pill is exactly as long as it sounds — the gap that separates it from
+// the next one shrinks with the note, so a 1/16 (0.25 beats) reads as a quarter
+// of a 1/4 instead of both bottoming out at the same minimum width. The beat
+// scale itself (`PX`) keeps even the shortest pill wide enough for its label.
+function noteWidth(n) {
+  const span = n.beats * PX.value
+  return Math.max(span - Math.min(NOTE_GAP, span * 0.18), 10)
+}
 function noteClass(n) {
+  const w = noteWidth(n)
   return {
     done: !editMode.value && n.idx < uiIdx.value,
     current: !editMode.value && n.idx === uiIdx.value,
     upcoming: !editMode.value && n.idx > uiIdx.value,
     unplayable: n.row === null,
     selected: isSelected(n),
+    tight: w < 46, // trim padding so the label still fits
+    tiny: w < 20, // no room for a label at all
   }
 }
 function noteStyle(n) {
   const row = n.row === null ? nearestRow(n.midi ?? 69) : n.row
   return {
-    left: n.start * PX + 'px',
-    width: Math.max(n.beats * PX - 8, 44) + 'px',
+    left: n.start * PX.value + 'px',
+    width: noteWidth(n) + 'px',
     top: ((row + 0.5) / BAWU_NOTES.length) * 100 + '%',
   }
 }
@@ -1506,7 +1616,7 @@ function editableBase() {
 function beatFromClientX(clientX) {
   const rect = laneEl.value?.getBoundingClientRect()
   if (!rect) return 0
-  return Math.max(0, (clientX - rect.left) / PX)
+  return Math.max(0, (clientX - rect.left) / PX.value)
 }
 function midiFromClientY(clientY) {
   const rect = rollEl.value?.getBoundingClientRect()
@@ -1691,9 +1801,9 @@ function onMarqueeUp() {
   const w = Math.abs(mq.x1 - mq.x0)
   const h = Math.abs(mq.y1 - mq.y0)
   if (w < 5 && h < 5) { selectedIds.value = new Set(); return } // a plain click clears
-  const laneOff = PLAYHEAD_X - t * PX
-  const b0 = (Math.min(mq.x0, mq.x1) - laneOff) / PX
-  const b1 = (Math.max(mq.x0, mq.x1) - laneOff) / PX
+  const laneOff = PLAYHEAD_X - t * PX.value
+  const b0 = (Math.min(mq.x0, mq.x1) - laneOff) / PX.value
+  const b1 = (Math.max(mq.x0, mq.x1) - laneOff) / PX.value
   const rows = BAWU_NOTES.length
   const r0 = Math.floor((Math.min(mq.y0, mq.y1) / rect.height) * rows)
   const r1 = Math.floor((Math.max(mq.y0, mq.y1) / rect.height) * rows)
@@ -1769,11 +1879,11 @@ function onResizePointerDown(e, n) {
 function onDragMove(e) {
   if (!drag) return
   if (drag.type === 'move') {
-    const dxBeats = (e.clientX - drag.startX) / PX
+    const dxBeats = (e.clientX - drag.startX) / PX.value
     drag.ev.start = Math.max(0, snapBeat(drag.origStart + dxBeats, GRID))
     drag.ev.midi = midiFromClientY(e.clientY)
   } else {
-    const dxBeats = (e.clientX - drag.startX) / PX
+    const dxBeats = (e.clientX - drag.startX) / PX.value
     drag.ev.beats = Math.max(MIN_BEATS, snapBeat(drag.origBeats + dxBeats, GRID))
     lastAddBeats = drag.ev.beats
   }
@@ -2313,6 +2423,23 @@ watch(
   },
 )
 
+// Phone portrait: keep the line being played inside the reader's window.
+watch(
+  () => currentNote.value?.lineIdx,
+  (li) => {
+    if (li == null || layout.value !== 'phone-portrait') return
+    nextTick(() => {
+      const wrap = ppSheetEl.value
+      const line = wrap?.querySelectorAll('.a4-line')?.[li]
+      if (!wrap || !line) return
+      const wrapBox = wrap.getBoundingClientRect()
+      const lineBox = line.getBoundingClientRect()
+      const top = wrap.scrollTop + (lineBox.top - wrapBox.top) - wrap.clientHeight / 2 + lineBox.height / 2
+      wrap.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    })
+  },
+)
+
 // ── Keyboard ────────────────────────────────────────────────────────────────
 function onKeydown(e) {
   const tag = e.target?.tagName
@@ -2361,8 +2488,9 @@ function onDocClick() {
 }
 
 function onResize() {
-  vw.value = window.innerWidth
-  vh.value = window.innerHeight
+  vw.value = viewportW()
+  vh.value = viewportH()
+  if (window.matchMedia) coarsePointer.value = window.matchMedia('(pointer: coarse)').matches
 }
 
 onMounted(() => {
@@ -2372,7 +2500,9 @@ onMounted(() => {
   rafId = requestAnimationFrame(frame)
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('resize', onResize)
+  window.addEventListener('orientationchange', onResize)
   document.addEventListener('click', onDocClick)
+  onResize()
 })
 
 watch(
@@ -2390,6 +2520,7 @@ onBeforeUnmount(() => {
   discardDraft()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('orientationchange', onResize)
   window.removeEventListener('pointermove', onDragMove)
   window.removeEventListener('pointerup', onDragUp)
   window.removeEventListener('pointermove', onMarqueeMove)
@@ -2437,11 +2568,24 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   height: calc(100vh - 6.75rem);
+  height: calc(100dvh - 6.75rem); /* dvh: phone chrome shrinks the viewport */
   overflow: hidden;
   display: flex;
   align-items: stretch;
   position: relative;
   background: var(--bg-sunken);
+}
+/* Phone landscape is a full-screen practice surface: it covers the app navbar
+   (which is far too tall for a 400px-high viewport and overflows sideways). */
+.bawu-app.layout-phone-landscape {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
+  overscroll-behavior: none;
 }
 :where(.bawu-app button) { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; }
 .bawu-app button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -2460,16 +2604,19 @@ onBeforeUnmount(() => {
 .rail-fab-tuner { bottom: 1rem; }
 .bawu-app .rail-fab-tuner.on { background: var(--accent-050); border-color: var(--accent-400); color: var(--accent-600); }
 
-/* ── Rail overlay ── */
-.rail-scrim { position: absolute; inset: 0; z-index: 30; background: rgba(26, 26, 26, 0.15); }
+/* ── Rail ── in flow, so opening it pushes the stage across instead of covering it */
 .rail-overlay {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 18.75rem; z-index: 31;
+  position: relative; z-index: 31;
+  flex: 0 0 18.75rem; width: 18.75rem; margin-left: -18.75rem;
   background: var(--bg-card); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem 0.75rem;
-  transform: translateX(calc(-100% - 1rem)); transition: transform 200ms ease; will-change: transform;
-  box-shadow: none;
+  opacity: 0; visibility: hidden; will-change: margin-left;
+  transition: margin-left 200ms ease, opacity 140ms ease, visibility 0s linear 200ms;
 }
-.rail-overlay.open { transform: translateX(0); box-shadow: 8px 0 30px rgba(0, 0, 0, 0.1); }
+.rail-overlay.open {
+  margin-left: 0; opacity: 1; visibility: visible;
+  transition: margin-left 200ms ease, opacity 140ms ease, visibility 0s;
+}
 
 .rail-head { display: flex; justify-content: space-between; align-items: flex-start; }
 .eyebrow { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent-500); }
@@ -2560,7 +2707,8 @@ onBeforeUnmount(() => {
 /* ── Stage ── */
 .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0.75rem 1rem 0.75rem; gap: 0.65rem; min-height: 0; position: relative; }
 
-.stage-header { display: flex; align-items: center; gap: 0.9rem; padding-left: 2.85rem; }
+.stage-header { display: flex; align-items: center; gap: 0.9rem; padding-left: 2.85rem; transition: padding-left 200ms ease; }
+.rail-open .stage-header { padding-left: 0; } /* the open-rail button is gone — reclaim the gap */
 .header-title { min-width: 0; flex: 1; }
 .score-name { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.02em; border: none; outline: none; background: none; width: 100%; padding: 0.05rem 0; border-bottom: 2px solid transparent; }
 .score-name:focus { border-bottom-color: var(--accent-400); }
@@ -2606,6 +2754,8 @@ onBeforeUnmount(() => {
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--bg-sunken); padding: 0.12rem; gap: 0.1rem; }
 .bawu-app .seg button { min-width: 1.85rem; height: 1.55rem; padding: 0 0.5rem; border-radius: 0.35rem; font-weight: 700; font-size: 0.78rem; color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; }
 .bawu-app .seg button.on { background: #fff; color: var(--accent-600); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.seg-zoom button i { font-size: 0.6rem; }
+.bawu-app .seg-zoom .zoom-val { min-width: 2.6rem; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); }
 .desk-bar .mode-hint { font-size: 0.75rem; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .desk-bar .spacer, .inspector .spacer, .key-card .spacer { flex: 1; }
 
@@ -2676,6 +2826,13 @@ onBeforeUnmount(() => {
 .note.selected { background: var(--accent-050); border: 1.5px solid var(--accent-500); color: var(--accent-600); outline: 2px solid rgba(239, 68, 68, 0.5); outline-offset: 1px; z-index: 5; }
 .note-resize { position: absolute; top: 0; right: 0; bottom: 0; width: 10px; cursor: ew-resize; border-radius: 0 999px 999px 0; }
 .note-resize::after { content: ''; position: absolute; top: 50%; right: 3px; transform: translateY(-50%); width: 2px; height: 45%; border-radius: 1px; background: currentColor; opacity: 0.5; }
+/* Short notes: a squarer, tighter pill so the length stays honest — the label
+   keeps its full size, the padding is what gives way. */
+.bawu-app .note.tight { padding: 0 0.25rem; gap: 0.2rem; border-radius: 0.5rem; }
+.bawu-app .note.tight .note-syl { display: none; }
+.bawu-app .note.tiny { padding: 0; border-radius: 0.3rem; font-size: clamp(0.65rem, 1.6vh, 0.8rem); }
+.bawu-app .note.tiny .note-lab { display: none; }
+.bawu-app .note.tight .note-resize { width: 6px; }
 
 .marquee { position: absolute; border: 1.5px dashed var(--accent-500); background: rgba(239, 68, 68, 0.06); border-radius: 0.4rem; z-index: 6; pointer-events: none; }
 .nowline { position: absolute; top: 0; bottom: 0; left: 168px; width: 2px; background: var(--accent-500); z-index: 4; box-shadow: 0 0 14px rgba(239, 68, 68, 0.45); pointer-events: none; }
@@ -2874,6 +3031,15 @@ onBeforeUnmount(() => {
 .drawer-item .di-name { flex: 1; min-width: 0; font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-item.active .di-name { color: var(--accent-600); }
 .drawer-item .di-meta { font-size: 0.72rem; color: var(--text-faint); white-space: nowrap; }
+/* Landscape: the drawer is in flow and pushes the roll aside (no scrim needed). */
+.layout-phone-landscape .drawer {
+  position: relative; left: auto; top: auto; bottom: auto;
+  flex: 0 0 15rem; width: 15rem; max-width: none; margin-left: -15rem;
+  transform: none; box-shadow: none; border-right: 1px solid var(--border);
+  transition: margin-left 200ms ease, visibility 0s linear 200ms;
+  visibility: hidden;
+}
+.layout-phone-landscape .drawer.open { margin-left: 0; visibility: visible; transition: margin-left 200ms ease, visibility 0s; }
 
 /* ── Phone portrait (reader) ── */
 .pp { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fffcf7; position: relative; }
@@ -2892,7 +3058,25 @@ onBeforeUnmount(() => {
 .pp-sheet.pinyin .a4-line { gap: 0.6rem 0.95rem; }
 .pp-sheet .a4-n .a4-ly { font-size: 0.85rem; }
 .pp-empty { flex: 1; display: grid; place-items: center; color: var(--text-faint); }
-.pp-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0.9rem; background: #1a1a1a; color: #d4d4d4; font-size: 0.72rem; border-radius: 999px; padding: 0.5rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; }
+.pp-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: 6.9rem; background: #1a1a1a; color: #d4d4d4; font-size: 0.72rem; border-radius: 999px; padding: 0.5rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; z-index: 4; }
+
+/* Phone-portrait transport */
+.pp-dock { flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.85rem calc(0.7rem + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--border); box-shadow: 0 -2px 12px rgba(0,0,0,0.06); z-index: 5; }
+.ppd-row { display: flex; align-items: center; gap: 0.5rem; }
+.ppd-row-bpm { gap: 0.65rem; }
+.bawu-app .ppd-nav { width: 2.4rem; height: 2.4rem; border-radius: 999px; color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+.bawu-app .ppd-nav:active { background: var(--bg-sunken); }
+.bawu-app .ppd-play { width: 3rem; height: 3rem; border-radius: 999px; background: var(--accent-500); color: #fff; display: grid; place-items: center; font-size: 1rem; flex-shrink: 0; box-shadow: 0 3px 12px rgba(239, 68, 68, 0.4); }
+.bawu-app .ppd-play.playing { background: var(--accent-600); }
+.ppd-pos { flex: 1; text-align: right; font-family: var(--mono); font-size: 0.78rem; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+.bawu-app .ppd-icon { width: 2.4rem; height: 2.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.bawu-app .ppd-icon.on { background: var(--ok-soft); border-color: transparent; color: var(--ok-ink); }
+.ppd-bpm { font-size: 0.62rem; font-weight: 700; color: var(--text-faint); white-space: nowrap; }
+.ppd-bpm b { font-size: 0.85rem; color: var(--text); }
+.pp-dock .slider { flex: 1; min-width: 0; height: 6px; }
+.pp-dock .slider.seek { flex: 1.4; }
+.pp-dock .slider::-webkit-slider-thumb { width: 20px; height: 20px; }
+.pp-dock .slider::-moz-range-thumb { width: 20px; height: 20px; }
 
 /* ── Phone landscape (roll only) ── */
 .pl { flex: 1; min-width: 0; position: relative; background: #fff; overflow: hidden; }
@@ -2931,7 +3115,7 @@ onBeforeUnmount(() => {
 
 /* ── Responsive (desktop widths) ── */
 @media (max-width: 767.98px) {
-  .bawu-app { height: calc(100vh - 4.75rem); }
+  .bawu-app { height: calc(100vh - 4.75rem); height: calc(100dvh - 4.75rem); }
 }
 @media (max-width: 1280px) {
   .layout-desktop .score-col { width: 21rem; }
