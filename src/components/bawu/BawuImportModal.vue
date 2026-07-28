@@ -63,23 +63,19 @@
               </select>
             </label>
           </div>
-          <div class="check-row">
-            <label class="lyric-toggle">
-              <input type="checkbox" v-model="lyrics" />
-              <span class="lyric-box"><i class="pi pi-check"></i></span>
-              <span class="lyric-text">
-                <b>Extract lyrics</b>
-                <span class="lyric-sub">sung words under the notes</span>
-              </span>
-            </label>
-            <label class="lyric-toggle">
-              <input type="checkbox" v-model="pinyin" />
-              <span class="lyric-box"><i class="pi pi-check"></i></span>
-              <span class="lyric-text">
-                <b>+ Pīnyīn</b>
-                <span class="lyric-sub">romanized syllables</span>
-              </span>
-            </label>
+          <label class="opt-toggle">
+            <input type="checkbox" v-model="expression" />
+            <span class="opt-box"><i class="pi pi-check"></i></span>
+            <span class="opt-text">
+              <b>Also read slurs, slides &amp; bends</b>
+              <span class="opt-sub">Off keeps the model on pitches and rhythms only, which reads clean scores more reliably. You can add the marks yourself in Edit.</span>
+            </span>
+          </label>
+          <div class="split-note">
+            <i class="pi pi-comment"></i>
+            <span>
+              Lyrics and pīnyīn are their own step — open the score and hit <b>Get lyrics</b>.
+            </span>
           </div>
           <label class="field">
             <span>Notes for the AI <span class="opt">(optional)</span></span>
@@ -151,6 +147,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { parseManualJianpu, MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from '@/lib/bawu/ai'
 import { flattenScore } from '@/lib/bawu/notes'
+import { toDataUri } from '@/lib/bawu/image'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -171,31 +168,25 @@ const imagePreview = ref('')
 const starting = ref(false)
 const convertError = ref('')
 
-// Model + effort + source notation + lyrics: persisted so choices stick.
+// Model + effort + source notation: persisted so choices stick. Lyrics are no
+// longer chosen here — they are a separate pass on an already-transcribed score.
 const LS_MODEL = 'bawu.model'
 const LS_EFFORT = 'bawu.effort'
 const LS_NOTATION = 'bawu.notation'
-const LS_LYRICS = 'bawu.lyrics'
-const LS_PINYIN = 'bawu.pinyin'
+const LS_EXPRESSION = 'bawu.expression'
 const savedModel = localStorage.getItem(LS_MODEL)
 const savedEffort = localStorage.getItem(LS_EFFORT)
 const model = ref(MODELS.some((m) => m.id === savedModel) ? savedModel : DEFAULT_MODEL)
 const effort = ref(EFFORTS.some((e) => e.id === savedEffort) ? savedEffort : DEFAULT_EFFORT)
 const notation = ref(localStorage.getItem(LS_NOTATION) === 'western' ? 'western' : 'jianpu')
-const lyrics = ref(localStorage.getItem(LS_LYRICS) === '1')
-const pinyin = ref(localStorage.getItem(LS_PINYIN) === '1' && lyrics.value)
+// Off by default: asking for expression marks costs attention that is better
+// spent reading the notes right, and it widened the spread between models.
+const expression = ref(localStorage.getItem(LS_EXPRESSION) === '1')
 const aiNotes = ref('') // free-text guidance for the model — not persisted
 watch(model, (v) => localStorage.setItem(LS_MODEL, v))
 watch(effort, (v) => localStorage.setItem(LS_EFFORT, v))
 watch(notation, (v) => localStorage.setItem(LS_NOTATION, v))
-watch(lyrics, (v) => {
-  localStorage.setItem(LS_LYRICS, v ? '1' : '0')
-  if (!v) pinyin.value = false // pinyin rides on lyrics
-})
-watch(pinyin, (v) => {
-  localStorage.setItem(LS_PINYIN, v ? '1' : '0')
-  if (v) lyrics.value = true // asking for pinyin implies lyrics
-})
+watch(expression, (v) => localStorage.setItem(LS_EXPRESSION, v ? '1' : '0'))
 
 const manualText = ref('')
 const manualError = ref('')
@@ -279,20 +270,6 @@ watch(
 )
 onBeforeUnmount(() => window.removeEventListener('paste', onPaste))
 
-// Downscale for the AI call (the original blob is what gets stored).
-async function toDataUri(blob, maxDim = 1600) {
-  const bitmap = await createImageBitmap(blob)
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
-  const w = Math.round(bitmap.width * scale)
-  const h = Math.round(bitmap.height * scale)
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h)
-  bitmap.close?.()
-  return canvas.toDataURL('image/jpeg', 0.88)
-}
-
 // Image path: prepare the data URI and hand the streaming job to the player,
 // which opens the score and fills it in as lines arrive.
 async function startStream() {
@@ -309,8 +286,7 @@ async function startStream() {
       model: model.value,
       effort: effort.value,
       mode: notation.value,
-      lyrics: lyrics.value,
-      pinyin: pinyin.value && lyrics.value,
+      expression: expression.value,
       notes: aiNotes.value.trim(),
     })
     // Parent closes the modal.
@@ -468,21 +444,28 @@ function onPrimary() {
 .src-seg button.on { background: #fff; color: var(--accent-600, #b91c1c); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .src-seg button.on .src-hint { color: var(--accent-400, #f87171); }
 
-.check-row { display: flex; gap: 1.4rem; flex-wrap: wrap; }
-.lyric-toggle { display: flex; align-items: flex-start; gap: 0.55rem; cursor: pointer; user-select: none; }
-.lyric-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-.lyric-box {
+.opt-toggle { display: flex; align-items: flex-start; gap: 0.55rem; cursor: pointer; user-select: none; }
+.opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.opt-box {
   flex: none; width: 1.2rem; height: 1.2rem; margin-top: 0.1rem; border-radius: 0.35rem;
   border: 1.5px solid var(--border, #e5e4e1); background: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   color: #fff; font-size: 0.62rem; transition: background 120ms, border-color 120ms;
 }
-.lyric-box i { opacity: 0; }
-.lyric-toggle input:checked + .lyric-box { background: var(--accent-500, #ef4444); border-color: var(--accent-500, #ef4444); }
-.lyric-toggle input:checked + .lyric-box i { opacity: 1; }
-.lyric-text { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.3; }
-.lyric-text b { font-size: 0.82rem; font-weight: 600; color: var(--text, #1a1a1a); }
-.lyric-sub { font-size: 0.72rem; color: var(--text-faint, #9a9a9a); }
+.opt-box i { opacity: 0; }
+.opt-toggle input:checked + .opt-box { background: var(--accent-500, #ef4444); border-color: var(--accent-500, #ef4444); }
+.opt-toggle input:checked + .opt-box i { opacity: 1; }
+.opt-text { display: flex; flex-direction: column; gap: 0.15rem; line-height: 1.4; }
+.opt-text b { font-size: 0.82rem; font-weight: 600; color: var(--text, #1a1a1a); }
+.opt-sub { font-size: 0.72rem; color: var(--text-faint, #9a9a9a); }
+
+.split-note {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  font-size: 0.75rem; line-height: 1.5; color: var(--text-dim, #5c5c5c);
+  background: var(--bg-sunken, #f3f2f0); border-radius: 0.55rem; padding: 0.5rem 0.65rem;
+}
+.split-note i { font-size: 0.75rem; margin-top: 0.15rem; color: var(--text-faint, #9a9a9a); flex: none; }
+.split-note b { color: var(--text, #1a1a1a); font-weight: 700; }
 
 .ai-controls { display: flex; gap: 0.6rem; }
 .ctl { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }

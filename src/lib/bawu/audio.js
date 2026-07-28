@@ -100,32 +100,173 @@ function toneBus(ac) {
 // 'real' is the modeled free-reed voice; 'classic' is the original sawtooth,
 // kept so the two can be A/B'd from the transport's sound picker. 'mute'
 // silences the synth entirely (practice along to just the metronome/mic).
+//
+// playBawuTone() hands back a live VOICE HANDLE rather than firing and
+// forgetting, because a tie or a slur is ONE sound spanning several notes: the
+// player glides the running voice to the next pitch and extends its envelope
+// instead of re-attacking it. Notes that stand alone simply never get glided.
 let bawuVoice = 'real'
 
 export function setBawuVoice(name) {
   bawuVoice = name === 'classic' ? 'classic' : name === 'mute' ? 'mute' : 'real'
 }
 
-export function playBawuTone(midi, dur = 0.45, gainLevel = 0.18) {
-  const ac = ensureAudio()
-  if (!ac || midi == null || bawuVoice === 'mute') return
-  const freq = freqOfMidi(midi)
-  if (bawuVoice === 'classic') playClassicBawu(ac, freq, dur, gainLevel)
-  else playRealBawu(ac, freq, dur, gainLevel)
+const SEMI = (n) => Math.pow(2, n / 12)
+
+// Vibrato per `vb` level, as a fraction of the fundamental plus a rate. Level 0
+// is the voice's own gentle default; level 3 is flutter tongue (花舌) — shallow
+// but very fast, so it reads as a rattle rather than a wobble.
+const VIB_DEPTH = [0.008, 0.014, 0.024, 0.010]
+const VIB_RATE = [4.8, 5.2, 5.8, 22]
+
+// Freeze an AudioParam at whatever it is right now so fresh automation can pick
+// up from there. cancelAndHoldAtTime is the right tool; older engines get a
+// manual read-and-pin, which is close enough for a note-length envelope.
+function holdParam(param, at) {
+  if (param.cancelAndHoldAtTime) {
+    param.cancelAndHoldAtTime(at)
+  } else {
+    const v = param.value
+    param.cancelScheduledValues(at)
+    param.setValueAtTime(Math.max(0.0001, v), at)
+  }
 }
 
-// Original voice: a reedy sawtooth with constant vibrato through a lowpass.
-function playClassicBawu(ac, freq, dur, gainLevel) {
+// Write one note's pitch gestures onto a set of frequency params. A time cursor
+// keeps every ramp strictly increasing, so a bend and a release glide on the
+// same note can never schedule out of order.
+function schedulePitch(params, freq, t0, dur, { gi = 0, go = '', bd = 0, fromFreq = 0, nextFreq = 0 } = {}) {
+  const tEnd = t0 + dur
+  let cur = t0
+  const ramp = (v, at) => {
+    if (at <= cur + 0.002) return
+    for (const p of params) p.exponentialRampToValueAtTime(Math.max(1, v), at)
+    cur = at
+  }
+
+  // Attack. The voice always scoops a little into the note; `gi` turns that into
+  // an audible 滑音 from the previous pitch — or from below when there isn't
+  // one — capped at a fifth so a wide leap doesn't sound like a siren.
+  let from = freq * 0.97
+  if (gi) {
+    from = fromFreq
+      ? Math.min(freq * SEMI(5), Math.max(freq * SEMI(-5), fromFreq))
+      : freq * SEMI(-2)
+  }
+  for (const p of params) p.setValueAtTime(Math.max(1, from), t0)
+  ramp(freq, t0 + (gi ? Math.min(0.16, dur * 0.35) : Math.min(0.06, dur * 0.2)))
+
+  // Bend: away and back inside the sustain.
+  if (bd) {
+    ramp(freq * SEMI(bd), t0 + dur * 0.35)
+    ramp(freq, t0 + dur * 0.7)
+  }
+
+  // Release glide: fall away into nothing, or slide into the next note's pitch.
+  if (go === 'off') {
+    ramp(freq, tEnd - dur * 0.25)
+    ramp(freq * SEMI(-3), tEnd)
+  } else if (go === 'to' && nextFreq) {
+    ramp(freq, tEnd - dur * 0.3)
+    ramp(nextFreq, tEnd)
+  }
+}
+
+// One live voice. `nodes` are the sources to stop, `freqParams` the oscillator
+// pitches to glide, `lp` the body filter that tracks them.
+function makeVoice({ ac, nodes, freqParams, amp, lp, lfoG, gain, vb, dur, freq }) {
+  let end = ac.currentTime + dur
+  let base = freq
+  let dead = false
+
+  const stopAt = (at) => {
+    for (const n of nodes) {
+      try { n.stop(at) } catch { /* already past its stop time */ }
+    }
+  }
+  stopAt(end + 0.08)
+
+  return {
+    get dead() { return dead },
+    get endsAt() { return end },
+    get midiFreq() { return base },
+
+    // Slide to a new pitch. `delaySec` lets the caller schedule a portamento
+    // that starts BEFORE the next note is due — which is exactly what a
+    // `go:'to'` glide between two slurred notes has to do.
+    glideTo(midi, glideSec = 0, delaySec = 0) {
+      if (dead) return
+      const at = ac.currentTime + Math.max(0, delaySec)
+      const to = freqOfMidi(midi)
+      const span = Math.max(0.005, glideSec)
+      for (const p of freqParams) {
+        holdParam(p, at)
+        p.exponentialRampToValueAtTime(Math.max(1, to), at + span)
+      }
+      holdParam(lp.frequency, at)
+      lp.frequency.exponentialRampToValueAtTime(Math.max(200, to * 3.6), at + span)
+      if (lfoG) lfoG.gain.setTargetAtTime(to * VIB_DEPTH[vb], at, 0.08)
+      base = to
+    },
+
+    // Keep the sound alive for `durSec` more from now, re-shaping the tail.
+    extendTo(durSec) {
+      if (dead) return
+      const now = ac.currentTime
+      const tEnd = now + Math.max(0.06, durSec)
+      const rel = Math.min(0.12, durSec * 0.3)
+      holdParam(amp.gain, now)
+      amp.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain * 0.82), Math.max(now + 0.01, tEnd - rel))
+      amp.gain.exponentialRampToValueAtTime(0.0001, tEnd)
+      end = tEnd
+      stopAt(end + 0.08)
+    },
+
+    // End the sound now (seek, stop, or simply the next note re-attacking).
+    release(fade = 0.09) {
+      if (dead) return
+      dead = true
+      const now = ac.currentTime
+      const f = Math.max(0.02, fade)
+      holdParam(amp.gain, now)
+      amp.gain.exponentialRampToValueAtTime(0.0001, now + f)
+      end = now + f
+      stopAt(end + 0.05)
+    },
+  }
+}
+
+export function playBawuTone(midi, dur = 0.45, opts = {}) {
+  const ac = ensureAudio()
+  if (!ac || midi == null || bawuVoice === 'mute') return null
+  const freq = freqOfMidi(midi)
+  const shape = {
+    gi: opts.gi || 0,
+    go: opts.go || '',
+    bd: Number(opts.bd) || 0,
+    vb: Math.max(0, Math.min(3, Math.round(Number(opts.vb) || 0))),
+    fromFreq: opts.fromMidi != null ? freqOfMidi(opts.fromMidi) : 0,
+    nextFreq: opts.nextMidi != null ? freqOfMidi(opts.nextMidi) : 0,
+  }
+  const gain = Number.isFinite(opts.gain) ? opts.gain : 0.18
+  return bawuVoice === 'classic'
+    ? playClassicBawu(ac, freq, dur, gain, shape)
+    : playRealBawu(ac, freq, dur, gain, shape)
+}
+
+// Original voice: a reedy sawtooth with vibrato through a lowpass.
+function playClassicBawu(ac, freq, dur, gainLevel, shape) {
   const t0 = ac.currentTime
+  const vb = shape.vb
   const osc = ac.createOscillator()
   const filt = ac.createBiquadFilter()
   const gain = ac.createGain()
   const lfo = ac.createOscillator()
   const lfoG = ac.createGain()
   osc.type = 'sawtooth'
-  osc.frequency.value = freq
-  lfo.frequency.value = 5.2
-  lfoG.gain.value = 4.5
+  schedulePitch([osc.frequency], freq, t0, dur, shape)
+  lfo.frequency.value = VIB_RATE[vb]
+  lfoG.gain.value = freq * VIB_DEPTH[vb]
   lfo.connect(lfoG)
   lfoG.connect(osc.frequency)
   filt.type = 'lowpass'
@@ -138,8 +279,10 @@ function playClassicBawu(ac, freq, dur, gainLevel) {
   gain.connect(toneBus(ac))
   osc.start(t0)
   lfo.start(t0)
-  osc.stop(t0 + dur + 0.02)
-  lfo.stop(t0 + dur + 0.02)
+  return makeVoice({
+    ac, nodes: [osc, lfo], freqParams: [osc.frequency], amp: gain, lp: filt,
+    lfoG, gain: gainLevel, vb, dur, freq,
+  })
 }
 
 // Free-reed harmonic recipe: strong fundamental, both even and odd partials
@@ -174,12 +317,13 @@ function getNoiseBuf(ac) {
 //  - a second oscillator a few cents sharp for the reed's beating shimmer
 //  - a nasal formant peak near 1.8 kHz over a dynamic lowpass
 //  - a breath-noise transient that settles into faint breathiness
-function playRealBawu(ac, freq, dur, gainLevel) {
+function playRealBawu(ac, freq, dur, gainLevel, shape) {
   const t0 = ac.currentTime
   const tEnd = t0 + dur
   const atk = Math.min(0.07, dur * 0.22)
   const rel = Math.min(0.12, dur * 0.3)
   const wave = getBawuWave(ac)
+  const vb = shape.vb
 
   const osc1 = ac.createOscillator()
   const osc2 = ac.createOscillator()
@@ -187,19 +331,16 @@ function playRealBawu(ac, freq, dur, gainLevel) {
   osc2.setPeriodicWave(wave)
   osc2.detune.value = 7
 
-  // Pitch scoop into the note.
-  const scoopEnd = t0 + Math.min(0.06, dur * 0.2)
-  for (const o of [osc1, osc2]) {
-    o.frequency.setValueAtTime(freq * 0.97, t0)
-    o.frequency.exponentialRampToValueAtTime(freq, scoopEnd)
-  }
+  // Pitch: the scoop into the note plus whatever gliss/bend it carries.
+  const freqParams = [osc1.frequency, osc2.frequency]
+  schedulePitch(freqParams, freq, t0, dur, shape)
 
-  // Delayed vibrato.
+  // Delayed vibrato, depth and rate set by `vb`.
   const lfo = ac.createOscillator()
   const lfoG = ac.createGain()
-  lfo.frequency.value = 4.8
+  lfo.frequency.value = VIB_RATE[vb]
   lfoG.gain.setValueAtTime(0, t0)
-  lfoG.gain.linearRampToValueAtTime(freq * 0.008, t0 + Math.min(0.35, dur * 0.7))
+  lfoG.gain.linearRampToValueAtTime(freq * VIB_DEPTH[vb], t0 + Math.min(0.35, dur * 0.7))
   lfo.connect(lfoG)
   lfoG.connect(osc1.frequency)
   lfoG.connect(osc2.frequency)
@@ -253,11 +394,15 @@ function playRealBawu(ac, freq, dur, gainLevel) {
   formant.connect(amp)
   amp.connect(toneBus(ac))
 
-  const tStop = tEnd + 0.03
-  osc1.start(t0); osc1.stop(tStop)
-  osc2.start(t0); osc2.stop(tStop)
-  lfo.start(t0); lfo.stop(tStop)
-  noise.start(t0); noise.stop(tStop)
+  osc1.start(t0)
+  osc2.start(t0)
+  lfo.start(t0)
+  noise.start(t0)
+
+  return makeVoice({
+    ac, nodes: [osc1, osc2, lfo, noise], freqParams, amp, lp,
+    lfoG, gain: gainLevel, vb, dur, freq,
+  })
 }
 
 export function playClick(accent = false) {

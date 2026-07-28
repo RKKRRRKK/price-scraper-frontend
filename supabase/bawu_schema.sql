@@ -19,6 +19,24 @@
 --       ] }
 --     ]
 --   }
+--
+-- Every note field beyond deg/oct/beats is OPTIONAL and simply absent when
+-- unset, so older rows stay valid without a migration:
+--   "acc": 1 | -1 | 2          sharp / flat / natural printed on this note
+--   "ly", "py"                 sung syllable and its tone-marked pinyin
+--   "art": "T"|"TK"|"tr"|"grace"   articulation
+--   "ti": 1                    tied into the next note (same pitch) — one sound
+--   "sl": 1                    slurred into the next note (different pitch)
+--   "gi": 1                    glissando into this note at the attack
+--   "go": "off" | "to"         falls away, or portamento to the next note
+--   "bd": -2..2                bend in semitones during the note, and back
+--   "vb": 0..3                 vibrato depth (3 = flutter tongue)
+--
+-- `data` may also carry "origKey" (the key the score was imported in),
+-- "contentTop"/"contentBottom" (the printed music block's vertical span on the
+-- picture, as fractions of its height) and "adjusted" — a hand-edited
+-- { key, bpm, timeSig, lines } variant kept alongside the AI transcription so
+-- the original is never overwritten.
 
 -- ── Tables ──────────────────────────────────────────────────────────────────
 create table if not exists public.bawu_folders (

@@ -206,6 +206,9 @@
             </div>
 
             <div class="header-right">
+              <button v-if="traceLog.length" class="btn-ghost btn-sm" @click="logOpen = !logOpen" title="What the last AI run actually sent and received">
+                <i class="pi pi-server" style="font-size: 0.8rem;"></i> Stream
+              </button>
               <button class="btn-ghost btn-sm" @click="exportMidi" title="Download as MIDI">
                 <i class="pi pi-download" style="font-size: 0.8rem;"></i> .mid
               </button>
@@ -223,13 +226,14 @@
             <template v-if="streaming">
               <i class="pi pi-spin pi-spinner"></i>
               <span class="ss-text">
-                {{ streamProgress.reasoning && !streamProgress.lines ? 'Reading the score…' : 'Transcribing…' }}
-                <b v-if="progressLabel">{{ progressLabel }}</b>
+                {{ streamPhase.text }}
+                <b v-if="streamPhase.detail">{{ streamPhase.detail }}</b>
               </span>
               <div class="ss-bar">
                 <div class="ss-fill" :class="{ indet: progressPct == null }" :style="progressPct != null ? { width: progressPct + '%' } : {}"></div>
               </div>
-              <span class="ss-hint">Playable now — press play any time</span>
+              <span class="ss-hint" :class="{ stalled: streamPhase.stalled }">{{ streamPhase.hint }}</span>
+              <button class="btn-ghost btn-sm" @click="logOpen = !logOpen"><i class="pi pi-server" style="font-size: 0.7rem;"></i> {{ logOpen ? 'Hide' : 'Details' }}</button>
               <button class="btn-ghost btn-sm" @click="discardDraft">Cancel</button>
             </template>
             <template v-else>
@@ -237,11 +241,22 @@
               <span class="ss-text">
                 {{ draft.error || `Transcription may be incomplete — ${draft.data.lines.length} ${draft.data.lines.length === 1 ? 'line' : 'lines'} so far.` }}
               </span>
+              <button class="btn-ghost btn-sm" @click="logOpen = !logOpen"><i class="pi pi-server" style="font-size: 0.7rem;"></i> {{ logOpen ? 'Hide' : 'What happened?' }}</button>
               <button class="btn-primary btn-sm" @click="continueDraft"><i class="pi pi-arrow-right" style="font-size: 0.75rem;"></i> Continue</button>
               <button v-if="draft.data.lines.length" class="btn-ghost btn-sm" @click="keepDraft">Keep as is</button>
               <button class="btn-ghost btn-sm" @click="discardDraft">Discard</button>
             </template>
           </div>
+
+          <BawuStreamLog
+            :open="logOpen"
+            :entries="traceLog"
+            :prompt="tracePrompt"
+            :stats="traceStats"
+            :live="streaming || lyricsRunning"
+            @close="logOpen = false"
+            @clear="clearTrace"
+          />
 
           <!-- Content row: roll + docked jianpu panel -->
           <div class="player">
@@ -258,7 +273,21 @@
                   <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
                   <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
                 </div>
+                <div class="seg" title="How the roll moves while playing">
+                  <button :class="{ on: scrollStyle === 'roll' }" @click="setScrollStyle('roll')" title="The sheet scrolls past a fixed NOW line">
+                    <i class="pi pi-arrow-left" style="font-size: 0.6rem;"></i> Scroll
+                  </button>
+                  <button :class="{ on: scrollStyle === 'line' }" @click="setScrollStyle('line')" title="The sheet holds still and the line sweeps across it">
+                    <i class="pi pi-minus" style="font-size: 0.6rem; transform: rotate(90deg);"></i> Line
+                  </button>
+                </div>
                 <span class="tb-div"></span>
+                <button
+                  v-if="canLyricsPass"
+                  class="chip chip-sm chip-ai"
+                  @click="openLyricsPass"
+                  :title="lyricsPresent ? 'Read the lyrics off the picture again' : 'Read the sung words off the original picture'"
+                ><i class="pi pi-sparkles" style="font-size: 0.75rem;"></i> {{ lyricsPresent ? 'Redo lyrics' : 'Get lyrics' }}</button>
                 <button
                   v-if="lyricsPresent"
                   class="chip chip-sm"
@@ -288,6 +317,13 @@
                 <button class="eb-btn" @click="copySelection" :disabled="!selCount"><i class="pi pi-clone" style="font-size: 0.7rem;"></i> Copy <b class="kbd">⌘C</b></button>
                 <button class="eb-btn" @click="pasteSelection" :disabled="!clipboard"><i class="pi pi-file-import" style="font-size: 0.7rem;"></i> Paste <b class="kbd">⌘V</b></button>
                 <button v-if="selCount" class="eb-selchip" @click="clearSelection">{{ selCount }} selected <i class="pi pi-times" style="font-size: 0.6rem;"></i></button>
+                <span class="eb-div"></span>
+                <button
+                  class="eb-icon"
+                  :class="{ on: auditionOn }"
+                  @click="auditionOn = !auditionOn"
+                  :title="auditionOn ? 'Notes sound as you click and drag them — click to mute' : 'Editing is silent — click to hear notes as you place them'"
+                ><i :class="auditionOn ? 'pi pi-volume-up' : 'pi pi-volume-off'" style="font-size: 0.75rem;"></i></button>
                 <span class="eb-div"></span>
                 <div class="seg seg-zoom" :title="'Roll zoom — ' + PX + 'px per beat'">
                   <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
@@ -351,13 +387,19 @@
                     >
                       <span class="bar-num">{{ b }}</span>
                     </div>
+                    <!-- Expression layer: ties, slurs, slides, bends, vibrato.
+                         Vector, because arcs and diagonals don't come out of a
+                         stack of absolutely-positioned pills. -->
+                    <svg v-if="rollH" class="lane-fx" :width="laneWidth" :height="rollH">
+                      <path v-for="(p, i) in fxPaths" :key="i" :d="p.d" :class="p.cls" />
+                    </svg>
                     <div
                       v-for="n in laneNotes"
                       :key="n.idx"
                       class="note"
                       :class="noteClass(n)"
                       :style="noteStyle(n)"
-                      :title="n.midi != null ? pitchName(n.midi) : ''"
+                      :title="noteTitle(n)"
                       @pointerdown="onNotePointerDown($event, n)"
                       @click="onNoteClick($event, n)"
                     ><span class="note-lab">{{ noteLabel(n) }}</span><span
@@ -372,12 +414,17 @@
                   </div>
 
                   <div v-if="mqOn" class="marquee" :style="mqStyle"></div>
-                  <div class="nowline"></div>
-                  <div class="now-halo"></div>
-                  <span class="now-label">NOW</span>
-
                   <canvas ref="traceCanvas" class="trace-canvas"></canvas>
-                  <div v-show="tipText" class="trace-tip" :style="{ top: tipY + 'px', left: PLAYHEAD_X + 34 + 'px' }">{{ tipText }}</div>
+
+                  <!-- Playhead group: one element the rAF loop translates, so
+                       the line, its halo, the label and the coach tip all track
+                       the playhead in both scroll and line modes. -->
+                  <div class="now-group" ref="nowEl">
+                    <div class="now-halo"></div>
+                    <div class="nowline"></div>
+                    <span class="now-label">NOW</span>
+                    <div v-show="tipText" class="trace-tip" :style="{ top: tipY + 'px' }">{{ tipText }}</div>
+                  </div>
 
                   <div v-if="!laneNotes.length" class="roll-empty">
                     <template v-if="editMode"><b>Double-click</b> the roll to drop a note, or press <b>1–7</b>.</template>
@@ -427,6 +474,45 @@
                 <div class="spacer"></div>
                 <button class="insp-del" :disabled="!selCount" @click="deleteSelection"><i class="pi pi-trash" style="font-size: 0.7rem;"></i> Delete</button>
               </div>
+
+              <!-- Inspector · expression -->
+              <div v-if="editMode" class="inspector insp-fx">
+                <span class="insp-lbl">Join</span>
+                <button
+                  class="fx-btn"
+                  :class="{ on: selFx.ti }"
+                  :disabled="!canTie"
+                  :title="canTie ? 'Tie into the next note — one sustained sound' : 'A tie needs the next note to be the same pitch and touching this one'"
+                  @click="toggleSelTie"
+                >⌣ Tie</button>
+                <button
+                  class="fx-btn"
+                  :class="{ on: selFx.sl }"
+                  :disabled="!selCount"
+                  title="Slur into the next note — legato, no re-tonguing"
+                  @click="toggleSelSlur"
+                >⌢ Slur</button>
+                <span class="insp-div"></span>
+                <span class="insp-lbl">Slide</span>
+                <button class="fx-btn" :class="{ on: selFx.gi }" :disabled="!selCount" title="Slide into the note (上/下滑音)" @click="toggleSelGlissIn">⟋ in</button>
+                <button class="fx-btn" :class="{ on: selFx.go === 'off' }" :disabled="!selCount" title="Fall away at the end of the note" @click="setSelGlideOut('off')">⟍ off</button>
+                <button class="fx-btn" :class="{ on: selFx.go === 'to' }" :disabled="!selCount" title="Glissando across to the next note" @click="setSelGlideOut('to')">→ next</button>
+                <span class="insp-div"></span>
+                <span class="insp-lbl">Bend</span>
+                <span class="row-step">
+                  <button :disabled="!selCount" @click="stepSelBend(-0.5)" title="Bend further down"><i class="pi pi-angle-down"></i></button>
+                  <span class="row-val">{{ selFx.bd ? (selFx.bd > 0 ? '+' : '') + selFx.bd : '—' }}</span>
+                  <button :disabled="!selCount" @click="stepSelBend(0.5)" title="Bend further up"><i class="pi pi-angle-up"></i></button>
+                </span>
+                <span class="insp-lbl">Vibrato</span>
+                <div class="seg seg-vb">
+                  <button v-for="v in vibChoices" :key="'vb' + v.n" :class="{ on: selFx.vb === v.n }" :disabled="!selCount" :title="v.title" @click="setSelVibrato(v.n)">{{ v.lab }}</button>
+                </div>
+                <div class="spacer"></div>
+                <button class="fx-btn" :disabled="!selCount || !selHasFx" title="Strip every expression mark from the selection" @click="clearSelFx">
+                  <i class="pi pi-eraser" style="font-size: 0.7rem;"></i> Clear
+                </button>
+              </div>
             </section>
 
             <!-- Drag divider: resize roll ↔ score panel -->
@@ -468,31 +554,12 @@
                     <template v-if="aiModelLabel"> · via {{ aiModelLabel }}</template>
                   </div>
                   <div v-if="!jianpuLines.length" class="a4-empty">Transcribing…</div>
-                  <div class="a4-staff" :class="{ 'has-ly': lyricsPresent && lyricsOn, pinyin: lyricsScript === 'pinyin' }">
-                    <div
-                      v-for="(line, li) in jianpuLines"
-                      :key="li"
-                      class="a4-line"
-                      :class="{ zone: currentNote && currentNote.lineIdx === li }"
-                    >
-                      <span
-                        v-for="(n, ni) in line"
-                        :key="ni"
-                        class="a4-n"
-                        :class="{ cur: currentNote && n.start === currentNote.start && !n.rest }"
-                      >
-                        <span v-if="n.art" class="art">{{ artLabel(n.art) }}</span>
-                        <span class="num" :class="'u' + jianpuDuration(n.beats).underlines">
-                          <span v-if="octDots(n.oct, true)" class="dots dots-hi"><i v-for="d in octDots(n.oct, true)" :key="'h' + d"></i></span>
-                          <span v-if="n.acc" class="acc">{{ accGlyph(n.acc) }}</span>{{ n.deg || '0' }}
-                          <span v-if="octDots(n.oct, false)" class="dots dots-lo"><i v-for="d in octDots(n.oct, false)" :key="'l' + d"></i></span>
-                        </span>
-                        <span v-if="jianpuDuration(n.beats).dot" class="aug">·</span>
-                        <span v-for="d in jianpuDuration(n.beats).dashes" :key="'d' + d" class="dash">–</span>
-                        <span v-if="lyricsOn && jianpuSyl(n)" class="a4-ly">{{ jianpuSyl(n) }}</span>
-                      </span>
-                    </div>
-                  </div>
+                  <BawuJianpuStaff
+                    :lines="jianpuLines"
+                    :current="currentNote"
+                    :lyrics-on="lyricsPresent && lyricsOn"
+                    :script="lyricsScript"
+                  />
                 </div>
               </div>
 
@@ -500,6 +567,9 @@
                 <div class="key-card-head">
                   <div class="insp-label">Key &amp; transpose</div>
                   <div v-if="!isDraft && laneNotes.length" class="key-card-tools">
+                    <button v-if="canLyricsPass" class="mini-btn" @click="openLyricsPass" title="Read the sung words off the original picture">
+                      <i class="pi pi-sparkles"></i> Lyrics
+                    </button>
                     <button class="mini-btn" @click="copyJianpu" title="Copy this transposition's jianpu to the clipboard">
                       <i class="pi pi-copy"></i> Copy
                     </button>
@@ -640,31 +710,13 @@
         <div v-if="score" class="pp-sheet" ref="ppSheetEl" :class="{ pinyin: lyricsScript === 'pinyin' }">
           <div class="a4-title">{{ score.name }}</div>
           <div class="a4-sub">Jianpu · 1={{ keyLabel }} · {{ activeData?.timeSig || '4/4' }}</div>
-          <div class="a4-staff has-ly" :class="{ pinyin: lyricsScript === 'pinyin' }">
-            <div
-              v-for="(line, li) in jianpuLines"
-              :key="li"
-              class="a4-line"
-              :class="{ zone: currentNote && currentNote.lineIdx === li }"
-            >
-              <span
-                v-for="(n, ni) in line"
-                :key="ni"
-                class="a4-n"
-                :class="{ cur: currentNote && n.start === currentNote.start && !n.rest }"
-              >
-                <span v-if="n.art" class="art">{{ artLabel(n.art) }}</span>
-                <span class="num" :class="'u' + jianpuDuration(n.beats).underlines">
-                  <span v-if="octDots(n.oct, true)" class="dots dots-hi"><i v-for="d in octDots(n.oct, true)" :key="'h' + d"></i></span>
-                  <span v-if="n.acc" class="acc">{{ accGlyph(n.acc) }}</span>{{ n.deg || '0' }}
-                  <span v-if="octDots(n.oct, false)" class="dots dots-lo"><i v-for="d in octDots(n.oct, false)" :key="'l' + d"></i></span>
-                </span>
-                <span v-if="jianpuDuration(n.beats).dot" class="aug">·</span>
-                <span v-for="d in jianpuDuration(n.beats).dashes" :key="'d' + d" class="dash">–</span>
-                <span v-if="jianpuSyl(n)" class="a4-ly">{{ jianpuSyl(n) }}</span>
-              </span>
-            </div>
-          </div>
+          <BawuJianpuStaff
+            :lines="jianpuLines"
+            :current="currentNote"
+            :lyrics-on="true"
+            :script="lyricsScript"
+            variant="phone"
+          />
         </div>
         <div v-else class="pp-empty">Pick a score from the drawer.</div>
 
@@ -747,6 +799,9 @@
                 class="barline"
                 :style="{ left: (b - 1) * beatsPerBar * PX + 'px' }"
               ></div>
+              <svg v-if="rollHPhone" class="lane-fx" :width="laneWidth" :height="rollHPhone">
+                <path v-for="(p, i) in fxPathsPhone" :key="i" :d="p.d" :class="p.cls" />
+              </svg>
               <div
                 v-for="n in laneNotes"
                 :key="n.idx"
@@ -755,7 +810,7 @@
                 :style="noteStyle(n)"
               ><span class="note-lab">{{ noteLabel(n) }}</span></div>
             </div>
-            <div class="nowline phone"></div>
+            <div class="now-group" ref="nowElPhone"><div class="nowline phone"></div></div>
           </div>
         </div>
 
@@ -817,6 +872,18 @@
       @close="editorOpen = false"
       @save="saveAdjusted"
     />
+
+    <BawuLyricsModal
+      :open="lyricsOpen"
+      :data="activeData"
+      :score-name="score?.name || ''"
+      :applying="lyricsApplying"
+      :resolve-image="resolveScoreImage"
+      @close="lyricsOpen = false"
+      @apply="applyLyrics"
+      @trace="pushTrace"
+      @running="onLyricsRunning"
+    />
   </div>
 </template>
 
@@ -828,10 +895,15 @@ import { useBawuStore } from '@/stores/bawu'
 import BawuTuner from '@/components/bawu/BawuTuner.vue'
 import BawuImportModal from '@/components/bawu/BawuImportModal.vue'
 import BawuJianpuEditor from '@/components/bawu/BawuJianpuEditor.vue'
+import BawuJianpuStaff from '@/components/bawu/BawuJianpuStaff.vue'
+import BawuLyricsModal from '@/components/bawu/BawuLyricsModal.vue'
+import BawuStreamLog from '@/components/bawu/BawuStreamLog.vue'
 import {
-  BAWU_NOTES, KEYS, KEY_CHOICES, canonicalKey, flattenScore, fitInfo, jianpuText, jianpuDuration,
+  BAWU_NOTES, KEYS, KEY_CHOICES, canonicalKey, flattenScore, fitInfo, jianpuText,
   coachDelta, coveredLabel, rowOfMidi, rowFloatOfMidi, transposeData, midiOf, degOctAccOfMidi,
+  mergeLyrics, MAX_BEND, MAX_VIBRATO,
 } from '@/lib/bawu/notes'
+import { urlToDataUri } from '@/lib/bawu/image'
 import { dataToEvents, eventsToData, rankOfEvent, snapBeat, MIN_BEATS } from '@/lib/bawu/edit'
 import {
   ensureAudio, playBawuTone, playClick, PitchTracker, TakeRecorder, takeExtension,
@@ -918,6 +990,14 @@ const picZoom = ref(1) // original-picture zoom (0.5–3)
 // Roll zoom (0.5–2) on top of the auto-fitted beat width — sticky across sessions.
 const rollZoom = ref(Math.min(2, Math.max(0.5, Number(localStorage.getItem('bawu.rollZoom')) || 1)))
 watch(rollZoom, (v) => localStorage.setItem('bawu.rollZoom', String(v)))
+// How the roll moves while playing:
+//   'roll' — the sheet scrolls leftwards past a NOW line pinned at PLAYHEAD_X
+//   'line' — the sheet holds still and the line sweeps across it, turning the
+//            page when it reaches the right edge (easier to read ahead from)
+const scrollStyle = ref(localStorage.getItem('bawu.scrollStyle') === 'line' ? 'line' : 'roll')
+// Hear notes as they're clicked, dropped and dragged, the way a piano roll does.
+const auditionOn = ref(localStorage.getItem('bawu.audition') !== '0')
+watch(auditionOn, (v) => localStorage.setItem('bawu.audition', v ? '1' : '0'))
 const editMode = ref(false) // direct note editing on the roll (a fourth "mode")
 const selectedIds = ref(new Set()) // playable-note indices selected in edit mode
 const undoStack = ref([]) // edit snapshots ({ key,bpm,timeSig,lines }), cap 30
@@ -948,19 +1028,82 @@ const importOpen = ref(false)
 const importCreating = ref(false)
 const importError = ref('')
 
+// ── Lyrics pass ─────────────────────────────────────────────────────────────
+const lyricsOpen = ref(false)
+const lyricsApplying = ref(false)
+const imageDataUris = new Map() // score id → data URI, so a re-run doesn't refetch
+
 // ── Streaming draft (image conversion in progress, not yet persisted) ────────
 const draft = ref(null)
 const streamProgress = ref({ lines: 0, reasoning: false })
 let streamAbort = null
+
+// ── Stream trace ────────────────────────────────────────────────────────────
+// Every AI run reports what it sent and everything that came back. A run that
+// produces nothing used to be indistinguishable from a slow model; this is the
+// record that tells them apart, and it survives the run so a failure can still
+// be read afterwards.
+const TRACE_CAP = 600 // entries
+const TRACE_CHUNK = 8000 // chars before a streaming delta starts a new entry
+const logOpen = ref(false)
+const traceLog = ref([])
+const tracePrompt = ref('')
+const traceStats = ref({})
+const lyricsRunning = ref(false)
+const traceClock = ref(0)
+
+function beginTrace() {
+  traceLog.value = []
+  tracePrompt.value = ''
+  traceStats.value = {}
+}
+function clearTrace() {
+  beginTrace()
+  logOpen.value = false
+}
+let lastStatsAt = 0
+function pushTrace(e) {
+  // Content and reasoning fire per token. Mirroring the counters on every one of
+  // them would re-render the strip thousands of times, so they get throttled;
+  // every other event (rows, errors, finish) updates immediately.
+  const chatty = e.kind === 'content' || e.kind === 'reasoning'
+  if (!chatty || Date.now() - lastStatsAt > 120) {
+    traceStats.value = { ...e.stats }
+    lastStatsAt = Date.now()
+  }
+  if (e.kind === 'prompt') {
+    tracePrompt.value = e.text
+    return
+  }
+  const log = traceLog.value
+  const last = log[log.length - 1]
+  // Content and reasoning arrive token by token — thousands of entries. Grow the
+  // last one instead, so the panel reads like the model typing.
+  if (last && last.kind === e.kind && (e.kind === 'content' || e.kind === 'reasoning') && last.text.length < TRACE_CHUNK) {
+    last.text += e.text
+    return
+  }
+  log.push({ at: e.at, kind: e.kind, text: e.text })
+  if (log.length > TRACE_CAP) log.splice(0, log.length - TRACE_CAP)
+}
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const rollEl = ref(null)
 const laneEl = ref(null)
 const rollElPhone = ref(null)
 const laneElPhone = ref(null)
+const nowEl = ref(null)
+const nowElPhone = ref(null)
 const traceCanvas = ref(null)
 const pageImgWrap = ref(null)
 const ppSheetEl = ref(null)
+
+// Roll pixel geometry, kept in refs because the expression overlay is drawn in
+// real pixels (an SVG viewBox would distort the arcs). A ResizeObserver feeds
+// these; pillH is measured off a live note so it tracks the clamp() in the CSS.
+const rollH = ref(0)
+const rollHPhone = ref(0)
+const pillH = ref(36)
 
 // ── Score derived data ──────────────────────────────────────────────────────
 const score = computed(() => draft.value || store.activeScore)
@@ -976,6 +1119,55 @@ const progressPct = computed(() => {
   const est = draft.value?.expectedLines
   if (!est) return null
   return Math.max(5, Math.min(100, (streamProgress.value.lines / est) * 100))
+})
+
+// What the loader actually says. "Transcribing…" for ten minutes tells you
+// nothing, so the phases separate uploading, waiting, thinking and writing —
+// and a stall is called out the moment the bytes stop rather than looking like
+// more of the same.
+function shortMs(ms) {
+  if (!ms || ms < 0) return '0s'
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`
+}
+function shortBytes(n) {
+  if (!n) return '0 B'
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+const streamPhase = computed(() => {
+  traceClock.value // re-evaluate on the tick, not just on new data
+  const s = traceStats.value
+  const el = s.startedAt ? Date.now() - s.startedAt : 0
+  const quiet = s.lastByteAt ? Date.now() - s.lastByteAt : 0
+  const stalled = !!s.startedAt && quiet > 20000
+  const chars = (s.contentChars || 0).toLocaleString()
+
+  let text = 'Sending the picture…'
+  let detail = ''
+  let hint = `${shortBytes(s.imageChars)} · ${s.model || ''}`
+
+  if (s.firstByteMs == null && el > 1500) {
+    text = 'Waiting for the model…'
+    hint = `nothing back after ${shortMs(el)}`
+  } else if (s.firstByteMs != null && !s.contentChars && s.reasoningChars) {
+    text = 'Thinking before it answers…'
+    detail = `~${Math.round(s.reasoningChars / 4).toLocaleString()} tokens`
+    hint = `${shortMs(el)} in · no answer yet`
+  } else if (s.firstByteMs != null && !s.contentChars) {
+    text = 'Connected — waiting for the first note…'
+    hint = shortMs(el) + ' in'
+  } else if (!s.rows) {
+    text = 'Reading the score…'
+    detail = `${chars} chars`
+    hint = `${shortMs(el)} in · nothing has parsed yet`
+  } else {
+    text = 'Transcribing…'
+    detail = progressLabel.value
+    hint = `${shortMs(el)} · ${chars} chars`
+  }
+  if (stalled) hint = `stalled — nothing for ${shortMs(quiet)}`
+  return { text, detail, hint, stalled }
 })
 const variant = ref('original') // 'original' | 'adjusted'
 const adjusted = computed(() => (isDraft.value ? null : score.value?.data?.adjusted || null))
@@ -1006,7 +1198,8 @@ const flat = computed(() =>
 )
 const playableNotes = computed(() => flat.value.playable)
 const laneNotes = computed(() => flat.value.notes.filter((n) => !n.rest))
-const lyricsPresent = computed(() => flat.value.notes.some((n) => n.ly))
+// A pinyin-only result still counts as lyrics, or the toggle would never light.
+const lyricsPresent = computed(() => flat.value.notes.some((n) => n.ly || n.py))
 const totalBeats = computed(() => flat.value.totalBeats)
 const beatsPerBar = computed(() => {
   const m = (activeData.value?.timeSig || '4/4').match(/^(\d+)\//)
@@ -1129,12 +1322,27 @@ let lastBeat = -1
 let rafId = 0
 let lastTs = 0
 let stableStart = null
+// The sound currently in the air. A tie or a slur is ONE sound spanning several
+// notes, so the voice outlives the note that started it and gets glided rather
+// than restruck; `glidePending` marks a portamento already scheduled ahead of
+// time by a `go:'to'`, so the arriving note doesn't fire a second one over it.
+let voice = null
+let glidePending = false
 const traceSamples = []
 const tracker = new PitchTracker()
 const micActive = computed(() => micOn.value || tunerOpen.value)
 
+function releaseVoice(fade = 0.06) {
+  if (voice) {
+    voice.release(fade)
+    voice = null
+  }
+  glidePending = false
+}
+
 function resetPlayback(toIdx = 0) {
   playing.value = false
+  releaseVoice()
   curIdx = Math.max(0, Math.min(playableNotes.value.length - 1, toIdx))
   t = playableNotes.value[curIdx]?.start || 0
   syncTriggers()
@@ -1152,6 +1360,52 @@ function noteDurSec(beats) {
   return Math.max(0.15, beats * (60 / bpm.value) * 0.9)
 }
 
+// The next entry in the flattened timeline that actually sounds.
+function nextSounding(all, i) {
+  for (let k = i + 1; k < all.length; k++) if (!all[k].rest && all[k].midi != null) return all[k]
+  return null
+}
+
+// Sound one entry of the flattened timeline. A note the previous one tied or
+// slurred into keeps the running voice and glides to the new pitch, so a phrase
+// comes out as one breath instead of a row of separate blows.
+function triggerNote(all, i) {
+  const n = all[i]
+  if (n.rest || n.midi == null) {
+    releaseVoice()
+    return
+  }
+  if (n.noAttack && voice && !voice.dead) {
+    if (!glidePending) voice.glideTo(n.midi, n.tiedIn ? 0 : 0.06)
+    voice.extendTo(noteDurSec(n.soundBeats))
+    glidePending = false
+  } else {
+    releaseVoice()
+    const prev = all[i - 1]
+    const next = nextSounding(all, i)
+    // A slurred note's envelope has to outlast its own beat, because the glide
+    // that continues it only arrives when the next note is crossed.
+    voice = playBawuTone(n.midi, noteDurSec(n.soundBeats) * (n.sl ? 1.3 : 1), {
+      gi: n.gi,
+      go: n.go,
+      bd: n.bd,
+      vb: n.vb,
+      fromMidi: prev && !prev.rest ? prev.midi : null,
+      nextMidi: next ? next.midi : null,
+    })
+  }
+
+  // A portamento into the next note has to START before that note is due, so
+  // schedule it now — but only when the two are joined. Unjoined, the tail bend
+  // already baked into this note's own envelope is the whole gesture.
+  const nxt = all[i + 1]
+  if (n.go === 'to' && voice && nxt && !nxt.rest && nxt.noAttack) {
+    const seg = noteDurSec(n.beats)
+    voice.glideTo(nxt.midi, seg * 0.32, seg * 0.68)
+    glidePending = true
+  }
+}
+
 function frame(ts) {
   rafId = requestAnimationFrame(frame)
   const dt = Math.min(0.1, (ts - lastTs) / 1000 || 0)
@@ -1166,8 +1420,7 @@ function frame(ts) {
       t += dt * (bpm.value / 60)
       const all = flat.value.notes
       while (trigIdx < all.length && all[trigIdx].start <= t) {
-        const n = all[trigIdx]
-        if (!n.rest && n.midi != null) playBawuTone(n.midi, noteDurSec(n.beats))
+        triggerNote(all, trigIdx)
         trigIdx++
       }
       const beat = Math.floor(t)
@@ -1181,18 +1434,93 @@ function frame(ts) {
           t = totalBeats.value
         } else {
           playing.value = false
+          releaseVoice()
           showToast('End of piece')
         }
       }
     }
   }
 
-  // lane transforms (direct DOM — no reactivity at 60fps)
-  if (laneEl.value) laneEl.value.style.transform = `translateX(${PLAYHEAD_X - t * PX.value}px)`
-  if (laneElPhone.value) laneElPhone.value.style.transform = `translateX(${PLAYHEAD_X_PHONE - t * PX.value}px)`
+  // Lane + playhead transforms (direct DOM — no reactivity at 60fps).
+  measureRoll()
+  paintRoll(laneEl.value, nowEl.value, rollEl.value, PLAYHEAD_X, deskView)
+  paintRoll(laneElPhone.value, nowElPhone.value, rollElPhone.value, PLAYHEAD_X_PHONE, phoneView)
   drawTrace(ts)
 
   if (uiIdx.value !== curIdx) uiIdx.value = curIdx
+}
+
+// Per-roll paint state. `page` is the screenful currently shown in line mode
+// (-1 in scroll mode); the rest are the last values written, so the loop only
+// touches the DOM when something actually changed.
+const blankView = () => ({ lane: null, now: null, page: -1, laneX: null, lineX: null, trans: '' })
+const deskView = blankView()
+const phoneView = blankView()
+const LANE_PAD = 24 // px of breathing room at the left edge in line mode
+
+// Paint one roll for the current song position.
+//   'roll' mode — the lane slides leftwards under a line pinned at `headX`.
+//   'line' mode — the lane only moves when the page turns, so a CSS transition
+//                 can animate the flip while the line still updates every frame.
+function paintRoll(lane, now, roll, headX, view) {
+  if (!lane) return
+  if (view.lane !== lane || view.now !== now) {
+    // A layout change swapped the elements out — repaint onto the new ones.
+    Object.assign(view, blankView(), { lane, now })
+  }
+  let laneX
+  let lineX = headX
+  let trans = ''
+  if (scrollStyle.value === 'line' && roll) {
+    const pageW = Math.max(120, roll.clientWidth - LANE_PAD * 2)
+    const pageBeats = pageW / PX.value
+    const page = Math.max(0, Math.floor(t / pageBeats))
+    laneX = LANE_PAD - page * pageBeats * PX.value
+    lineX = LANE_PAD + (t - page * pageBeats) * PX.value
+    trans = view.page < 0 ? '' : 'transform 220ms ease' // don't animate on entry
+    view.page = page
+  } else {
+    laneX = headX - t * PX.value
+    view.page = -1
+  }
+  if (view.trans !== trans) {
+    lane.style.transition = trans
+    view.trans = trans
+  }
+  if (view.laneX !== laneX) {
+    lane.style.transform = `translateX(${laneX}px)`
+    view.laneX = laneX
+  }
+  if (now && view.lineX !== lineX) {
+    now.style.transform = `translateX(${lineX}px)`
+    view.lineX = lineX
+  }
+}
+
+function setScrollStyle(v) {
+  if (scrollStyle.value === v) return
+  scrollStyle.value = v
+  localStorage.setItem('bawu.scrollStyle', v)
+  // Force both rolls to repaint from scratch on the next frame.
+  Object.assign(deskView, blankView())
+  Object.assign(phoneView, blankView())
+}
+
+// Roll geometry for the expression overlay, read off the live DOM. The loop
+// already touches these boxes for the mic trace, so the extra reads are free —
+// and the refs are only written when a value actually changed.
+function measureRoll() {
+  const h = rollEl.value?.clientHeight || 0
+  if (rollH.value !== h) {
+    rollH.value = h
+    measurePill()
+  }
+  const hp = rollElPhone.value?.clientHeight || 0
+  if (rollHPhone.value !== hp) rollHPhone.value = hp
+}
+function measurePill() {
+  const pill = rollEl.value?.querySelector('.note')
+  if (pill?.offsetHeight) pillH.value = pill.offsetHeight
 }
 
 // ── Mic trace ───────────────────────────────────────────────────────────────
@@ -1214,8 +1542,11 @@ function drawTrace() {
   while (traceSamples.length && now - traceSamples[0].at > 6000) traceSamples.shift()
   const pxPerSec = PX.value * (bpm.value / 60)
   const rows = BAWU_NOTES.length
+  // The trace trails the playhead, wherever it currently is — pinned in scroll
+  // mode, sweeping across the sheet in line mode.
+  const headX = deskView.lineX ?? PLAYHEAD_X
   const yOf = (mf) => ((rowFloatOfMidi(mf) + 0.5) / rows) * h
-  const xOf = (at) => PLAYHEAD_X - ((now - at) / 1000) * pxPerSec
+  const xOf = (at) => headX - ((now - at) / 1000) * pxPerSec
 
   g.strokeStyle = '#d97706'
   g.lineWidth = 2.5
@@ -1245,7 +1576,7 @@ function drawTrace() {
     g.shadowColor = 'rgba(217,119,6,0.8)'
     g.shadowBlur = 10
     g.beginPath()
-    g.arc(PLAYHEAD_X, y, 6, 0, Math.PI * 2)
+    g.arc(headX, y, 6, 0, Math.PI * 2)
     g.fill()
     g.shadowBlur = 0
   }
@@ -1311,6 +1642,7 @@ function togglePlay() {
   ensureAudio()
   if (playing.value) {
     playing.value = false
+    releaseVoice()
     return
   }
   if (t > totalBeats.value) resetPlayback(0)
@@ -1352,6 +1684,7 @@ function setMode(m) {
   if (mode.value === m) return
   mode.value = m
   playing.value = false
+  releaseVoice()
   stableStart = null
   syncTriggers()
 }
@@ -1477,18 +1810,6 @@ const locLabel = computed(() => {
   return `line ${cur.lineIdx + 1} · bar ${bar} · ${cur.label}`
 })
 
-// ── Digital jianpu rendering helpers ─────────────────────────────────────────
-function accGlyph(acc) {
-  return acc === 1 ? '♯' : acc === -1 ? '♭' : acc === 2 ? '♮' : ''
-}
-function artLabel(art) {
-  return ({ T: 'T', TK: 'TK', tr: 'tr', grace: 'gr' })[art] || ''
-}
-function octDots(oct, above) {
-  const n = above ? Math.max(0, oct) : Math.max(0, -oct)
-  return Math.min(2, n)
-}
-
 // ── Short coach line (practice toolbar) ──────────────────────────────────────
 const modeHint = computed(() => {
   const cur = currentNote.value
@@ -1533,7 +1854,14 @@ function nearestRow(midi) {
 // scale itself (`PX`) keeps even the shortest pill wide enough for its label.
 function noteWidth(n) {
   const span = n.beats * PX.value
+  // A tie's two halves are one sound, so no gap is cut between them.
+  if (n.ti) return Math.max(span, 10)
   return Math.max(span - Math.min(NOTE_GAP, span * 0.18), 10)
+}
+// The lane row a note sits on. Unplayable pitches are shown on their nearest
+// row (with a warning) rather than vanishing off the axis.
+function noteRow(n) {
+  return n.row === null ? nearestRow(n.midi ?? 69) : n.row
 }
 function noteClass(n) {
   const w = noteWidth(n)
@@ -1543,31 +1871,115 @@ function noteClass(n) {
     upcoming: !editMode.value && n.idx > uiIdx.value,
     unplayable: n.row === null,
     selected: isSelected(n),
+    // The two halves of a tie butt together into one continuous pill.
+    'tied-in': n.tiedIn,
+    'ties-out': !!n.ti,
     tight: w < 46, // trim padding so the label still fits
     tiny: w < 20, // no room for a label at all
   }
 }
 function noteStyle(n) {
-  const row = n.row === null ? nearestRow(n.midi ?? 69) : n.row
   return {
     left: n.start * PX.value + 'px',
     width: noteWidth(n) + 'px',
-    top: ((row + 0.5) / BAWU_NOTES.length) * 100 + '%',
+    top: ((noteRow(n) + 0.5) / BAWU_NOTES.length) * 100 + '%',
   }
 }
+const FX_NAMES = { in: 'slide in', off: 'falls away', to: 'glissando to the next note' }
+function noteTitle(n) {
+  const parts = [n.midi != null ? pitchName(n.midi) : '']
+  if (n.ti) parts.push('tied to the next note')
+  else if (n.sl) parts.push('slurred to the next note')
+  if (n.tiedIn) parts.push('held from the note before')
+  if (n.gi) parts.push(FX_NAMES.in)
+  if (n.go) parts.push(FX_NAMES[n.go])
+  if (n.bd) parts.push(`bend ${n.bd > 0 ? '+' : ''}${n.bd}`)
+  if (n.vb) parts.push(['', 'gentle vibrato', 'wide vibrato', 'flutter tongue'][n.vb])
+  return parts.filter(Boolean).join(' · ')
+}
+
+// ── Expression overlay ───────────────────────────────────────────────────────
+// Arcs and diagonals don't come out of a stack of absolutely-positioned pills,
+// so the marks are drawn as one SVG layer inside the lane. Everything is in
+// lane pixels: x is beats × PX, y is the row's centre line, and the pill height
+// decides how far off the note an arc or hook sits.
+function buildFxPaths(h, ph) {
+  const notes = laneNotes.value
+  if (!h || !notes.length) return []
+  const px = PX.value
+  const rows = BAWU_NOTES.length
+  const half = ph / 2
+  const yOf = (n) => ((noteRow(n) + 0.5) / rows) * h
+  const out = []
+
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i]
+    const x0 = n.start * px
+    const w = noteWidth(n)
+    const x1 = x0 + w
+    const cx = x0 + w / 2
+    const y = yOf(n)
+    const top = y - half
+
+    if (n.bd) {
+      const dir = n.bd < 0 ? 1 : -1
+      out.push({ cls: 'fx-bend', d: `M${cx - 7} ${top - 5} q7 ${dir * 9} 14 0` })
+    }
+    if (n.vb) {
+      const amp = 1.5 + n.vb
+      const step = n.vb === 3 ? 4 : 6 // flutter is tighter and faster
+      let d = `M${cx - step * 2} ${top - 5}`
+      for (let k = 0; k < 4; k++) d += ` q${step / 2} ${(k % 2 ? 1 : -1) * amp} ${step} 0`
+      out.push({ cls: 'fx-vib', d })
+    }
+    if (n.gi) {
+      const prev = notes[i - 1]
+      const up = !prev || prev.midi <= n.midi
+      out.push({ cls: 'fx-gliss', d: `M${x0 - 15} ${y + (up ? 13 : -13)} L${x0 - 2} ${y}` })
+    }
+    if (n.go === 'off') {
+      out.push({ cls: 'fx-gliss', d: `M${x1 + 2} ${y} L${x1 + 16} ${y + 14}` })
+    }
+
+    const next = notes[i + 1]
+    if (!next) continue
+    // Ties and slurs are already settled against the real neighbour by
+    // flattenScore, so they always point at the note that follows here.
+    const nx0 = next.start * px
+    const ny = yOf(next)
+    const nTop = ny - half
+    const adjacent = Math.abs(next.start - (n.start + n.beats)) < 1e-4
+
+    if (n.go === 'to' && adjacent) {
+      out.push({ cls: 'fx-gliss', d: `M${x1 + 2} ${y} L${nx0 - 2} ${ny}` })
+    }
+    if (n.ti || n.sl) {
+      const lift = n.ti ? 6 : 11
+      const apex = Math.min(top, nTop) - lift
+      if (n.ti) {
+        // A tie joins the two noteheads, so it hugs the pills' facing edges.
+        out.push({ cls: 'fx-tie', d: `M${x1 - 5} ${top - 2} Q${(x1 + nx0) / 2} ${apex} ${nx0 + 5} ${nTop - 2}` })
+      } else {
+        // A slur arches over the phrase, centre to centre.
+        out.push({ cls: 'fx-slur', d: `M${cx} ${top - 3} Q${(cx + nx0 + noteWidth(next) / 2) / 2} ${apex} ${nx0 + noteWidth(next) / 2} ${nTop - 3}` })
+      }
+    }
+  }
+  return out
+}
+const fxPaths = computed(() => buildFxPaths(rollH.value, pillH.value))
+const fxPathsPhone = computed(() => buildFxPaths(rollHPhone.value, 25.6)) // .note.phone is 1.6rem
 
 // ── Lyrics ───────────────────────────────────────────────────────────────────
+// Either script falls back to the other, so a pinyin-only pass still shows
+// something under the notes when 中文 is selected (and vice versa).
 function syl(n) {
   if (!n) return ''
-  return lyricsScript.value === 'pinyin' ? (n.py || n.ly || '') : (n.ly || '')
-}
-function jianpuSyl(n) {
-  if (!n || n.rest) return ''
-  return lyricsScript.value === 'pinyin' ? (n.py || n.ly || '') : (n.ly || '')
+  return lyricsScript.value === 'pinyin' ? (n.py || n.ly || '') : (n.ly || n.py || '')
 }
 const showBand = computed(() => lyricsOn.value && lyricsPosition.value === 'band' && lyricsPresent.value && !editMode.value)
 const karaoke = computed(() => {
-  const list = playableNotes.value.filter((n) => n.ly)
+  const list = playableNotes.value.filter((n) => n.ly || n.py)
   if (!list.length) return []
   let ci = 0
   for (let k = 0; k < list.length; k++) if (list[k].idx <= uiIdx.value) ci = k
@@ -1576,8 +1988,8 @@ const karaoke = computed(() => {
   for (let i = ci - W; i <= ci + W; i++) {
     const n = list[i]
     if (!n) continue
-    const primary = lyricsScript.value === 'pinyin' ? (n.py || n.ly) : n.ly
-    const secondary = lyricsScript.value === 'pinyin' ? n.ly : (n.py || '')
+    const primary = lyricsScript.value === 'pinyin' ? (n.py || n.ly) : (n.ly || n.py)
+    const secondary = lyricsScript.value === 'pinyin' ? (n.py ? n.ly : '') : (n.ly ? n.py : '')
     out.push({ i, t: primary, sub: secondary, cur: i === ci, dist: Math.abs(i - ci) })
   }
   return out
@@ -1591,17 +2003,34 @@ function zoomBy(delta) {
 // ── On-pane note editing ─────────────────────────────────────────────────────
 let drag = null
 let lastAddBeats = 1
+let lastPreviewMidi = null
+
+// Audition a note the way a piano roll does — on click, on drop, and as a drag
+// crosses into a new row. Guarded on the pitch actually changing so dragging
+// sideways doesn't machine-gun the synth.
+function previewTone(midi, force = false) {
+  if (!auditionOn.value || midi == null) return
+  if (!force && midi === lastPreviewMidi) return
+  lastPreviewMidi = midi
+  playBawuTone(midi, 0.4)
+}
+function endPreview() {
+  lastPreviewMidi = null
+}
 
 function enterEdit() {
   playing.value = false
+  releaseVoice()
   editMode.value = true
   selectedIds.value = new Set()
+  endPreview()
   if (hasPicture.value && !isDraft.value) scoreView.value = 'jianpu'
 }
 function exitEdit() {
   editMode.value = false
   selectedIds.value = new Set()
   marquee.value = null
+  endPreview()
   mode.value = 'listen'
 }
 function toggleEdit() {
@@ -1696,16 +2125,94 @@ function mutateSelectedEvents(fn) {
 }
 
 function setSelDegree(d) {
+  let heard = null
   mutateSelectedEvents((ev) => {
     const { oct } = degOctAccOfMidi(ev.midi, keyName.value)
     ev.midi = midiOf(d, oct, keyName.value)
+    if (heard == null) heard = ev.midi
   })
+  previewTone(heard, true)
 }
 function shiftSelRow(rowDelta) {
+  let heard = null
   mutateSelectedEvents((ev) => {
     const r = nearestRow(ev.midi)
     const nr = Math.max(0, Math.min(BAWU_NOTES.length - 1, r + rowDelta))
     ev.midi = BAWU_NOTES[nr].midi
+    if (heard == null) heard = ev.midi
+  })
+  previewTone(heard, true)
+}
+
+// ── Expression marks (edit inspector) ────────────────────────────────────────
+const vibChoices = [
+  { n: 0, lab: '—', title: 'No vibrato' },
+  { n: 1, lab: '〜', title: 'Gentle vibrato (虚指颤音)' },
+  { n: 2, lab: '≈', title: 'Wide vibrato' },
+  { n: 3, lab: '≋', title: 'Flutter tongue (花舌)' },
+]
+// What the selection currently carries. A field only reads as "on" when every
+// selected note agrees, so a mixed selection shows nothing set and one press
+// applies the mark to all of them.
+const selFx = computed(() => {
+  const n = selNotes.value
+  if (!n.length) return { ti: 0, sl: 0, gi: 0, go: '', bd: 0, vb: 0 }
+  const all = (fn) => n.every(fn)
+  return {
+    ti: all((x) => x.ti) ? 1 : 0,
+    sl: all((x) => x.sl) ? 1 : 0,
+    gi: all((x) => x.gi) ? 1 : 0,
+    go: all((x) => x.go === n[0].go) ? n[0].go : '',
+    bd: all((x) => x.bd === n[0].bd) ? n[0].bd : 0,
+    vb: all((x) => x.vb === n[0].vb) ? n[0].vb : 0,
+  }
+})
+const selHasFx = computed(() => selNotes.value.some((n) => n.ti || n.sl || n.gi || n.go || n.bd || n.vb))
+// A tie needs a next note at the same pitch, touching this one — otherwise the
+// serializer would only drop it again, so don't offer it.
+const canTie = computed(() => {
+  const sel = selNotes.value
+  if (!sel.length) return false
+  const all = flat.value.notes
+  return sel.every((n) => {
+    const next = all[all.indexOf(n) + 1]
+    return next && !next.rest && next.midi === n.midi
+  })
+})
+
+function toggleSelTie() {
+  if (!canTie.value) return
+  const on = !selFx.value.ti
+  mutateSelectedEvents((ev) => { ev.ti = on ? 1 : 0; if (on) ev.sl = 0 })
+}
+function toggleSelSlur() {
+  const on = !selFx.value.sl
+  mutateSelectedEvents((ev) => { ev.sl = on ? 1 : 0; if (on) ev.ti = 0 })
+}
+function toggleSelGlissIn() {
+  const on = !selFx.value.gi
+  mutateSelectedEvents((ev) => { ev.gi = on ? 1 : 0 })
+}
+function setSelGlideOut(kind) {
+  const on = selFx.value.go !== kind
+  mutateSelectedEvents((ev) => { ev.go = on ? kind : '' })
+}
+function stepSelBend(delta) {
+  const next = Math.max(-MAX_BEND, Math.min(MAX_BEND, (selFx.value.bd || 0) + delta))
+  mutateSelectedEvents((ev) => { ev.bd = next })
+}
+function setSelVibrato(v) {
+  const next = selFx.value.vb === v ? 0 : Math.max(0, Math.min(MAX_VIBRATO, v))
+  mutateSelectedEvents((ev) => { ev.vb = next })
+}
+function clearSelFx() {
+  mutateSelectedEvents((ev) => {
+    ev.ti = 0
+    ev.sl = 0
+    ev.gi = 0
+    ev.go = ''
+    ev.bd = 0
+    ev.vb = 0
   })
 }
 function setSelLength(beats) {
@@ -1739,7 +2246,9 @@ function copySelection() {
   const sel = [...selectedIds.value].map((i) => events[i]).filter(Boolean)
   if (!sel.length) return
   const min = Math.min(...sel.map((e) => e.start))
-  clipboard.value = sel.map((e) => ({ start: e.start - min, beats: e.beats, midi: e.midi, art: e.art, ly: e.ly, py: e.py }))
+  // Spread rather than list the fields: lyrics and every expression mark come
+  // along, and a new one added later doesn't silently get dropped on paste.
+  clipboard.value = sel.map((e) => ({ ...e, start: e.start - min }))
   showToast(`${sel.length} ${sel.length === 1 ? 'note' : 'notes'} copied`)
 }
 function pasteSelection() {
@@ -1749,11 +2258,17 @@ function pasteSelection() {
   const base = editableBase()
   const events = dataToEvents(base)
   const at = snapBeat(t, GRID)
-  const pasted = clip.map((c, k) => ({ id: 'p' + Date.now() + k, start: at + c.start, beats: c.beats, midi: c.midi, art: c.art, ly: c.ly, py: c.py }))
+  const pasted = clip.map((c, k) => ({ ...c, id: 'p' + Date.now() + k, start: at + c.start }))
   const all = [...events, ...pasted]
   commitEdit(eventsToData(all, base, beatsPerBar.value))
   selectedIds.value = new Set(pasted.map((ev) => rankOfEvent(all, ev)))
   t = Math.max(...pasted.map((p) => p.start + p.beats))
+}
+
+// A fresh event with every optional field explicitly empty, so a new note never
+// inherits an expression mark from whatever shape it was built out of.
+function newEvent(id, start, beats, midi) {
+  return { id, start, beats, midi, art: '', ly: '', py: '', ti: 0, sl: 0, gi: 0, go: '', bd: 0, vb: 0 }
 }
 
 // Step entry: keys 1–7 drop a note at the cursor and advance it.
@@ -1765,11 +2280,11 @@ function stepInsert(deg) {
   const start = snapBeat(t, GRID)
   const midi = midiOf(deg, 0, keyName.value)
   const beats = lastAddBeats
-  const ev = { id: 's' + Date.now(), start, beats, midi, art: '', ly: '', py: '' }
+  const ev = newEvent('s' + Date.now(), start, beats, midi)
   events.push(ev)
   commitEdit(eventsToData(events, base, beatsPerBar.value))
   selectedIds.value = new Set([rankOfEvent(events, ev)])
-  playBawuTone(midi, 0.4)
+  previewTone(midi, true)
   t = start + beats
 }
 
@@ -1801,7 +2316,9 @@ function onMarqueeUp() {
   const w = Math.abs(mq.x1 - mq.x0)
   const h = Math.abs(mq.y1 - mq.y0)
   if (w < 5 && h < 5) { selectedIds.value = new Set(); return } // a plain click clears
-  const laneOff = PLAYHEAD_X - t * PX.value
+  // Measure where the lane actually sits rather than recomputing it: the two
+  // playhead modes park it in different places, and mid page-flip it's between.
+  const laneOff = (laneEl.value?.getBoundingClientRect().left ?? rect.left) - rect.left
   const b0 = (Math.min(mq.x0, mq.x1) - laneOff) / PX.value
   const b1 = (Math.max(mq.x0, mq.x1) - laneOff) / PX.value
   const rows = BAWU_NOTES.length
@@ -1832,6 +2349,9 @@ const mqStyle = computed(() => {
 
 function onNoteClick(e, n) {
   if (editMode.value) {
+    // pointerdown already sounded the grab; the guard keeps the click quiet
+    // unless the pitch moved under the drag.
+    previewTone(n.midi)
     const has = selectedIds.value.has(n.idx)
     if (e.shiftKey) {
       const next = new Set(selectedIds.value)
@@ -1857,6 +2377,7 @@ function onNotePointerDown(e, n) {
   const ev = events[n.idx]
   if (!ev) return
   drag = { type: 'move', events, ev, base, startX: e.clientX, origStart: ev.start, moved: false }
+  previewTone(ev.midi, true) // hear what you grabbed, like a piano roll
   window.addEventListener('pointermove', onDragMove)
   window.addEventListener('pointerup', onDragUp)
 }
@@ -1882,6 +2403,7 @@ function onDragMove(e) {
     const dxBeats = (e.clientX - drag.startX) / PX.value
     drag.ev.start = Math.max(0, snapBeat(drag.origStart + dxBeats, GRID))
     drag.ev.midi = midiFromClientY(e.clientY)
+    previewTone(drag.ev.midi) // one tone per row crossed, not per pixel
   } else {
     const dxBeats = (e.clientX - drag.startX) / PX.value
     drag.ev.beats = Math.max(MIN_BEATS, snapBeat(drag.origBeats + dxBeats, GRID))
@@ -1913,11 +2435,11 @@ function onRollDblClick(e) {
   const events = dataToEvents(base)
   const start = snapBeat(beatFromClientX(e.clientX), GRID)
   const midi = midiFromClientY(e.clientY)
-  const ev = { id: Date.now(), start, beats: lastAddBeats, midi, art: '', ly: '', py: '' }
+  const ev = newEvent(Date.now(), start, lastAddBeats, midi)
   events.push(ev)
   commitEdit(eventsToData(events, base, beatsPerBar.value))
   selectedIds.value = new Set([rankOfEvent(events, ev)])
-  playBawuTone(midi, 0.4)
+  previewTone(midi, true)
 }
 
 // New empty sheet → straight into edit mode.
@@ -2063,6 +2585,67 @@ function openImport() {
   importOpen.value = true
 }
 
+// ── Lyrics pass ─────────────────────────────────────────────────────────────
+// Reading the words is its own trip to the model, so it needs the original
+// picture back — the edge function only transcribes from an image. That rules
+// the pass out for hand-typed scores, which have no picture to read.
+const canLyricsPass = computed(() => !isDraft.value && hasPicture.value && laneNotes.value.length > 0)
+
+function openLyricsPass() {
+  if (!canLyricsPass.value) return
+  playing.value = false
+  beginTrace()
+  lyricsOpen.value = true
+}
+
+// The lyrics pass streams from inside its modal, so the view mirrors its state
+// to keep the shared stream log ticking and readable after the modal closes.
+function onLyricsRunning(on) {
+  lyricsRunning.value = on
+}
+
+async function resolveScoreImage() {
+  const s = store.activeScore
+  if (!s?.image_path) return ''
+  if (imageDataUris.has(s.id)) return imageDataUris.get(s.id)
+  const url = imageUrl.value || (await store.getImageUrl(s.image_path))
+  const uri = await urlToDataUri(url)
+  imageDataUris.set(s.id, uri)
+  return uri
+}
+
+// Write the result onto whichever transposition is on screen. Deliberately not
+// routed through commitEdit(), which would fork a picture score into an
+// "adjusted" variant — adding words is not an adjustment to the music.
+async function applyLyrics({ rows, pinyin, overwrite }) {
+  const s = store.activeScore
+  if (!s || !activeData.value) return
+  lyricsApplying.value = true
+  try {
+    const merged = mergeLyrics(activeData.value, rows, { overwrite })
+    if (variant.value === 'adjusted' && adjusted.value) {
+      const adj = { key: merged.key, bpm: merged.bpm, timeSig: merged.timeSig, lines: merged.lines }
+      store.updateScoreData(s.id, { ...s.data, adjusted: adj })
+    } else {
+      store.updateScoreData(s.id, { ...s.data, lines: merged.lines })
+    }
+    lyricsOn.value = true
+    // Only force the script over when there's nothing else to show — the user's
+    // 中文 / Pīnyīn choice is otherwise theirs to keep.
+    const chinese = rows.reduce((a, r) => a + r.ly.filter(Boolean).length, 0)
+    const roman = rows.reduce((a, r) => a + r.py.filter(Boolean).length, 0)
+    if (pinyin && roman && !chinese) lyricsScript.value = 'pinyin'
+    lyricsOpen.value = false
+    const n = Math.max(chinese, roman)
+    showToast(`${n} ${n === 1 ? 'syllable' : 'syllables'} added`)
+  } catch (e) {
+    console.error('[Bawu] apply lyrics failed:', e)
+    showToast(e.message || 'Could not save the lyrics')
+  } finally {
+    lyricsApplying.value = false
+  }
+}
+
 async function createFromImport(payload) {
   importCreating.value = true
   importError.value = ''
@@ -2100,14 +2683,14 @@ async function startStream(payload) {
     _model: payload.model,
     _effort: payload.effort,
     _mode: payload.mode || 'jianpu',
-    _lyrics: !!payload.lyrics,
-    _pinyin: !!payload.pinyin,
+    _expression: !!payload.expression,
     _notes: payload.notes || '',
     _folderId: payload.folderId,
     _userName: payload.name,
     _meta: null,
   }
   streamProgress.value = { lines: 0, reasoning: false }
+  beginTrace()
 
   streamAbort = new AbortController()
   try {
@@ -2115,14 +2698,14 @@ async function startStream(payload) {
       model: payload.model,
       effort: payload.effort,
       mode: payload.mode || 'jianpu',
-      lyrics: !!payload.lyrics,
-      pinyin: !!payload.pinyin,
+      expression: !!payload.expression,
       notes: payload.notes || '',
       signal: streamAbort.signal,
       onMeta: applyMeta,
       onLine: pushDraftLine,
       onProgress: (p) => { streamProgress.value = { ...streamProgress.value, lines: draft.value?.data.lines.length ?? p.lines } },
       onReasoning: () => { streamProgress.value = { ...streamProgress.value, reasoning: true } },
+      onTrace: pushTrace,
     })
     const d = draft.value
     if (!d) return
@@ -2175,18 +2758,20 @@ async function continueDraft() {
   d.streaming = true
   d.truncated = false
   d.error = ''
+  beginTrace()
   streamAbort = new AbortController()
   try {
     const result = await continueTranscription(d._dataUri, { data: d.data }, {
       model: d._model,
       effort: d._effort,
       mode: d._mode || 'jianpu',
-      lyrics: !!d._lyrics,
-      pinyin: !!d._pinyin,
+      expression: !!d._expression,
       notes: d._notes || '',
       signal: streamAbort.signal,
       onLine: pushDraftLine,
       onProgress: () => { streamProgress.value = { ...streamProgress.value, lines: d.data.lines.length } },
+      onReasoning: () => { streamProgress.value = { ...streamProgress.value, reasoning: true } },
+      onTrace: pushTrace,
     })
     if (!draft.value) return
     d.streaming = false
@@ -2404,6 +2989,22 @@ watch(
 watch(keyName, () => resetPlayback(curIdx))
 watch(variant, () => resetPlayback(0))
 
+// Tick while a run is in flight so the elapsed / "quiet for Ns" readouts keep
+// counting even when no data is arriving — which is precisely when they matter.
+let traceTimer = 0
+watch(
+  () => streaming.value || lyricsRunning.value,
+  (on) => {
+    clearInterval(traceTimer)
+    if (on) traceTimer = setInterval(() => traceClock.value++, 500)
+  },
+  { immediate: true },
+)
+
+// The pill height comes from a clamp() in the CSS, so it can only be measured
+// off a real note — re-check once notes exist, and whenever the zoom changes it.
+watch([() => laneNotes.value.length, PX], () => nextTick(measurePill))
+
 // Keep the where-are-we band visible as the piece walks down the picture.
 watch(
   () => currentNote.value?.lineIdx,
@@ -2514,6 +3115,8 @@ watch(
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(rafId)
+  clearInterval(traceTimer)
+  releaseVoice(0.02)
   tracker.stop()
   if (recording.value) recorder.stop()
   for (const take of takes.value) URL.revokeObjectURL(take.url)
@@ -2740,7 +3343,8 @@ onBeforeUnmount(() => {
 .stream-strip .ss-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-400), var(--accent-600)); transition: width 240ms ease; }
 .stream-strip .ss-fill.indet { width: 35%; animation: bawu-indet 1.3s ease-in-out infinite; }
 @keyframes bawu-indet { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
-.stream-strip .ss-hint { font-size: 0.72rem; color: var(--text-faint); margin-left: auto; }
+.stream-strip .ss-hint { font-size: 0.72rem; color: var(--text-faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+.stream-strip .ss-hint.stalled { color: var(--warn); font-weight: 700; }
 .stream-strip.warn .ss-text { color: var(--text-dim); }
 
 /* ── Player ── */
@@ -2756,6 +3360,12 @@ onBeforeUnmount(() => {
 .bawu-app .seg button.on { background: #fff; color: var(--accent-600); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .seg-zoom button i { font-size: 0.6rem; }
 .bawu-app .seg-zoom .zoom-val { min-width: 2.6rem; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); }
+.bawu-app .chip { display: inline-flex; align-items: center; gap: 0.35rem; height: 1.85rem; padding: 0 0.7rem; border-radius: 999px; border: 1px solid var(--border); background: #fff; font-size: 0.78rem; font-weight: 600; color: var(--text-dim); white-space: nowrap; flex-shrink: 0; transition: border-color 120ms, color 120ms, background 120ms; }
+.bawu-app .chip.chip-sm { height: 1.65rem; padding: 0 0.6rem; font-size: 0.75rem; }
+.bawu-app .chip:hover { color: var(--text); border-color: var(--text-faint); }
+.bawu-app .chip.live { background: var(--accent-050); border-color: transparent; color: var(--accent-600); box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.25); }
+.bawu-app .chip.chip-ai { border-color: var(--accent-100); color: var(--accent-600); }
+.bawu-app .chip.chip-ai:hover { background: var(--accent-050); border-color: var(--accent-400); }
 .desk-bar .mode-hint { font-size: 0.75rem; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .desk-bar .spacer, .inspector .spacer, .key-card .spacer { flex: 1; }
 
@@ -2765,6 +3375,7 @@ onBeforeUnmount(() => {
 .bawu-app .eb-done:hover { background: var(--accent-600); }
 .bawu-app .eb-icon { width: 1.9rem; height: 1.9rem; border-radius: 0.5rem; border: 1px solid var(--accent-100); background: #fff; color: var(--accent-600); display: inline-flex; align-items: center; justify-content: center; }
 .bawu-app .eb-icon:hover:not(:disabled) { background: var(--accent-050); }
+.bawu-app .eb-icon.on { background: var(--accent-500); border-color: var(--accent-500); color: #fff; }
 .edit-bar .eb-div { width: 1px; height: 1.25rem; background: var(--accent-100); }
 .bawu-app .eb-btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 1.9rem; padding: 0 0.65rem; border-radius: 0.5rem; border: 1px solid var(--accent-100); background: #fff; color: var(--accent-600); font-size: 0.75rem; font-weight: 600; }
 .bawu-app .eb-btn:hover:not(:disabled) { background: var(--accent-050); }
@@ -2820,6 +3431,12 @@ onBeforeUnmount(() => {
 .note.done { background: #bbf7d0; border: 1px solid #86efac; color: var(--ok-ink); }
 .note.current { background: var(--accent-500); border: none; color: #fff; box-shadow: 0 3px 12px rgba(239, 68, 68, 0.4); z-index: 3; }
 .note.unplayable { border-style: dashed; border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+/* A tie's two halves are one sound, so they butt together into a continuous
+   pill: flat facing edges, and a dimmed label on the tail so it doesn't read as
+   a fresh attack. Slurred notes stay separate pills joined by an arc. */
+.bawu-app .note.tied-in { border-top-left-radius: 0.25rem; border-bottom-left-radius: 0.25rem; padding-left: 0.45rem; }
+.bawu-app .note.ties-out { border-top-right-radius: 0.25rem; border-bottom-right-radius: 0.25rem; padding-right: 0.45rem; }
+.bawu-app .note.tied-in .note-lab { opacity: 0.55; font-weight: 600; }
 .note-warn { font-size: 0.7rem; }
 .roll.editing .note { cursor: grab; border-style: solid; }
 .roll.editing .note:active { cursor: grabbing; }
@@ -2835,11 +3452,23 @@ onBeforeUnmount(() => {
 .bawu-app .note.tight .note-resize { width: 6px; }
 
 .marquee { position: absolute; border: 1.5px dashed var(--accent-500); background: rgba(239, 68, 68, 0.06); border-radius: 0.4rem; z-index: 6; pointer-events: none; }
-.nowline { position: absolute; top: 0; bottom: 0; left: 168px; width: 2px; background: var(--accent-500); z-index: 4; box-shadow: 0 0 14px rgba(239, 68, 68, 0.45); pointer-events: none; }
-.now-halo { position: absolute; top: 0; bottom: 0; left: 108px; width: 120px; background: linear-gradient(90deg, rgba(239,68,68,0) 0%, rgba(239,68,68,0.06) 50%, rgba(239,68,68,0) 100%); z-index: 2; pointer-events: none; }
-.now-label { position: absolute; top: 6px; left: 176px; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; color: var(--accent-500); z-index: 5; pointer-events: none; }
+/* The playhead lives in one zero-width group the rAF loop translates: parked at
+   PLAYHEAD_X while the sheet scrolls, sweeping across it in line mode. Children
+   are positioned relative to the line, not to the roll. */
+.now-group { position: absolute; top: 0; bottom: 0; left: 0; width: 0; z-index: 6; pointer-events: none; will-change: transform; }
+.nowline { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent-500); box-shadow: 0 0 14px rgba(239, 68, 68, 0.45); }
+.now-halo { position: absolute; top: 0; bottom: 0; left: -60px; width: 120px; background: linear-gradient(90deg, rgba(239,68,68,0) 0%, rgba(239,68,68,0.06) 50%, rgba(239,68,68,0) 100%); }
+.now-label { position: absolute; top: 6px; left: 8px; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; color: var(--accent-500); }
 .trace-canvas { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
-.trace-tip { position: absolute; background: var(--text); color: #fff; font-size: 0.72rem; font-family: var(--mono); border-radius: 0.4rem; padding: 0.2rem 0.55rem; z-index: 6; white-space: nowrap; pointer-events: none; }
+.trace-tip { position: absolute; left: 34px; background: var(--text); color: #fff; font-size: 0.72rem; font-family: var(--mono); border-radius: 0.4rem; padding: 0.2rem 0.55rem; white-space: nowrap; }
+
+/* Expression overlay: ties, slurs, slides, bends, vibrato. */
+.lane-fx { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; z-index: 2; }
+.lane-fx path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.lane-fx .fx-tie { stroke: #44403c; stroke-width: 1.6; }
+.lane-fx .fx-slur { stroke: #78716c; stroke-width: 1.4; }
+.lane-fx .fx-gliss { stroke: var(--warn); stroke-width: 1.8; }
+.lane-fx .fx-bend, .lane-fx .fx-vib { stroke: var(--warn); stroke-width: 1.4; }
 .roll-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-faint); font-size: 0.875rem; text-align: center; padding: 1rem; z-index: 2; pointer-events: none; }
 .legend { position: absolute; right: 10px; bottom: 8px; font-size: 0.66rem; color: var(--text-faint); background: rgba(255,255,255,0.92); border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.15rem 0.5rem; z-index: 4; pointer-events: none; }
 
@@ -2868,6 +3497,19 @@ onBeforeUnmount(() => {
 .insp-ly:focus { border-color: var(--accent-500); }
 .bawu-app .insp-del { display: inline-flex; align-items: center; gap: 0.35rem; height: 1.75rem; padding: 0 0.65rem; border-radius: 0.5rem; border: 1px solid var(--accent-100); background: #fff; color: #c33; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
 .bawu-app .insp-del:hover:not(:disabled) { background: #fff0f0; }
+
+/* Second inspector row: ties, slurs, slides, bends, vibrato. */
+.inspector.insp-fx { border-top: 1px dashed var(--border); background: #fffdfb; }
+.bawu-app .fx-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem; height: 1.65rem; padding: 0 0.55rem;
+  border-radius: 0.45rem; border: 1px solid var(--border); background: #fff;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-dim); white-space: nowrap; flex-shrink: 0;
+  transition: border-color 120ms, color 120ms, background 120ms;
+}
+.bawu-app .fx-btn:hover:not(:disabled) { border-color: var(--accent-400); color: var(--accent-600); background: var(--accent-050); }
+.bawu-app .fx-btn.on { border-color: var(--accent-500); background: var(--accent-050); color: var(--accent-600); }
+.bawu-app .fx-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.seg-vb button { min-width: 1.6rem; font-size: 0.75rem; }
 /* ── Roll ↔ panel divider ── */
 .col-divider { flex-shrink: 0; align-self: stretch; width: 0.6rem; margin: 0 -0.15rem; cursor: col-resize; display: flex; align-items: center; justify-content: center; touch-action: none; }
 .col-divider .cd-grip { width: 3px; height: 2.75rem; border-radius: 3px; background: var(--border); transition: background 120ms, height 120ms; }
@@ -2898,29 +3540,8 @@ onBeforeUnmount(() => {
 .a4-title { text-align: center; font-family: inherit; font-weight: 700; font-size: 1rem; margin-bottom: 0.15rem; }
 .a4-sub { text-align: center; font-size: 0.72rem; color: var(--text-faint); margin-bottom: 0.9rem; }
 .a4-empty { text-align: center; font-size: 0.8rem; color: var(--text-faint); padding: 1rem; }
-.a4-staff { display: flex; flex-direction: column; gap: 1.1rem; }
-.a4-line { display: flex; flex-wrap: wrap; gap: 0.45rem 0.5rem; justify-content: center; align-items: flex-end; padding: 0.45rem 0.25rem; border-radius: 0.3rem; }
-.a4-staff.pinyin .a4-line { gap: 0.5rem 0.75rem; }
-.a4-line.zone { outline: 1px dashed var(--warn); outline-offset: 2px; background: rgba(217, 119, 6, 0.04); }
-.a4-n { position: relative; display: inline-flex; align-items: flex-end; gap: 0.08em; font-size: 1.1rem; font-weight: 600; line-height: 1.2; padding: 0.1em; border-radius: 0.2rem; }
-.a4-staff.pinyin .a4-n { min-width: 2.125rem; justify-content: center; }
-.a4-n .num { position: relative; display: inline-block; }
-.a4-n .num .acc { font-size: 0.68em; vertical-align: 0.2em; margin-right: 0.02em; color: var(--text-dim); }
-.a4-n .dots { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 1.5px; }
-.a4-n .dots-hi { bottom: 100%; margin-bottom: 2px; }
-.a4-n .dots-lo { top: 100%; margin-top: 4px; }
-.a4-n .dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; display: block; }
-.a4-n .num.u1, .a4-n .num.u2, .a4-n .num.u3 { border-bottom: 1.5px solid currentColor; padding-bottom: 1px; }
-.a4-n .num.u2::after, .a4-n .num.u3::after { content: ''; position: absolute; left: 0; right: 0; bottom: -3.5px; border-bottom: 1.5px solid currentColor; }
-.a4-n .num.u3::before { content: ''; position: absolute; left: 0; right: 0; bottom: -6.5px; border-bottom: 1.5px solid currentColor; }
-.a4-n .art { position: absolute; top: -0.85em; left: 50%; transform: translateX(-50%); font-size: 0.52em; font-weight: 800; letter-spacing: 0.02em; color: var(--accent-600); white-space: nowrap; }
-.a4-n .aug { font-size: 0.9em; color: var(--text-dim); align-self: center; }
-.a4-n .dash { color: var(--text-dim); font-weight: 400; }
-.a4-staff.has-ly .a4-line { padding-bottom: 1.15rem; }
-.a4-n .a4-ly { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 4px; font-size: 0.72rem; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
-.a4-n.cur .a4-ly { color: var(--accent-600); }
-.a4-n.cur { background: rgba(239, 68, 68, 0.12); outline: 2px solid var(--accent-500); outline-offset: 1px; color: var(--accent-600); }
-.a4-n.cur .num .acc, .a4-n.cur .aug, .a4-n.cur .dash { color: var(--accent-600); }
+/* The staff itself (lines, digits, arcs, lyrics) lives in BawuJianpuStaff.vue,
+   which both this panel and the phone reader render. */
 
 .key-card { flex-shrink: 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.7rem 0.75rem; box-shadow: var(--shadow-sm); }
 .key-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
@@ -3052,11 +3673,6 @@ onBeforeUnmount(() => {
 .pp-top .seg button { height: 2.25rem; padding: 0 0.75rem; font-size: 0.8rem; }
 .pp-sheet { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 1.4rem 1.1rem 2.5rem; font-family: var(--mono); }
 .pp-sheet .a4-title { font-size: 1.05rem; }
-.pp-sheet .a4-staff { gap: 1.6rem; }
-.pp-sheet .a4-n { font-size: 1.3rem; }
-.pp-sheet .a4-line { gap: 0.6rem 0.65rem; padding-bottom: 1.5rem; }
-.pp-sheet.pinyin .a4-line { gap: 0.6rem 0.95rem; }
-.pp-sheet .a4-n .a4-ly { font-size: 0.85rem; }
 .pp-empty { flex: 1; display: grid; place-items: center; color: var(--text-faint); }
 .pp-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: 6.9rem; background: #1a1a1a; color: #d4d4d4; font-size: 0.72rem; border-radius: 999px; padding: 0.5rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; z-index: 4; }
 
@@ -3091,7 +3707,6 @@ onBeforeUnmount(() => {
 .pl-roll .row-bg i { flex: 1 1 0; border-bottom: 1px solid var(--border-soft); }
 .pl-roll .row-bg i.active { background: rgba(239, 68, 68, 0.05); }
 .note.phone { height: 1.6rem; font-size: 0.72rem; padding: 0 0.55rem; }
-.nowline.phone { left: 90px; }
 .pl-band { position: absolute; left: 0; right: 0; bottom: 0; height: 2.75rem; background: #1a1a1a; display: flex; align-items: center; gap: 0.85rem; padding: 0 0.85rem; z-index: 5; }
 .pl-band .band-window { gap: 0.85rem; }
 .pl-band .band-syl .bs-main { font-size: 0.95rem; }

@@ -23,6 +23,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  // The client reads these to correlate a run with OpenRouter's dashboard and to
+  // tell "the model is thinking" apart from "the connection is dead".
+  'Access-Control-Expose-Headers': 'x-openrouter-id, x-upstream-ms',
 }
 
 function json(body: unknown, status = 200) {
@@ -59,7 +62,13 @@ Deno.serve(async (req) => {
   }
 
   const useModel = model || DEFAULT_MODEL
-  console.log(`[bawu-ai] → OpenRouter model=${useModel} imageBytes=${imageBase64.length} (streaming)`)
+  const reqId = crypto.randomUUID().slice(0, 8)
+  const t0 = Date.now()
+  // Log enough to answer "what did the model actually get?" from the Supabase
+  // logs alone, without having to reproduce the run.
+  console.log(`[bawu-ai ${reqId}] → OpenRouter model=${useModel} imageBytes=${imageBase64.length} promptChars=${prompt.length} (streaming)`)
+  console.log(`[bawu-ai ${reqId}] prompt head: ${prompt.slice(0, 600).replace(/\n/g, ' ⏎ ')}`)
+  console.log(`[bawu-ai ${reqId}] prompt tail: ${prompt.slice(-400).replace(/\n/g, ' ⏎ ')}`)
 
   const body: Record<string, unknown> = {
     model: useModel,
@@ -89,7 +98,7 @@ Deno.serve(async (req) => {
   } else if (effort !== 'off' && supportsReasoning(useModel)) {
     body.reasoning = { effort: 'low' }
   }
-  console.log(`[bawu-ai] effort=${validEffort ? effort : effort === 'off' ? 'off' : 'default'}`)
+  console.log(`[bawu-ai ${reqId}] effort=${validEffort ? effort : effort === 'off' ? 'off' : 'default'}`)
 
   let upstream: Response
   try {
@@ -103,9 +112,17 @@ Deno.serve(async (req) => {
       body: JSON.stringify(body),
     })
   } catch (e) {
-    console.error('[bawu-ai] fetch to OpenRouter failed:', e)
+    console.error(`[bawu-ai ${reqId}] fetch to OpenRouter failed:`, e)
     return json({ error: `Could not reach OpenRouter: ${e instanceof Error ? e.message : String(e)}` }, 502)
   }
+
+  const upstreamMs = Date.now() - t0
+  // OpenRouter's own id for the generation. Forwarding it is the only way to
+  // find a run in their dashboard when the generation never got recorded.
+  const openrouterId = upstream.headers.get('x-request-id')
+    || upstream.headers.get('x-openrouter-id')
+    || ''
+  console.log(`[bawu-ai ${reqId}] upstream ${upstream.status} in ${upstreamMs}ms id=${openrouterId || '(none)'}`)
 
   // On a non-2xx, OpenRouter sends a normal JSON error body (not a stream) — read
   // it and return a clean JSON error the client can surface.
@@ -115,19 +132,42 @@ Deno.serve(async (req) => {
     try {
       detail = JSON.parse(raw)?.error?.message || raw
     } catch { /* keep raw */ }
-    console.error(`[bawu-ai] OpenRouter error ${upstream.status}: ${detail}`)
+    console.error(`[bawu-ai ${reqId}] OpenRouter error ${upstream.status}: ${detail}`)
     return json({ error: `OpenRouter error (${upstream.status}): ${detail}` }, upstream.status || 502)
   }
 
-  // Pipe the SSE stream straight through to the client.
-  console.log('[bawu-ai] streaming response through to client')
-  return new Response(upstream.body, {
+  // Count the stream on its way through. The bytes never buffer — each chunk is
+  // forwarded as it arrives — but the totals land in the Supabase logs, which is
+  // what tells you whether a silent run got nothing or got plenty and the client
+  // failed to read it.
+  let bytes = 0
+  let chunks = 0
+  let firstChunkMs: number | null = null
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      if (firstChunkMs === null) {
+        firstChunkMs = Date.now() - t0
+        console.log(`[bawu-ai ${reqId}] first upstream chunk at ${firstChunkMs}ms`)
+      }
+      bytes += chunk.byteLength
+      chunks++
+      controller.enqueue(chunk)
+    },
+    flush() {
+      console.log(`[bawu-ai ${reqId}] stream finished: ${bytes} bytes in ${chunks} chunks over ${Date.now() - t0}ms`)
+    },
+  })
+
+  console.log(`[bawu-ai ${reqId}] streaming response through to client`)
+  return new Response(upstream.body.pipeThrough(counter), {
     status: 200,
     headers: {
       ...corsHeaders,
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
+      'X-Openrouter-Id': openrouterId,
+      'X-Upstream-Ms': String(upstreamMs),
     },
   })
 })
