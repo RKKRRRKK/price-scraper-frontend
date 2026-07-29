@@ -57,11 +57,21 @@
               </select>
             </label>
             <label class="ctl ctl-sm">
-              <span>Effort</span>
+              <span>Thinking</span>
               <select v-model="effort">
-                <option v-for="e in EFFORTS" :key="e.id" :value="e.id">{{ e.label }}</option>
+                <option v-for="e in availableEfforts" :key="e.id" :value="e.id">{{ e.label }}</option>
               </select>
             </label>
+            <label class="ctl ctl-sm" title="How large the picture is sent. Bigger reads small underlines better but costs the model far more vision tokens.">
+              <span>Detail</span>
+              <select v-model.number="maxDim">
+                <option v-for="d in DETAILS" :key="d.px" :value="d.px">{{ d.label }}</option>
+              </select>
+            </label>
+          </div>
+          <div v-if="effortNote" class="split-note warn">
+            <i class="pi pi-exclamation-triangle"></i>
+            <span>{{ effortNote }}</span>
           </div>
           <label class="opt-toggle">
             <input type="checkbox" v-model="expression" />
@@ -145,7 +155,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { parseManualJianpu, MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from '@/lib/bawu/ai'
+import { parseManualJianpu, MODELS, DEFAULT_MODEL, DEFAULT_EFFORT, effortsFor, clampEffort, effortWarning } from '@/lib/bawu/ai'
 import { flattenScore } from '@/lib/bawu/notes'
 import { toDataUri } from '@/lib/bawu/image'
 
@@ -174,14 +184,33 @@ const LS_MODEL = 'bawu.model'
 const LS_EFFORT = 'bawu.effort'
 const LS_NOTATION = 'bawu.notation'
 const LS_EXPRESSION = 'bawu.expression'
+const LS_MAXDIM = 'bawu.maxDim'
+
+// How large the picture goes over the wire. A score photo is mostly white space,
+// so the extra pixels buy less than they cost: vision tokens scale with area,
+// and a reasoning model re-reads the image as it thinks. Worth dropping first
+// when a run is slow.
+const DETAILS = [
+  { px: 1600, label: 'High · 1600px' },
+  { px: 1200, label: 'Medium · 1200px' },
+  { px: 900, label: 'Low · 900px' },
+]
 const savedModel = localStorage.getItem(LS_MODEL)
 const savedEffort = localStorage.getItem(LS_EFFORT)
 const model = ref(MODELS.some((m) => m.id === savedModel) ? savedModel : DEFAULT_MODEL)
-const effort = ref(EFFORTS.some((e) => e.id === savedEffort) ? savedEffort : DEFAULT_EFFORT)
+const effort = ref(clampEffort(model.value, savedEffort || DEFAULT_EFFORT))
+// Not every model is offered every setting — grok is capped because higher
+// efforts stop it answering at all. Switching model snaps to a legal choice.
+const availableEfforts = computed(() => effortsFor(model.value))
+const effortNote = computed(() => effortWarning(model.value, effort.value))
+watch(model, (m) => { effort.value = clampEffort(m, effort.value) })
 const notation = ref(localStorage.getItem(LS_NOTATION) === 'western' ? 'western' : 'jianpu')
 // Off by default: asking for expression marks costs attention that is better
 // spent reading the notes right, and it widened the spread between models.
 const expression = ref(localStorage.getItem(LS_EXPRESSION) === '1')
+const savedDim = Number(localStorage.getItem(LS_MAXDIM))
+const maxDim = ref(DETAILS.some((d) => d.px === savedDim) ? savedDim : 1600)
+watch(maxDim, (v) => localStorage.setItem(LS_MAXDIM, String(v)))
 const aiNotes = ref('') // free-text guidance for the model — not persisted
 watch(model, (v) => localStorage.setItem(LS_MODEL, v))
 watch(effort, (v) => localStorage.setItem(LS_EFFORT, v))
@@ -277,7 +306,7 @@ async function startStream() {
   starting.value = true
   convertError.value = ''
   try {
-    const dataUri = await toDataUri(imageBlob.value)
+    const dataUri = await toDataUri(imageBlob.value, maxDim.value)
     emit('stream', {
       name: name.value.trim(),
       folderId: folderId.value,
@@ -466,6 +495,8 @@ function onPrimary() {
 }
 .split-note i { font-size: 0.75rem; margin-top: 0.15rem; color: var(--text-faint, #9a9a9a); flex: none; }
 .split-note b { color: var(--text, #1a1a1a); font-weight: 700; }
+.split-note.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.split-note.warn i { color: #b45309; }
 
 .ai-controls { display: flex; gap: 0.6rem; }
 .ctl { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }

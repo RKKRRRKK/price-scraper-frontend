@@ -46,11 +46,80 @@ completion.
   to the detected key. The whole prompt is assembled client-side by
   `buildPrompt({ mode })` in `ai.js` and sent as `prompt` — **the edge function is
   an unchanged pass-through, so prompt changes never need a redeploy.**
-- **Truncation is non-fatal.** Because each NDJSON line is parsed on arrival, a
+- **Truncation is non-fatal.** Because each row is parsed on arrival, a
   `finish_reason: length` cut keeps every complete row; the player shows a
   "possibly incomplete" banner with **Continue** (a prefix-cached follow-up call
   via `continueTranscription` that resumes where it stopped), **Keep as is**, or
   **Discard**. `max_tokens` is 32000, so this is rare.
+- **Expression marks are opt-in** (off by default). Asking for slurs, slides and
+  bends in the same breath as the notes costs attention that is better spent on
+  pitches and rhythms, and it widened the spread between models on clean printed
+  scores. Turn it on in the import modal when a score really needs it, or add
+  the marks by hand in Edit.
+
+### Reading the reply
+
+The model is asked for one JSON object per line, but models improvise:
+pretty-printing across several lines, two objects on one line, the whole lot
+wrapped in an array, a stray ```json fence. Splitting the stream on newlines
+silently dropped every one of those, which came out as an empty score with no
+explanation. `scanObjects()` in `ai.js` matches braces instead, so all of those
+read, and a half-arrived object waits for the next chunk.
+
+**Spelled-out field names.** The wire schema says `{"row":0,"notes":[{"degree":5,
+"octave":0,"beats":1}]}`, not `{"i":0,"notes":[{"d":5,"o":0,"b":1}]}`. Single
+letters are an odd, low-frequency shape to ask a model to emit and it showed in
+the output. The *stored* shape stays short (`deg`, `oct`, `beats`); `normalizeLine`
+and `normalizeMeta` are where the two meet, and both still accept the old
+abbreviations so older replies and hand-written fixtures keep working.
+
+**Two channels.** OpenRouter streams `delta.content` (the answer) and
+`delta.reasoning` (the thinking) separately. Some providers put the *entire*
+answer in the reasoning channel and never emit a content token — `x-ai/grok-4.5`
+above `low` effort has been seen doing exactly this, trickling rows of JSON out
+as "reasoning" at a few tokens a second until the request dies. So `runStream`
+mines the reasoning channel too, but only while the answer channel is silent; if
+content later starts, anything already taken from reasoning was scratch work and
+is discarded (`onReset`).
+
+That behaviour is a symptom, not the disease: a model that normally runs at
+100 tok/s does not suddenly generate at three. The likeliest cause is routing —
+OpenRouter falling back to a provider that can't honour the reasoning parameter
+and emulates or ignores it. Two things guard against that now:
+
+- `bawu-ai` sends `provider: { require_parameters: true }`, so a provider that
+  can't honour what was sent is not eligible. If none can, the request fails
+  immediately with a readable error instead of degrading silently. The client
+  can override the whole object (e.g. `order: ['xai'], allow_fallbacks: false`).
+- The stream panel shows the **provider actually served by**, the **resolved
+  model**, and a live **tok/s** figure, so a reroute is visible in one run.
+
+### When a run misbehaves
+
+Everything on the wire is recorded and shown in the player. The stream strip's
+**Details** button (or **Stream** in the header, afterwards) opens
+`BawuStreamLog.vue`:
+
+- **Log** — a live tail of the request, every keepalive, reasoning and content
+  delta, each object parsed, each one that failed to, and the finish reason.
+- **Prompt** — the exact text sent to the model, verbatim.
+- **Request** — model, effort, prompt size, image size, the **OpenRouter request
+  id**, upstream connect time, time to first byte, time to first *answer* token,
+  and the object/row/failure counts. **Copy all** puts the lot on the clipboard.
+
+The loader itself names the phase — sending, waiting, thinking, reading,
+transcribing — with elapsed time, and turns amber with "stalled — nothing for
+Ns" the moment the bytes stop. A stream that goes quiet for 150s is cancelled
+rather than spinning forever.
+
+Server side, `bawu-ai` logs the model, effort, prompt head and tail, upstream
+status and latency, the OpenRouter id, and the byte/chunk totals as the stream
+passes through (Supabase → Edge Functions → `bawu-ai` → Logs). It also closes
+the stream itself at `BAWU_STREAM_DEADLINE_MS` (240s by default) with an
+explanatory SSE error, so overrunning the platform's wall-clock limit reads as a
+message instead of a socket going dead — which is also why an overrunning run
+never appears in OpenRouter's dashboard: the generation is abandoned before it
+completes, so no generation record is ever written.
 
 ### Lyrics are a second pass
 
@@ -82,6 +151,7 @@ the button doesn't appear for them.
 | `src/views/BawuView.vue` | The whole tool: catalogue rail, mode bar, fingering axis + scrolling roll, transport, original-score panel, key/transpose card. |
 | `src/components/bawu/BawuImportModal.vue` | Add score: picture (drop/browse/paste, model + effort dropdowns → hands the stream to the player) or typed jianpu with live parse feedback. |
 | `src/components/bawu/BawuLyricsModal.vue` | The lyrics pass: confirm what will run (pīnyīn, overwrite, model, effort, guidance) → watch it stream → review the alignment row by row → **Apply**. |
+| `src/components/bawu/BawuStreamLog.vue` | The stream inspector: live wire log, the exact prompt that was sent, and request/timing/parse counters with the OpenRouter id. |
 | `src/components/bawu/BawuJianpuStaff.vue` | The transcribed-jianpu sheet, shared by the docked panel and the phone reader: digits, octave dots, duration decorations, tie/slur arcs, slide and bend marks, lyric syllables. |
 | `src/components/bawu/BawuJianpuEditor.vue` | Adjust modal: copy the current transposition's jianpu to the clipboard, hand-edit / paste it back, live parse + fit check, then save it as the score's `data.adjusted` variant. |
 | `src/components/bawu/BawuTuner.vue` | Pop-up tuner: ±50¢ needle gauge, note name, Hz readout. Opens from the rail-foot card. |
@@ -90,7 +160,7 @@ the button doesn't appear for them.
 | `src/lib/bawu/ai.js` | Streaming conversion client (`convertImageStream`, `continueTranscription`, `convertLyricsStream`); `buildPrompt({ mode })` assembles the jianpu/western NDJSON prompt; SSE parser, `MODELS`/`EFFORTS`, manual jianpu parser/serialiser, type-0 MIDI export. |
 | `src/lib/bawu/edit.js` | On-pane note editing: `dataToEvents` / `eventsToData` convert the stored `data` ⇄ an explicit-start, monophonic event list (de-overlap + rest-fill + bar chunking) that the roll drags around, dropping any tie/slur whose partner moved away. |
 | `src/lib/bawu/image.js` | `toDataUri` / `urlToDataUri` — downscale a picture for the wire, shared by the import modal and the lyrics pass. |
-| `supabase/functions/bawu-ai/index.ts` | OpenRouter proxy (Deno). `{ prompt, imageBase64, model, effort }` → streams the SSE reply straight through. Holds the key; adds CORS; forwards model + reasoning effort. |
+| `supabase/functions/bawu-ai/index.ts` | OpenRouter proxy (Deno). `{ prompt, imageBase64, model, effort }` → streams the SSE reply straight through. Holds the key; adds CORS; forwards model + reasoning effort; logs the prompt and byte counts; returns OpenRouter's request id as `x-openrouter-id`; closes on a soft wall-clock deadline with a readable error. |
 | `src/stores/bawu.js` | Pinia store: scores + folders CRUD, debounced JSONB saves, picture upload + signed URLs. |
 | `supabase/bawu_schema.sql` | Tables, RLS, whitelist policy, `bawu` bucket + storage policies. |
 

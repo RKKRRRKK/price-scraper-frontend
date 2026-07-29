@@ -43,9 +43,9 @@
               </select>
             </label>
             <label class="ctl ctl-sm">
-              <span>Effort</span>
+              <span>Thinking</span>
               <select v-model="effort">
-                <option v-for="e in EFFORTS" :key="e.id" :value="e.id">{{ e.label }}</option>
+                <option v-for="e in availableEfforts" :key="e.id" :value="e.id">{{ e.label }}</option>
               </select>
             </label>
           </div>
@@ -134,7 +134,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { convertLyricsStream, MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from '@/lib/bawu/ai'
+import { convertLyricsStream, MODELS, DEFAULT_MODEL, DEFAULT_EFFORT, effortsFor, clampEffort } from '@/lib/bawu/ai'
 
 // The lyrics pass, start to finish: confirm what will run, watch it stream, then
 // review the alignment before anything touches the score. Kept separate from the
@@ -159,7 +159,9 @@ const LS_PINYIN = 'bawu.lyricsPinyin'
 const savedModel = localStorage.getItem(LS_MODEL)
 const savedEffort = localStorage.getItem(LS_EFFORT)
 const model = ref(MODELS.some((m) => m.id === savedModel) ? savedModel : DEFAULT_MODEL)
-const effort = ref(EFFORTS.some((e) => e.id === savedEffort) ? savedEffort : DEFAULT_EFFORT)
+const effort = ref(clampEffort(model.value, savedEffort || DEFAULT_EFFORT))
+const availableEfforts = computed(() => effortsFor(model.value))
+watch(model, (m) => { effort.value = clampEffort(m, effort.value) })
 const pinyin = ref(localStorage.getItem(LS_PINYIN) !== '0')
 watch(model, (v) => localStorage.setItem(LS_MODEL, v))
 watch(effort, (v) => localStorage.setItem(LS_EFFORT, v))

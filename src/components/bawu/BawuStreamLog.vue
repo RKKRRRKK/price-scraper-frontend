@@ -10,12 +10,24 @@
         </span>
         <span class="chip" :title="'Bytes received from the edge function'">{{ fmtBytes(stats.bytes) }}</span>
         <span class="chip" :title="'SSE data events'">{{ stats.sseEvents }} ev</span>
+        <span
+          class="chip"
+          :class="{ bad: tokPerSec > 0 && tokPerSec < 10, ok: tokPerSec >= 30 }"
+          title="Output rate across both channels, from the first byte. Real token counts once the usage chunk arrives, estimated before that."
+        >{{ tokPerSecLabel }}</span>
+        <span v-if="stats.provider" class="chip" :title="'The provider OpenRouter routed to'">{{ stats.provider }}</span>
         <span v-if="stats.reasoningChars" class="chip think" :title="'Characters of reasoning the model streamed before answering'">
           {{ fmtNum(stats.reasoningChars) }} thinking
         </span>
         <span class="chip" :title="'Characters of actual answer'">{{ fmtNum(stats.contentChars) }} out</span>
         <span class="chip" :class="{ ok: stats.rows > 0 }" :title="'Rows that parsed into melody lines'">{{ stats.rows }} rows</span>
+        <span
+          v-if="stats.rowsFromReasoning && !stats.contentChars"
+          class="chip think"
+          title="This model never used the answer channel — the score is being read out of its reasoning"
+        >via reasoning</span>
         <span v-if="stats.badObjects" class="chip bad" :title="'Objects that failed to parse'">{{ stats.badObjects }} bad</span>
+        <span v-if="stats.looped" class="chip bad" :title="`Stuck repeating ${stats.looped}`">looping</span>
         <span v-if="stats.finishReason" class="chip" :title="'finish_reason from the model'">{{ stats.finishReason }}</span>
       </div>
 
@@ -50,8 +62,20 @@
       <table class="kv">
         <tbody>
           <tr><td>pass</td><td>{{ stats.label || '—' }}</td></tr>
-          <tr><td>model</td><td>{{ stats.model || '—' }}</td></tr>
+          <tr><td>model asked for</td><td>{{ stats.model || '—' }}</td></tr>
+          <tr>
+            <td>served by</td>
+            <td>
+              <template v-if="stats.provider"><b>{{ stats.provider }}</b><template v-if="stats.servedModel && stats.servedModel !== stats.model"> as {{ stats.servedModel }}</template></template>
+              <span v-else class="dim">not reported</span>
+            </td>
+          </tr>
           <tr><td>effort</td><td>{{ stats.effort || '—' }}</td></tr>
+          <tr><td>throughput</td><td>{{ tokPerSecLabel }}{{ stats.outputTokens ? ' (measured)' : ' (estimated)' }}</td></tr>
+          <tr v-if="stats.outputTokens">
+            <td>output tokens</td>
+            <td>{{ fmtNum(stats.outputTokens) }}<template v-if="stats.reasoningTokens"> · {{ fmtNum(stats.reasoningTokens) }} of them reasoning</template></td>
+          </tr>
           <tr><td>prompt</td><td>{{ fmtNum(stats.promptChars) }} chars</td></tr>
           <tr><td>image</td><td>{{ fmtBytes(stats.imageChars) }} of base64</td></tr>
           <tr>
@@ -126,6 +150,24 @@ const silentFor = computed(() => {
   const s = props.stats
   if (!s.lastByteAt || !props.live) return 0
   return Math.max(0, now.value - s.lastByteAt)
+})
+// Output rate across both channels, measured from the first byte so the model's
+// queue time doesn't drag it down. Prefers real token counts once OpenRouter's
+// usage chunk lands; before that, ~4 chars per token is close enough to tell
+// 2 tok/s from 100. Kept fractional — rounding to integers hid exactly the
+// sub-1 rates that are worth seeing.
+const tokPerSec = computed(() => {
+  const s = props.stats
+  const secs = s.firstByteMs == null ? 0 : Math.max(0.5, (elapsed.value - s.firstByteMs) / 1000)
+  if (!secs) return 0
+  const tokens = s.outputTokens || ((s.contentChars || 0) + (s.reasoningChars || 0)) / 4
+  if (!tokens) return 0
+  return tokens / secs
+})
+const tokPerSecLabel = computed(() => {
+  const r = tokPerSec.value
+  if (!r) return '— tok/s'
+  return `${r < 10 ? r.toFixed(r < 1 ? 2 : 1) : Math.round(r)} tok/s`
 })
 
 // Follow the tail unless the user has scrolled up to read something.

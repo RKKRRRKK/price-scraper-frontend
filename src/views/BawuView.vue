@@ -18,9 +18,21 @@
           <button class="add-btn rail-new" @click="openImport">
             <i class="pi pi-plus" style="font-size: 0.8125rem;"></i> New score
           </button>
-          <button class="icon-btn rail-newfolder" title="New blank sheet — add notes by hand" @click="createBlankSheet">
-            <i class="pi pi-file-edit" style="font-size: 0.9rem;"></i>
-          </button>
+          <div class="rail-newsheet-wrap">
+            <button class="icon-btn rail-newfolder" title="New blank sheet — add notes by hand" @click="newSheetKeyMenu = !newSheetKeyMenu">
+              <i class="pi pi-file-edit" style="font-size: 0.9rem;"></i>
+            </button>
+            <div v-if="newSheetKeyMenu" class="sq-menu-backdrop" @click="newSheetKeyMenu = false"></div>
+            <div v-if="newSheetKeyMenu" class="rail-newsheet-menu">
+              <div class="sq-menu-label">New sheet in…</div>
+              <button
+                v-for="k in KEY_CHOICES"
+                :key="k"
+                class="sq-menu-item"
+                @click="createBlankSheet(k)"
+              >1={{ KEYS[k].label }}</button>
+            </div>
+          </div>
           <button class="icon-btn rail-newfolder" title="New folder" @click="startAddFolder">
             <i class="pi pi-folder-plus" style="font-size: 0.9rem;"></i>
           </button>
@@ -32,6 +44,12 @@
           <button v-if="railQuery" class="rail-search-clear" @click="railQuery = ''" title="Clear">
             <i class="pi pi-times"></i>
           </button>
+        </div>
+
+        <div v-if="railSelectedIds.size" class="rail-selection-bar">
+          <span class="rail-selection-count">{{ railSelectedIds.size }} selected</span>
+          <button class="rail-selection-clear" @click="clearRailSelection">Clear</button>
+          <button class="rail-selection-delete" @click="deleteRailSelected"><i class="pi pi-trash"></i> Delete</button>
         </div>
 
         <div class="rail-list">
@@ -87,8 +105,8 @@
                   v-for="s in folderScores(f.id)"
                   :key="s.id"
                   class="rail-item"
-                  :class="{ active: s.id === store.activeScoreId }"
-                  @click="selectScore(s.id)"
+                  :class="{ active: s.id === store.activeScoreId, 'multi-selected': railSelectedIds.has(s.id) }"
+                  @click="railItemClick($event, s)"
                 >
                   <span class="rail-item-icon"><i :class="s.source === 'image' ? 'pi pi-image' : 'pi pi-pencil'"></i></span>
                   <span class="rail-item-body">
@@ -110,8 +128,8 @@
                 v-for="s in ungroupedScores"
                 :key="s.id"
                 class="rail-item"
-                :class="{ active: s.id === store.activeScoreId }"
-                @click="selectScore(s.id)"
+                :class="{ active: s.id === store.activeScoreId, 'multi-selected': railSelectedIds.has(s.id) }"
+                @click="railItemClick($event, s)"
               >
                 <span class="rail-item-icon"><i :class="s.source === 'image' ? 'pi pi-image' : 'pi pi-pencil'"></i></span>
                 <span class="rail-item-body">
@@ -202,7 +220,9 @@
               <button class="ms" :class="{ on: !editMode && mode === 'steady' }" @click="selectMode('steady')"><i class="pi pi-stopwatch"></i> Steady</button>
               <button class="ms" :class="{ on: !editMode && mode === 'listen' }" @click="selectMode('listen')"><i class="pi pi-volume-up"></i> Listen</button>
               <span class="ms-div"></span>
-              <button class="ms ms-edit" :class="{ on: editMode }" @click="toggleEdit"><i class="pi pi-pencil"></i> Edit</button>
+              <button class="ms ms-edit" :class="{ on: editMode }" @click="toggleEdit">
+                <i class="pi" :class="editMode ? 'pi-check' : 'pi-pencil'"></i> {{ editMode ? 'Done' : 'Edit' }}
+              </button>
             </div>
 
             <div class="header-right">
@@ -311,7 +331,6 @@
 
               <!-- Edit toolbar (red) -->
               <div v-else class="edit-bar">
-                <button class="eb-done" @click="toggleEdit"><i class="pi pi-check" style="font-size: 0.7rem;"></i> Done</button>
                 <button class="eb-icon" :disabled="!undoStack.length" @click="undo" title="Undo (⌘Z)"><i class="pi pi-undo" style="font-size: 0.75rem;"></i></button>
                 <span class="eb-div"></span>
                 <button class="eb-btn" @click="copySelection" :disabled="!selCount"><i class="pi pi-clone" style="font-size: 0.7rem;"></i> Copy <b class="kbd">⌘C</b></button>
@@ -329,6 +348,12 @@
                   <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
                   <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
                   <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
+                </div>
+                <span class="eb-div"></span>
+                <div class="seg seg-zoom" title="Score tempo — saved with the sheet">
+                  <button @click="setScoreBpm(scoreBpm - 5)" :disabled="scoreBpm <= 20"><i class="pi pi-minus"></i></button>
+                  <button class="zoom-val" tabindex="-1">{{ scoreBpm }} BPM</button>
+                  <button @click="setScoreBpm(scoreBpm + 5)" :disabled="scoreBpm >= 300"><i class="pi pi-plus"></i></button>
                 </div>
                 <div class="spacer"></div>
                 <span class="eb-hint"><b class="kbd">drag</b> to select · <b class="kbd">1–7</b> insert · <b class="kbd">↑↓</b> row · <b class="kbd">←→</b> length · <b class="kbd">Del</b></span>
@@ -352,7 +377,8 @@
                       v-for="(n, i) in BAWU_NOTES"
                       :key="n.midi"
                       class="note-row"
-                      :class="{ active: currentNote && currentNote.row === i }"
+                      :class="{ active: currentNote && currentNote.row === i, playable: editMode }"
+                      @pointerdown="onAxisPointerDown($event, n)"
                     >
                       <b class="jp">{{ axisBig(n) }}</b>
                       <span class="pitch">{{ axisSmall(n) }}</span>
@@ -961,6 +987,9 @@ const newFolderInput = ref(null)
 const editingFolderId = ref(null)
 const editFolderName = ref('')
 const rowMenu = ref({ open: false, x: 0, y: 0, scoreId: null })
+const railSelectedIds = ref(new Set())
+const railLastClickedId = ref(null)
+const newSheetKeyMenu = ref(false)
 
 // ── Player state ────────────────────────────────────────────────────────────
 const mode = ref('listen')
@@ -1164,7 +1193,11 @@ const streamPhase = computed(() => {
   } else {
     text = 'Transcribing…'
     detail = progressLabel.value
-    hint = `${shortMs(el)} · ${chars} chars`
+    // Some models never touch the answer channel and put the whole score in
+    // their reasoning — worth saying, because the "out" counter stays at zero.
+    hint = s.rowsFromReasoning && !s.contentChars
+      ? `${shortMs(el)} · reading it out of the model's reasoning`
+      : `${shortMs(el)} · ${chars} chars`
   }
   if (stalled) hint = `stalled — nothing for ${shortMs(quiet)}`
   return { text, detail, hint, stalled }
@@ -1224,10 +1257,16 @@ const shortestBeats = computed(() => {
   const floor = Math.max(1, notes.length * 0.05)
   return durations.find((d) => counts.get(d) >= floor) ?? durations[0]
 })
-const PX = computed(() => {
+const fitPxPerBeat = computed(() => {
   const fit = (MIN_NOTE_PX + NOTE_GAP) / shortestBeats.value
-  return Math.round(Math.min(PX_MAX, Math.max(PX_MIN, fit)) * rollZoom.value)
+  return Math.min(PX_MAX, Math.max(PX_MIN, fit))
 })
+// Frozen while editing: re-fitting the scale to the shortest note as you type
+// makes everything else on the roll jump around mid-edit, so hold the scale
+// still until you leave edit mode, then let it snap back to fit.
+const frozenFitPx = ref(fitPxPerBeat.value)
+watch(fitPxPerBeat, (v) => { if (!editMode.value) frozenFitPx.value = v })
+const PX = computed(() => Math.round((editMode.value ? frozenFitPx.value : fitPxPerBeat.value) * rollZoom.value))
 function zoomRoll(delta) {
   rollZoom.value = Math.min(2, Math.max(0.5, Math.round((rollZoom.value + delta) * 100) / 100))
 }
@@ -1286,6 +1325,16 @@ const visibleFolders = computed(() => {
 const ungroupedScores = computed(() =>
   matchedScores.value.filter((s) => !s.folder_id || !store.folders.some((f) => f.id === s.folder_id)),
 )
+// Order that mirrors what's actually on screen (collapsed folders' scores are skipped),
+// so shift-click range selection matches what the user visually sees.
+const flatVisibleScores = computed(() => {
+  const out = []
+  for (const f of visibleFolders.value) {
+    if (isExpanded(f.id)) out.push(...folderScores(f.id))
+  }
+  out.push(...ungroupedScores.value)
+  return out
+})
 
 // ── Resizable roll ↔ score-panel split ──────────────────────────────────────
 const MIN_COL = 260
@@ -1328,6 +1377,7 @@ let stableStart = null
 // time by a `go:'to'`, so the arriving note doesn't fire a second one over it.
 let voice = null
 let glidePending = false
+let axisVoice = null // sustained tone while a fingering-axis row is held, piano-key style
 const traceSamples = []
 const tracker = new PitchTracker()
 const micActive = computed(() => micOn.value || tunerOpen.value)
@@ -2018,6 +2068,31 @@ function endPreview() {
   lastPreviewMidi = null
 }
 
+// Fingering-axis rows double as piano keys in edit mode: press to sound the
+// note, release to stop it — a long scheduled duration cut short by release().
+// A bare tap still gets a minimum audible sustain rather than a click-length blip.
+const AXIS_MIN_HOLD_MS = 330
+let axisPressedAt = 0
+function onAxisPointerDown(e, n) {
+  if (!editMode.value || e.button !== 0) return
+  e.preventDefault()
+  if (axisVoice) axisVoice.release(0.02)
+  axisVoice = playBawuTone(n.midi, 30)
+  axisPressedAt = performance.now()
+  window.addEventListener('pointerup', onAxisPointerUp)
+  window.addEventListener('pointercancel', onAxisPointerUp)
+}
+function onAxisPointerUp() {
+  window.removeEventListener('pointerup', onAxisPointerUp)
+  window.removeEventListener('pointercancel', onAxisPointerUp)
+  const v = axisVoice
+  if (!v) return
+  const wait = AXIS_MIN_HOLD_MS - (performance.now() - axisPressedAt)
+  const release = () => { v.release(0.08); if (axisVoice === v) axisVoice = null }
+  if (wait > 0) setTimeout(release, wait)
+  else release()
+}
+
 function enterEdit() {
   playing.value = false
   releaseVoice()
@@ -2047,12 +2122,14 @@ function beatFromClientX(clientX) {
   if (!rect) return 0
   return Math.max(0, (clientX - rect.left) / PX.value)
 }
-function midiFromClientY(clientY) {
+function rowFromClientY(clientY) {
   const rect = rollEl.value?.getBoundingClientRect()
-  if (!rect) return BAWU_NOTES[BAWU_NOTES.length - 1].midi
+  if (!rect) return BAWU_NOTES.length - 1
   const frac = (clientY - rect.top) / rect.height
-  const row = Math.max(0, Math.min(BAWU_NOTES.length - 1, Math.floor(frac * BAWU_NOTES.length)))
-  return BAWU_NOTES[row].midi
+  return Math.max(0, Math.min(BAWU_NOTES.length - 1, Math.floor(frac * BAWU_NOTES.length)))
+}
+function midiFromClientY(clientY) {
+  return BAWU_NOTES[rowFromClientY(clientY)].midi
 }
 
 function commitEdit(newData) {
@@ -2376,7 +2453,19 @@ function onNotePointerDown(e, n) {
   const events = dataToEvents(base)
   const ev = events[n.idx]
   if (!ev) return
-  drag = { type: 'move', events, ev, base, startX: e.clientX, origStart: ev.start, moved: false }
+  // Drag every selected note together, not just the one grabbed — each keeps
+  // its own offset from the grab point so the group moves as a rigid shape.
+  const group = [...selectedIds.value]
+    .map((i) => events[i])
+    .filter(Boolean)
+    .map((g) => ({ ev: g, origStart: g.start, origRow: nearestRow(g.midi) }))
+  if (!group.some((g) => g.ev === ev)) group.push({ ev, origStart: ev.start, origRow: nearestRow(ev.midi) })
+  drag = {
+    type: 'move', events, ev, base,
+    startX: e.clientX, origStart: ev.start,
+    startRow: rowFromClientY(e.clientY), group,
+    moved: false,
+  }
   previewTone(ev.midi, true) // hear what you grabbed, like a piano roll
   window.addEventListener('pointermove', onDragMove)
   window.addEventListener('pointerup', onDragUp)
@@ -2401,8 +2490,14 @@ function onDragMove(e) {
   if (!drag) return
   if (drag.type === 'move') {
     const dxBeats = (e.clientX - drag.startX) / PX.value
-    drag.ev.start = Math.max(0, snapBeat(drag.origStart + dxBeats, GRID))
-    drag.ev.midi = midiFromClientY(e.clientY)
+    const snappedStart = Math.max(0, snapBeat(drag.origStart + dxBeats, GRID))
+    const startDelta = snappedStart - drag.origStart
+    const rowDelta = rowFromClientY(e.clientY) - drag.startRow
+    for (const g of drag.group) {
+      g.ev.start = Math.max(0, g.origStart + startDelta)
+      const nr = Math.max(0, Math.min(BAWU_NOTES.length - 1, g.origRow + rowDelta))
+      g.ev.midi = BAWU_NOTES[nr].midi
+    }
     previewTone(drag.ev.midi) // one tone per row crossed, not per pixel
   } else {
     const dxBeats = (e.clientX - drag.startX) / PX.value
@@ -2421,7 +2516,8 @@ function onDragUp() {
   if (d && d.moved) {
     snapshotUndo(d.base) // d.base is the pre-drag snapshot
     commitEdit(eventsToData(d.events, d.base, beatsPerBar.value))
-    selectedIds.value = new Set([rankOfEvent(d.events, d.ev)])
+    const group = d.group || [{ ev: d.ev }]
+    selectedIds.value = new Set(group.map((g) => rankOfEvent(d.events, g.ev)))
   }
   liveEdit.value = null
 }
@@ -2443,12 +2539,13 @@ function onRollDblClick(e) {
 }
 
 // New empty sheet → straight into edit mode.
-async function createBlankSheet() {
+async function createBlankSheet(key = 'F') {
+  newSheetKeyMenu.value = false
   try {
     const saved = await store.createScore({
       name: 'New sheet',
       source: 'manual',
-      data: { key: 'F', bpm: 80, timeSig: '4/4', lines: [{ notes: [] }] },
+      data: { key, bpm: 80, timeSig: '4/4', lines: [{ notes: [] }] },
     })
     if (saved?.id) {
       store.selectScore(saved.id)
@@ -2488,6 +2585,51 @@ function selectScore(id) {
   railOpen.value = false
 }
 
+function railItemClick(ev, s) {
+  if (ev.shiftKey) {
+    const flat = flatVisibleScores.value
+    const anchor = flat.findIndex((x) => x.id === (railLastClickedId.value ?? s.id))
+    const here = flat.findIndex((x) => x.id === s.id)
+    if (anchor === -1 || here === -1) {
+      railSelectedIds.value = new Set([s.id])
+    } else {
+      const [lo, hi] = anchor < here ? [anchor, here] : [here, anchor]
+      railSelectedIds.value = new Set(flat.slice(lo, hi + 1).map((x) => x.id))
+    }
+    railLastClickedId.value = s.id
+    return
+  }
+  if (ev.ctrlKey || ev.metaKey) {
+    const next = new Set(railSelectedIds.value)
+    if (next.has(s.id)) next.delete(s.id)
+    else next.add(s.id)
+    railSelectedIds.value = next
+    railLastClickedId.value = s.id
+    return
+  }
+  railSelectedIds.value = new Set()
+  railLastClickedId.value = s.id
+  selectScore(s.id)
+}
+
+function clearRailSelection() {
+  railSelectedIds.value = new Set()
+}
+
+async function deleteRailSelected() {
+  const ids = [...railSelectedIds.value]
+  if (!ids.length) return
+  if (!confirm(`Delete ${ids.length} selected score${ids.length === 1 ? '' : 's'}? The original pictures are removed too.`)) return
+  for (const id of ids) {
+    try {
+      await store.deleteScore(id)
+    } catch (e) {
+      console.error('[Bawu] bulk delete error:', e)
+    }
+  }
+  railSelectedIds.value = new Set()
+}
+
 function setKey(k) {
   if (!score.value) return
   if (isDraft.value) {
@@ -2498,6 +2640,20 @@ function setKey(k) {
   if (score.value.data.key !== k) {
     store.updateScoreData(score.value.id, { ...score.value.data, key: k })
   }
+}
+
+// The score's actual tempo (saved with the sheet) — distinct from the
+// practice-mode BPM slider, which is just a playback-speed multiplier that
+// resets to this value whenever you switch scores.
+function setScoreBpm(v) {
+  if (!score.value) return
+  const n = Math.max(20, Math.min(300, Math.round(v)))
+  if (isDraft.value) {
+    draft.value.data.bpm = n
+  } else if (score.value.data.bpm !== n) {
+    store.updateScoreData(score.value.id, { ...score.value.data, bpm: n })
+  }
+  bpm.value = n
 }
 
 function selectAdjusted() {
@@ -2706,6 +2862,14 @@ async function startStream(payload) {
       onProgress: (p) => { streamProgress.value = { ...streamProgress.value, lines: draft.value?.data.lines.length ?? p.lines } },
       onReasoning: () => { streamProgress.value = { ...streamProgress.value, reasoning: true } },
       onTrace: pushTrace,
+      // Rows read out of a model's reasoning channel are provisional: if it
+      // later answers properly, they were scratch work and get replaced.
+      onReset: () => {
+        if (!draft.value) return
+        draft.value.data.lines = []
+        streamProgress.value = { ...streamProgress.value, lines: 0 }
+        resetPlayback(0)
+      },
     })
     const d = draft.value
     if (!d) return
@@ -3248,6 +3412,25 @@ onBeforeUnmount(() => {
 .rail-search-clear { color: var(--text-faint); padding: 0.15rem; font-size: 0.72rem; display: inline-flex; }
 .rail-search-clear:hover { color: var(--text-dim); }
 
+.rail-selection-bar {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.45rem 0.6rem; margin-top: 0.6rem;
+  border: 1px solid var(--accent-500); border-radius: 0.6rem;
+  background: var(--accent-050);
+}
+.rail-selection-count { flex: none; font-size: 0.8rem; font-weight: 600; color: var(--accent-600); white-space: nowrap; }
+.rail-selection-clear {
+  margin-left: auto; flex: none; padding: 0.3rem 0.55rem; border-radius: 0.45rem;
+  color: var(--text-dim); font-weight: 600; font-size: 0.75rem; white-space: nowrap;
+}
+.rail-selection-clear:hover { background: #fff; color: var(--text); }
+.rail-selection-delete {
+  flex: none; display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap;
+  padding: 0.3rem 0.6rem; border-radius: 0.45rem;
+  background: var(--accent-600); color: #fff; font-weight: 700; font-size: 0.75rem;
+}
+.rail-selection-delete:hover { background: var(--accent-700, #991b1b); }
+
 .rail-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; min-height: 4rem; padding: 0.15rem 0.15rem 0.4rem; }
 .bawu-app .rail-item {
   position: relative; display: flex; align-items: flex-start; gap: 0.6rem;
@@ -3258,6 +3441,8 @@ onBeforeUnmount(() => {
 }
 .bawu-app .rail-item:hover { border-color: var(--accent-400); box-shadow: 0 2px 7px rgba(0, 0, 0, 0.07); }
 .bawu-app .rail-item.active { background: var(--accent-050); border-color: var(--accent-500); box-shadow: 0 1px 3px rgba(239, 68, 68, 0.18); }
+.bawu-app .rail-item.multi-selected { background: var(--bg-sunken); border-color: var(--text-dim); }
+.bawu-app .rail-item.multi-selected.active { background: var(--accent-050); border-color: var(--accent-500); box-shadow: 0 0 0 2px var(--text-dim) inset; }
 .rail-item-icon { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-sunken); color: var(--text-dim); font-size: 0.85rem; }
 .rail-item.active .rail-item-icon { background: #fff; color: var(--accent-600); }
 .rail-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
@@ -3296,6 +3481,9 @@ onBeforeUnmount(() => {
 
 .sq-menu-backdrop { position: fixed; inset: 0; z-index: 120; }
 .sq-menu { position: fixed; z-index: 121; width: 13.5rem; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 0.6rem; box-shadow: var(--shadow-lg); padding: 0.3rem; }
+
+.rail-newsheet-wrap { position: relative; }
+.rail-newsheet-menu { position: absolute; top: calc(100% + 0.35rem); left: 0; z-index: 121; width: 9rem; background: #fff; border: 1px solid var(--border); border-radius: 0.6rem; box-shadow: var(--shadow-lg); padding: 0.3rem; }
 .sq-menu-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); padding: 0.3rem 0.5rem 0.2rem; }
 .bawu-app .sq-menu-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.4rem 0.5rem; border-radius: 0.4rem; font-size: 0.83rem; color: var(--text); }
 .bawu-app .sq-menu-item i { font-size: 0.78rem; color: var(--text-faint); width: 0.9rem; }
@@ -3371,8 +3559,6 @@ onBeforeUnmount(() => {
 
 /* Edit toolbar (red) */
 .edit-bar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.45rem 0.7rem; background: var(--accent-050); border-bottom: 2px solid var(--accent-500); flex-shrink: 0; }
-.bawu-app .eb-done { display: inline-flex; align-items: center; gap: 0.35rem; height: 1.9rem; padding: 0 0.8rem; border-radius: 0.55rem; background: var(--accent-500); color: #fff; font-size: 0.78rem; font-weight: 700; box-shadow: 0 1px 4px rgba(239,68,68,0.35); }
-.bawu-app .eb-done:hover { background: var(--accent-600); }
 .bawu-app .eb-icon { width: 1.9rem; height: 1.9rem; border-radius: 0.5rem; border: 1px solid var(--accent-100); background: #fff; color: var(--accent-600); display: inline-flex; align-items: center; justify-content: center; }
 .bawu-app .eb-icon:hover:not(:disabled) { background: var(--accent-050); }
 .bawu-app .eb-icon.on { background: var(--accent-500); border-color: var(--accent-500); color: #fff; }
@@ -3398,6 +3584,9 @@ onBeforeUnmount(() => {
 .note-row:last-child { border-bottom: none; }
 .note-row:nth-child(even) { background: rgba(243, 242, 240, 0.65); }
 .note-row.active { background: var(--accent-050); border-left-color: var(--accent-500); }
+.note-row.playable { cursor: pointer; user-select: none; touch-action: none; }
+.note-row.playable:hover { background: var(--accent-050); }
+.note-row.playable:active { background: var(--accent-100); border-left-color: var(--accent-500); }
 .note-row .jp { width: 2rem; font-size: clamp(1rem, 2.2vh, 1.3rem); font-weight: 800; flex-shrink: 0; letter-spacing: -0.02em; line-height: 1.4; }
 .note-row.active .jp { color: var(--accent-600); }
 .note-row .pitch { width: 2rem; font-family: var(--mono); font-size: clamp(0.62rem, 1.25vh, 0.75rem); font-weight: 600; color: var(--text-faint); flex-shrink: 0; }

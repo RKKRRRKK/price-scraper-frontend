@@ -13,6 +13,12 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const DEFAULT_MODEL = 'x-ai/grok-4.5'
 
+// Stop the stream ourselves a little before the platform's wall-clock limit
+// ends it, so a run that overruns says so instead of just going dead. Raise it
+// with `supabase secrets set BAWU_STREAM_DEADLINE_MS=...` if your plan allows
+// longer requests.
+const DEADLINE_MS = Number(Deno.env.get('BAWU_STREAM_DEADLINE_MS') || 240000)
+
 // Whether a model is worth handing a default `reasoning` param when the client
 // doesn't pick an effort (an explicit effort from the client always wins).
 function supportsReasoning(model: string) {
@@ -46,14 +52,20 @@ Deno.serve(async (req) => {
     return json({ error: 'OPENROUTER_JIANPU_KEY is not configured on the server. Run: supabase secrets set OPENROUTER_JIANPU_KEY=<key>' }, 500)
   }
 
-  let payload: { prompt?: string; imageBase64?: string; model?: string; effort?: string }
+  let payload: {
+    prompt?: string
+    imageBase64?: string
+    model?: string
+    effort?: string
+    provider?: Record<string, unknown>
+  }
   try {
     payload = await req.json()
   } catch {
     return json({ error: 'Invalid JSON body.' }, 400)
   }
 
-  const { prompt, imageBase64, model, effort } = payload
+  const { prompt, imageBase64, model, effort, provider } = payload
   if (!prompt || typeof prompt !== 'string') {
     return json({ error: 'Missing "prompt".' }, 400)
   }
@@ -89,16 +101,29 @@ Deno.serve(async (req) => {
     // Token counts + real credit cost arrive in a final usage SSE chunk.
     usage: { include: true },
   }
-  // Reasoning effort: an explicit choice from the client wins (lets the user
-  // dial Gemini up or hold grok down); otherwise default reasoning-capable
-  // models to 'low' so grok-4.5 doesn't spiral into a 3-min think. 'off' skips.
+  // Reasoning effort: an explicit choice from the client wins; otherwise default
+  // reasoning-capable models to 'low'. 'off' sends no reasoning param at all.
   const validEffort = ['low', 'medium', 'high'].includes(String(effort))
   if (validEffort) {
     body.reasoning = { effort }
   } else if (effort !== 'off' && supportsReasoning(useModel)) {
     body.reasoning = { effort: 'low' }
   }
-  console.log(`[bawu-ai ${reqId}] effort=${validEffort ? effort : effort === 'off' ? 'off' : 'default'}`)
+
+  // Routing. `require_parameters` keeps the request off any provider that can't
+  // honour what we actually sent. Without it OpenRouter is free to fall back to
+  // a provider that quietly drops or emulates the reasoning parameter — which is
+  // how a model that normally runs at 100 tok/s ends up trickling its answer out
+  // at three. A hard error here is far more useful than a ten-minute crawl, and
+  // the client can override the whole object (e.g. to pin `order: ['xai']`).
+  body.provider = {
+    require_parameters: true,
+    ...(provider && typeof provider === 'object' ? provider : {}),
+  }
+  console.log(
+    `[bawu-ai ${reqId}] effort=${validEffort ? effort : effort === 'off' ? 'off' : 'default'}`
+    + ` reasoning=${JSON.stringify(body.reasoning ?? null)} provider=${JSON.stringify(body.provider)}`,
+  )
 
   let upstream: Response
   try {
@@ -143,11 +168,31 @@ Deno.serve(async (req) => {
   let bytes = 0
   let chunks = 0
   let firstChunkMs: number | null = null
+  let ended = false
+  const enc = new TextEncoder()
   const counter = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
+      if (ended) return
       if (firstChunkMs === null) {
         firstChunkMs = Date.now() - t0
         console.log(`[bawu-ai ${reqId}] first upstream chunk at ${firstChunkMs}ms`)
+      }
+      // Edge functions have a wall-clock limit and enforce it by killing the
+      // socket, which reaches the client as an unexplained truncation. Stop just
+      // short of it and say why instead.
+      const age = Date.now() - t0
+      if (age > DEADLINE_MS) {
+        ended = true
+        console.error(`[bawu-ai ${reqId}] hit the ${DEADLINE_MS}ms soft deadline after ${bytes} bytes — closing`)
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({
+          error: {
+            message: `bawu-ai closed the stream after ${Math.round(age / 1000)}s, just short of the edge function's wall-clock limit. `
+              + `The model was still generating. Lower the thinking setting or pick a faster model.`,
+          },
+        })}\n\n`))
+        controller.enqueue(enc.encode('data: [DONE]\n\n'))
+        controller.terminate()
+        return
       }
       bytes += chunk.byteLength
       chunks++
