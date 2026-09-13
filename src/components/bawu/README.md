@@ -156,7 +156,7 @@ the button doesn't appear for them.
 | `src/components/bawu/BawuJianpuEditor.vue` | Adjust modal: copy the current transposition's jianpu to the clipboard, hand-edit / paste it back, live parse + fit check, then save it as the score's `data.adjusted` variant. |
 | `src/components/bawu/BawuTuner.vue` | Pop-up tuner: ±50¢ needle gauge, note name, Hz readout. Opens from the rail-foot card. |
 | `src/lib/bawu/notes.js` | Fingering table, jianpu/key math (refDo per key), fit checking, coach hints ("lift finger 4"), `degOctAccOfMidi` (pitch → jianpu spelling), `readExpr` + `flattenScore`'s tie/slur resolution, `mergeLyrics`. |
-| `src/lib/bawu/audio.js` | Shared AudioContext, two synth bawu voices (modeled free-reed + classic sawtooth) into a master bus with a **big-hall convolution reverb** (long pre-delayed impulse, hot wet mix, bus compressor) toggled from the transport, metronome, autocorrelation pitch tracker, MediaRecorder takes. `playBawuTone` returns a live voice handle (`glideTo` / `extendTo` / `release`) so one sound can span a tie or a slur. |
+| `src/lib/bawu/audio/` | The synth, split by job — `index.js` is the public face and the only thing anything imports. `context.js` the shared AudioContext · `params.js` AudioParam automation + easing curves · `tables.js` register-banked reed spectra, LFO shapes, noise · `reverb.js` the output bus (dry + **convolution hall** with early reflections and frequency-dependent decay, into a compressor) toggled from the transport · `expression.js` attack scoops, glissandi, bends, fall-offs, portamenti, the `vb` vibrato table · `voice.js` the modeled free-reed voice · `classic.js` the original sawtooth, kept for A/B · `handle.js` the live voice handle · `metronome.js` · `mic.js` the shared reference-counted mic · `pitch.js` autocorrelation tracking · `recorder.js` MediaRecorder takes. |
 | `src/lib/bawu/ai.js` | Streaming conversion client (`convertImageStream`, `continueTranscription`, `convertLyricsStream`); `buildPrompt({ mode })` assembles the jianpu/western NDJSON prompt; SSE parser, `MODELS`/`EFFORTS`, manual jianpu parser/serialiser, type-0 MIDI export. |
 | `src/lib/bawu/edit.js` | On-pane note editing: `dataToEvents` / `eventsToData` convert the stored `data` ⇄ an explicit-start, monophonic event list (de-overlap + rest-fill + bar chunking) that the roll drags around, dropping any tie/slur whose partner moved away. |
 | `src/lib/bawu/image.js` | `toDataUri` / `urlToDataUri` — downscale a picture for the wire, shared by the import modal and the lyrics pass. |
@@ -205,8 +205,16 @@ the button doesn't appear for them.
 - **How they sound** — `playBawuTone` returns a live voice handle, so a tie or a
   slur keeps one voice alive and glides it to the next pitch instead of
   re-attacking. `go:'to'` schedules its portamento *ahead* of the next note, since
-  a glide has to start before the note it lands on. Slides, bends and vibrato are
-  written onto the oscillator frequency by `schedulePitch()`.
+  a glide has to start before the note it lands on.
+
+  Every gesture is written in **cents onto one detune bus** that the oscillators
+  *and* the body filter hang off, never in hertz onto `frequency`. That is what
+  makes the bends and slides work: one eased curve moves the whole voice at once
+  and the parts can't disagree, vibrato depth stays constant through a glide
+  instead of drifting with the pitch, and a curve is free to sit at or cross
+  zero. And a gesture is never only a pitch move — `expression.js` writes pitch,
+  tone colour and a small level dip together, so a bend darkens, a fall-off
+  closes down and goes breathy, and a slide pulls back at the join.
 - **How they look** — arcs and diagonals can't come out of a stack of positioned
   pills, so the roll draws them as one SVG layer inside the lane (`buildFxPaths`,
   real pixels so the curves aren't distorted); the jianpu sheet wraps each linked

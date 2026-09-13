@@ -32,17 +32,17 @@ export const DEFAULT_EFFORT = 'low'
 // `effortWarning` flags a combination that has misbehaved without blocking it.
 export const MODELS = [
   {
-    id: 'x-ai/grok-4.5',
-    label: 'Grok 4.5',
-    note: 'most accurate',
+    id: 'x-ai/grok-4.6',
+    label: 'Grok 4.6',
+    note: '6 (out)',
     effortWarning: 'Above Low, grok-4.5 has been seen to stop using the answer channel and trickle the '
       + 'transcription out as "reasoning" at a few tokens a second. The rows are still read, but open '
       + 'Details and check the throughput and the provider it routed to — a rate that low is a routing '
       + 'problem, not the model.',
   },
   { id: 'google/gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite', note: 'faster & cheaper' },
-  { id: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash', note: 'similar to grok' },
-    { id: 'moonshotai/kimi-k3', label: 'Kimi K3', note: 'Best & Expensive' },
+  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash', note: '3.75 (out) / 0.75 (img)' },
+    { id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek 4.1 Flash', note: '0.60 (out)' },
 ]
 export const DEFAULT_MODEL = MODELS[0].id
 

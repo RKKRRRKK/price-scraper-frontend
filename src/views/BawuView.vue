@@ -670,6 +670,7 @@
               <span class="dk-div"></span>
               <select class="dk-voice" v-model="sound" title="Synth voice">
                 <option value="real">Bawu</option>
+                <option value="legacy">Bawu (old)</option>
                 <option value="classic">Synth</option>
                 <option value="mute">Muted</option>
               </select>
@@ -998,7 +999,9 @@ const bpm = ref(80)
 const metroOn = ref(true)
 const micOn = ref(false)
 const tunerOpen = ref(false)
-const sound = ref('real') // 'real' | 'classic' | 'mute' — which synth voice plays
+// Which synth voice plays: 'real' (the modeled bawu) | 'legacy' (the previous
+// modeled bawu, kept for A/B) | 'classic' (sawtooth) | 'mute'.
+const sound = ref('real')
 const reverbOn = ref(false)
 const MAX_WET = 2.5 // slider 100% → this much wet gain
 const reverbLevel = ref(Math.min(100, Math.max(0, Number(localStorage.getItem('bawu.reverb')) || 50))) // %
