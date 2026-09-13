@@ -288,18 +288,10 @@
                   <button :class="{ on: notation === 'western' }" @click="notation = 'western'">C</button>
                 </div>
                 <span class="tb-div"></span>
-                <div class="seg seg-zoom" :title="'Roll zoom — ' + PX + 'px per beat'">
+                <div class="seg seg-zoom" :title="'Roll zoom — ' + PXV + 'px per beat'">
                   <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
                   <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
                   <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
-                </div>
-                <div class="seg" title="How the roll moves while playing">
-                  <button :class="{ on: scrollStyle === 'roll' }" @click="setScrollStyle('roll')" title="The sheet scrolls past a fixed NOW line">
-                    <i class="pi pi-arrow-left" style="font-size: 0.6rem;"></i> Scroll
-                  </button>
-                  <button :class="{ on: scrollStyle === 'line' }" @click="setScrollStyle('line')" title="The sheet holds still and the line sweeps across it">
-                    <i class="pi pi-minus" style="font-size: 0.6rem; transform: rotate(90deg);"></i> Line
-                  </button>
                 </div>
                 <span class="tb-div"></span>
                 <button
@@ -344,7 +336,7 @@
                   :title="auditionOn ? 'Notes sound as you click and drag them — click to mute' : 'Editing is silent — click to hear notes as you place them'"
                 ><i :class="auditionOn ? 'pi pi-volume-up' : 'pi pi-volume-off'" style="font-size: 0.75rem;"></i></button>
                 <span class="eb-div"></span>
-                <div class="seg seg-zoom" :title="'Roll zoom — ' + PX + 'px per beat'">
+                <div class="seg seg-zoom" :title="'Roll zoom — ' + PXV + 'px per beat'">
                   <button @click="zoomRoll(-0.25)" :disabled="rollZoom <= 0.5"><i class="pi pi-minus"></i></button>
                   <button class="zoom-val" @click="rollZoom = 1">{{ Math.round(rollZoom * 100) }}%</button>
                   <button @click="zoomRoll(0.25)" :disabled="rollZoom >= 2"><i class="pi pi-plus"></i></button>
@@ -356,109 +348,41 @@
                   <button @click="setScoreBpm(scoreBpm + 5)" :disabled="scoreBpm >= 300"><i class="pi pi-plus"></i></button>
                 </div>
                 <div class="spacer"></div>
-                <span class="eb-hint"><b class="kbd">drag</b> to select · <b class="kbd">1–7</b> insert · <b class="kbd">↑↓</b> row · <b class="kbd">←→</b> length · <b class="kbd">Del</b></span>
+                <span class="eb-hint"><b class="kbd">right-click</b> to add · <b class="kbd">drag</b> to select · <b class="kbd">1–7</b> insert · <b class="kbd">↑↓</b> pitch · <b class="kbd">←→</b> length · <b class="kbd">Del</b></span>
               </div>
 
-              <!-- Deck: fingering axis + roll -->
-              <div class="deck">
-                <div class="fingering">
-                  <div class="hole-legend" aria-hidden="true">
-                    <span class="lbl-note"></span><span class="lbl-pitch"></span>
-                    <span class="holes-legend">
-                      <span class="hg t">T</span>
-                      <span class="gap"></span>
-                      <span class="hg">1</span><span class="hg">2</span><span class="hg">3</span>
-                      <span class="gap lg"></span>
-                      <span class="hg">4</span><span class="hg">5</span><span class="hg">6</span>
-                    </span>
-                  </div>
-                  <div class="note-rows">
-                    <div
-                      v-for="(n, i) in BAWU_NOTES"
-                      :key="n.midi"
-                      class="note-row"
-                      :class="{ active: currentNote && currentNote.row === i, playable: editMode }"
-                      @pointerdown="onAxisPointerDown($event, n)"
-                    >
-                      <b class="jp">{{ axisBig(n) }}</b>
-                      <span class="pitch">{{ axisSmall(n) }}</span>
-                      <span class="holes">
-                        <span class="hole thumb" :class="{ on: n.holes[0] }"></span>
-                        <span class="hole-gap"></span>
-                        <span v-for="h in 3" :key="'a' + h" class="hole" :class="{ on: n.holes[h] }"></span>
-                        <span class="hole-gap lg"></span>
-                        <span v-for="h in 3" :key="'b' + h" class="hole" :class="{ on: n.holes[h + 3] }"></span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  class="roll"
-                  ref="rollEl"
-                  :class="{ editing: editMode }"
-                  @dblclick="onRollDblClick"
-                  @pointerdown="onRollPointerDown"
-                >
-                  <div class="row-bg">
-                    <i v-for="(n, i) in BAWU_NOTES" :key="n.midi" :class="{ active: currentNote && currentNote.row === i }"></i>
-                  </div>
-
-                  <div class="lane" ref="laneEl" :style="{ width: laneWidth + 'px' }">
-                    <div
-                      v-for="b in barCount"
-                      :key="'bar' + b"
-                      class="barline"
-                      :style="{ left: (b - 1) * beatsPerBar * PX + 'px' }"
-                    >
-                      <span class="bar-num">{{ b }}</span>
-                    </div>
-                    <!-- Expression layer: ties, slurs, slides, bends, vibrato.
-                         Vector, because arcs and diagonals don't come out of a
-                         stack of absolutely-positioned pills. -->
-                    <svg v-if="rollH" class="lane-fx" :width="laneWidth" :height="rollH">
-                      <path v-for="(p, i) in fxPaths" :key="i" :d="p.d" :class="p.cls" />
-                    </svg>
-                    <div
-                      v-for="n in laneNotes"
-                      :key="n.idx"
-                      class="note"
-                      :class="noteClass(n)"
-                      :style="noteStyle(n)"
-                      :title="noteTitle(n)"
-                      @pointerdown="onNotePointerDown($event, n)"
-                      @click="onNoteClick($event, n)"
-                    ><span class="note-lab">{{ noteLabel(n) }}</span><span
-                        v-if="lyricsOn && lyricsPosition === 'notes' && syl(n)"
-                        class="note-syl"
-                      >{{ syl(n) }}</span><span v-if="n.row === null" class="note-warn">⚠</span><span
-                        v-if="editMode"
-                        class="note-resize"
-                        title="Drag to change length"
-                        @pointerdown="onResizePointerDown($event, n)"
-                      ></span></div>
-                  </div>
-
-                  <div v-if="mqOn" class="marquee" :style="mqStyle"></div>
-                  <canvas ref="traceCanvas" class="trace-canvas"></canvas>
-
-                  <!-- Playhead group: one element the rAF loop translates, so
-                       the line, its halo, the label and the coach tip all track
-                       the playhead in both scroll and line modes. -->
-                  <div class="now-group" ref="nowEl">
-                    <div class="now-halo"></div>
-                    <div class="nowline"></div>
-                    <span class="now-label">NOW</span>
-                    <div v-show="tipText" class="trace-tip" :style="{ top: tipY + 'px' }">{{ tipText }}</div>
-                  </div>
-
-                  <div v-if="!laneNotes.length" class="roll-empty">
-                    <template v-if="editMode"><b>Double-click</b> the roll to drop a note, or press <b>1–7</b>.</template>
-                    <template v-else>Nothing here yet — use <b>AI convert</b> to read a score picture, or <b>Edit</b> to add notes by hand.</template>
-                  </div>
-                  <div class="legend">T back · 1–3 · 4–6 · ● cover</div>
-                </div>
-              </div>
+              <!-- Deck: the instrument across the top, notes rising into it -->
+              <BawuFluteRoll
+                ref="fluteRoll"
+                :data="activeData"
+                :notes="laneNotes"
+                :total-beats="totalBeats"
+                :beats-per-bar="beatsPerBar"
+                :px="PXV"
+                :grid="GRID"
+                :key-name="keyName"
+                :notation="notation"
+                :current-idx="uiIdx"
+                :edit-mode="editMode"
+                :selected="selectedIds"
+                :lyrics-on="lyricsOn && lyricsPosition === 'notes' && lyricsPresent"
+                :lyrics-script="lyricsScript"
+                :playing="playing"
+                :mic-active="micActive"
+                :heard-midi="pitch ? pitch.midiFloat : null"
+                :tip="tipText"
+                :trace-samples="traceSamples"
+                :bpm="bpm"
+                :can-paste="!!clipboard"
+                @seek="jumpTo"
+                @seek-beat="onRollSeekBeat"
+                @update:selected="selectedIds = $event"
+                @preview="liveEdit = $event"
+                @commit="onRollCommit"
+                @audition="onRollAudition"
+                @hold="onRollHold"
+                @paste="pasteAt"
+              />
               <!-- Karaoke band -->
               <div v-if="showBand" class="band">
                 <span class="band-label">Lyrics</span>
@@ -485,7 +409,7 @@
                 <div class="seg seg-deg">
                   <button v-for="d in 7" :key="'deg' + d" :class="{ on: selDeg === d }" :disabled="!selCount" @click="setSelDegree(d)">{{ d }}</button>
                 </div>
-                <span class="insp-lbl">Row</span>
+                <span class="insp-lbl">Pitch</span>
                 <span class="row-step">
                   <button :disabled="!selCount" @click="shiftSelRow(1)" title="Lower"><i class="pi pi-angle-down"></i></button>
                   <span class="row-val">{{ selRowLabel }}</span>
@@ -923,11 +847,12 @@ import BawuTuner from '@/components/bawu/BawuTuner.vue'
 import BawuImportModal from '@/components/bawu/BawuImportModal.vue'
 import BawuJianpuEditor from '@/components/bawu/BawuJianpuEditor.vue'
 import BawuJianpuStaff from '@/components/bawu/BawuJianpuStaff.vue'
+import BawuFluteRoll from '@/components/bawu/BawuFluteRoll.vue'
 import BawuLyricsModal from '@/components/bawu/BawuLyricsModal.vue'
 import BawuStreamLog from '@/components/bawu/BawuStreamLog.vue'
 import {
   BAWU_NOTES, KEYS, KEY_CHOICES, canonicalKey, flattenScore, fitInfo, jianpuText,
-  coachDelta, coveredLabel, rowOfMidi, rowFloatOfMidi, transposeData, midiOf, degOctAccOfMidi,
+  coachDelta, coveredLabel, rowOfMidi, transposeData, midiOf, degOctAccOfMidi,
   mergeLyrics, MAX_BEND, MAX_VIBRATO,
 } from '@/lib/bawu/notes'
 import { urlToDataUri } from '@/lib/bawu/image'
@@ -948,8 +873,13 @@ const PX_MIN = 90 // the historical fixed scale; scores of quarters and longer k
 const PX_MAX = 300
 const MIN_NOTE_PX = 40 // the shortest note's pill must be at least this wide to read
 const NOTE_GAP = 8 // px trimmed off a pill so neighbours don't touch
-const PLAYHEAD_X = 168 // px from the desktop roll's left edge → the NOW line
 const PLAYHEAD_X_PHONE = 90 // px from the phone-landscape roll's left edge
+// The desktop roll stands on its end, and a window is far shorter than it is
+// wide — so the vertical scale is its own, much tighter, pair of bounds. A bar
+// of quarters is about a hand's width of screen instead of half a metre.
+const PXV_MIN = 34
+const PXV_MAX = 120
+const MIN_NOTE_PXV = 26 // the shortest note's block must be at least this tall
 
 // ── Viewport / layout ───────────────────────────────────────────────────────
 // documentElement.clientWidth/Height — not window.innerWidth/Height — because on
@@ -1022,8 +952,9 @@ const picZoom = ref(1) // original-picture zoom (0.5–3)
 // Roll zoom (0.5–2) on top of the auto-fitted beat width — sticky across sessions.
 const rollZoom = ref(Math.min(2, Math.max(0.5, Number(localStorage.getItem('bawu.rollZoom')) || 1)))
 watch(rollZoom, (v) => localStorage.setItem('bawu.rollZoom', String(v)))
-// How the roll moves while playing:
-//   'roll' — the sheet scrolls leftwards past a NOW line pinned at PLAYHEAD_X
+// How the phone-landscape roll moves while playing (the desktop deck always
+// scrolls, so this no longer has a toggle of its own):
+//   'roll' — the sheet scrolls leftwards past a NOW line pinned at the left
 //   'line' — the sheet holds still and the line sweeps across it, turning the
 //            page when it reaches the right edge (easier to read ahead from)
 const scrollStyle = ref(localStorage.getItem('bawu.scrollStyle') === 'line' ? 'line' : 'roll')
@@ -1034,15 +965,12 @@ const editMode = ref(false) // direct note editing on the roll (a fourth "mode")
 const selectedIds = ref(new Set()) // playable-note indices selected in edit mode
 const undoStack = ref([]) // edit snapshots ({ key,bpm,timeSig,lines }), cap 30
 const clipboard = ref(null) // copied events, relative to their earliest start
-const marquee = ref(null) // { x0,y0,x1,y1 } in roll-local coords while box-selecting
-let mqRect = null // roll bounding rect captured at marquee start
 const GRID = 0.25 // edit snap grid, in beats
 const LEN_PRESETS = [['⅛', 0.125], ['¼', 0.25], ['½', 0.5], ['¾', 0.75], ['1', 1], ['1½', 1.5], ['2', 2], ['4', 4]]
 const liveEdit = ref(null) // edited { key,bpm,timeSig,lines } shown live during a drag
 const uiIdx = ref(0) // reactive mirror of the current note index (UI only)
 const pitch = ref(null) // latest mic pitch { name, midi, cents, freq, midiFloat }
 const tipText = ref('')
-const tipY = ref(0)
 const toastMsg = ref('')
 const nameDraft = ref('')
 const imageUrl = ref('')
@@ -1120,22 +1048,16 @@ function pushTrace(e) {
 }
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
-const rollEl = ref(null)
-const laneEl = ref(null)
+const fluteRoll = ref(null) // the desktop deck (BawuFluteRoll) — driven by the loop
 const rollElPhone = ref(null)
 const laneElPhone = ref(null)
-const nowEl = ref(null)
 const nowElPhone = ref(null)
-const traceCanvas = ref(null)
 const pageImgWrap = ref(null)
 const ppSheetEl = ref(null)
 
-// Roll pixel geometry, kept in refs because the expression overlay is drawn in
-// real pixels (an SVG viewBox would distort the arcs). A ResizeObserver feeds
-// these; pillH is measured off a live note so it tracks the clamp() in the CSS.
-const rollH = ref(0)
+// Phone-landscape roll height, kept in a ref because its expression overlay is
+// drawn in real pixels (an SVG viewBox would distort the arcs).
 const rollHPhone = ref(0)
-const pillH = ref(36)
 
 // ── Score derived data ──────────────────────────────────────────────────────
 const score = computed(() => draft.value || store.activeScore)
@@ -1270,6 +1192,13 @@ const fitPxPerBeat = computed(() => {
 const frozenFitPx = ref(fitPxPerBeat.value)
 watch(fitPxPerBeat, (v) => { if (!editMode.value) frozenFitPx.value = v })
 const PX = computed(() => Math.round((editMode.value ? frozenFitPx.value : fitPxPerBeat.value) * rollZoom.value))
+// The same fit, on the vertical scale the standing roll uses.
+const fitPxPerBeatV = computed(() =>
+  Math.min(PXV_MAX, Math.max(PXV_MIN, MIN_NOTE_PXV / shortestBeats.value)),
+)
+const frozenFitPxV = ref(fitPxPerBeatV.value)
+watch(fitPxPerBeatV, (v) => { if (!editMode.value) frozenFitPxV.value = v })
+const PXV = computed(() => Math.round((editMode.value ? frozenFitPxV.value : fitPxPerBeatV.value) * rollZoom.value))
 function zoomRoll(delta) {
   rollZoom.value = Math.min(2, Math.max(0.5, Math.round((rollZoom.value + delta) * 100) / 100))
 }
@@ -1494,20 +1423,19 @@ function frame(ts) {
     }
   }
 
-  // Lane + playhead transforms (direct DOM — no reactivity at 60fps).
+  // Scroll position + playhead (direct DOM — no reactivity at 60fps).
   measureRoll()
-  paintRoll(laneEl.value, nowEl.value, rollEl.value, PLAYHEAD_X, deskView)
+  fluteRoll.value?.paint(t)
   paintRoll(laneElPhone.value, nowElPhone.value, rollElPhone.value, PLAYHEAD_X_PHONE, phoneView)
-  drawTrace(ts)
 
   if (uiIdx.value !== curIdx) uiIdx.value = curIdx
 }
 
-// Per-roll paint state. `page` is the screenful currently shown in line mode
-// (-1 in scroll mode); the rest are the last values written, so the loop only
-// touches the DOM when something actually changed.
+// Phone-landscape paint state — the desktop deck scrolls itself, so this is the
+// only roll the loop still translates by hand. `page` is the screenful currently
+// shown in line mode (-1 in scroll mode); the rest are the last values written,
+// so the loop only touches the DOM when something actually changed.
 const blankView = () => ({ lane: null, now: null, page: -1, laneX: null, lineX: null, trans: '' })
-const deskView = blankView()
 const phoneView = blankView()
 const LANE_PAD = 24 // px of breathing room at the left edge in line mode
 
@@ -1550,90 +1478,18 @@ function paintRoll(lane, now, roll, headX, view) {
   }
 }
 
-function setScrollStyle(v) {
-  if (scrollStyle.value === v) return
-  scrollStyle.value = v
-  localStorage.setItem('bawu.scrollStyle', v)
-  // Force both rolls to repaint from scratch on the next frame.
-  Object.assign(deskView, blankView())
-  Object.assign(phoneView, blankView())
-}
-
-// Roll geometry for the expression overlay, read off the live DOM. The loop
-// already touches these boxes for the mic trace, so the extra reads are free —
-// and the refs are only written when a value actually changed.
+// Roll geometry for the phone expression overlay, read off the live DOM — the
+// ref is only written when the value actually changed.
 function measureRoll() {
-  const h = rollEl.value?.clientHeight || 0
-  if (rollH.value !== h) {
-    rollH.value = h
-    measurePill()
-  }
   const hp = rollElPhone.value?.clientHeight || 0
   if (rollHPhone.value !== hp) rollHPhone.value = hp
 }
-function measurePill() {
-  const pill = rollEl.value?.querySelector('.note')
-  if (pill?.offsetHeight) pillH.value = pill.offsetHeight
-}
 
 // ── Mic trace ───────────────────────────────────────────────────────────────
-function drawTrace() {
-  const canvas = traceCanvas.value
-  const roll = rollEl.value
-  if (!canvas || !roll) return
-  const w = roll.clientWidth
-  const h = roll.clientHeight
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w
-    canvas.height = h
-  }
-  const g = canvas.getContext('2d')
-  g.clearRect(0, 0, w, h)
-  if (!micActive.value || !traceSamples.length) return
-
-  const now = performance.now()
-  while (traceSamples.length && now - traceSamples[0].at > 6000) traceSamples.shift()
-  const pxPerSec = PX.value * (bpm.value / 60)
-  const rows = BAWU_NOTES.length
-  // The trace trails the playhead, wherever it currently is — pinned in scroll
-  // mode, sweeping across the sheet in line mode.
-  const headX = deskView.lineX ?? PLAYHEAD_X
-  const yOf = (mf) => ((rowFloatOfMidi(mf) + 0.5) / rows) * h
-  const xOf = (at) => headX - ((now - at) / 1000) * pxPerSec
-
-  g.strokeStyle = '#d97706'
-  g.lineWidth = 2.5
-  g.lineJoin = 'round'
-  g.lineCap = 'round'
-  let started = false
-  let prevAt = 0
-  g.beginPath()
-  for (const s of traceSamples) {
-    const x = xOf(s.at)
-    if (x < -20) continue
-    const y = yOf(s.mf)
-    if (!started || s.at - prevAt > 250) {
-      g.moveTo(x, y)
-      started = true
-    } else {
-      g.lineTo(x, y)
-    }
-    prevAt = s.at
-  }
-  g.stroke()
-
-  const last = traceSamples[traceSamples.length - 1]
-  if (last && now - last.at < 300) {
-    const y = yOf(last.mf)
-    g.fillStyle = '#d97706'
-    g.shadowColor = 'rgba(217,119,6,0.8)'
-    g.shadowBlur = 10
-    g.beginPath()
-    g.arc(headX, y, 6, 0, Math.PI * 2)
-    g.fill()
-    g.shadowBlur = 0
-  }
-}
+// The samples are drawn by the deck (BawuFluteRoll), which reads this array
+// straight off the prop every frame; all this side does is keep it to the last
+// six seconds, since nothing older is ever on screen.
+const TRACE_WINDOW_MS = 6000
 
 function onPitch(p) {
   pitch.value = p
@@ -1642,7 +1498,9 @@ function onPitch(p) {
     updateTip(null)
     return
   }
-  traceSamples.push({ at: performance.now(), mf: p.midiFloat })
+  const at = performance.now()
+  traceSamples.push({ at, mf: p.midiFloat })
+  while (traceSamples.length && at - traceSamples[0].at > TRACE_WINDOW_MS) traceSamples.shift()
   updateTip(p)
 
   if (mode.value === 'follow' && playing.value) {
@@ -1671,8 +1529,6 @@ function updateTip(p) {
   }
   const heardRow = rowOfMidi(p.midi)
   tipText.value = p.midi === cur.midi ? `${p.name} ✓` : `${p.name} → ${coachDelta(cur.row, heardRow)}`
-  const roll = rollEl.value
-  if (roll) tipY.value = ((rowFloatOfMidi(p.midiFloat) + 0.5) / BAWU_NOTES.length) * roll.clientHeight + 10
 }
 
 function advanceFollow() {
@@ -1883,11 +1739,9 @@ function noteLabel(n) {
   if (notation.value === 'western' && n.midi != null) return pitchName(n.midi)
   return n.label
 }
+// The phone-landscape pitch axis still labels its rows.
 function axisBig(n) {
   return notation.value === 'western' ? n.pitch : jianpuText(n.midi, keyName.value)
-}
-function axisSmall(n) {
-  return notation.value === 'western' ? jianpuText(n.midi, keyName.value) : n.pitch
 }
 function nearestRow(midi) {
   let best = 0
@@ -1938,24 +1792,13 @@ function noteStyle(n) {
     top: ((noteRow(n) + 0.5) / BAWU_NOTES.length) * 100 + '%',
   }
 }
-const FX_NAMES = { in: 'slide in', off: 'falls away', to: 'glissando to the next note' }
-function noteTitle(n) {
-  const parts = [n.midi != null ? pitchName(n.midi) : '']
-  if (n.ti) parts.push('tied to the next note')
-  else if (n.sl) parts.push('slurred to the next note')
-  if (n.tiedIn) parts.push('held from the note before')
-  if (n.gi) parts.push(FX_NAMES.in)
-  if (n.go) parts.push(FX_NAMES[n.go])
-  if (n.bd) parts.push(`bend ${n.bd > 0 ? '+' : ''}${n.bd}`)
-  if (n.vb) parts.push(['', 'gentle vibrato', 'wide vibrato', 'flutter tongue'][n.vb])
-  return parts.filter(Boolean).join(' · ')
-}
 
-// ── Expression overlay ───────────────────────────────────────────────────────
+// ── Expression overlay (phone landscape) ─────────────────────────────────────
 // Arcs and diagonals don't come out of a stack of absolutely-positioned pills,
 // so the marks are drawn as one SVG layer inside the lane. Everything is in
 // lane pixels: x is beats × PX, y is the row's centre line, and the pill height
-// decides how far off the note an arc or hook sits.
+// decides how far off the note an arc or hook sits. (The desktop deck stands the
+// roll on its end, where an arc has nowhere to go — it prints glyphs instead.)
 function buildFxPaths(h, ph) {
   const notes = laneNotes.value
   if (!h || !notes.length) return []
@@ -2020,16 +1863,12 @@ function buildFxPaths(h, ph) {
   }
   return out
 }
-const fxPaths = computed(() => buildFxPaths(rollH.value, pillH.value))
 const fxPathsPhone = computed(() => buildFxPaths(rollHPhone.value, 25.6)) // .note.phone is 1.6rem
 
 // ── Lyrics ───────────────────────────────────────────────────────────────────
 // Either script falls back to the other, so a pinyin-only pass still shows
-// something under the notes when 中文 is selected (and vice versa).
-function syl(n) {
-  if (!n) return ''
-  return lyricsScript.value === 'pinyin' ? (n.py || n.ly || '') : (n.ly || n.py || '')
-}
+// something when 中文 is selected (and vice versa) — the karaoke band below and
+// the deck's on-note syllables both read it that way.
 const showBand = computed(() => lyricsOn.value && lyricsPosition.value === 'band' && lyricsPresent.value && !editMode.value)
 const karaoke = computed(() => {
   const list = playableNotes.value.filter((n) => n.ly || n.py)
@@ -2054,7 +1893,9 @@ function zoomBy(delta) {
 }
 
 // ── On-pane note editing ─────────────────────────────────────────────────────
-let drag = null
+// The gestures themselves live in BawuFluteRoll, which knows the geometry; this
+// side owns what they mean — the undo stack, where an edit is saved, and what it
+// sounds like.
 let lastAddBeats = 1
 let lastPreviewMidi = null
 
@@ -2071,16 +1912,17 @@ function endPreview() {
   lastPreviewMidi = null
 }
 
-// Fingering-axis rows double as piano keys in edit mode: press to sound the
-// note, release to stop it — a long scheduled duration cut short by release().
-// A bare tap still gets a minimum audible sustain rather than a click-length blip.
+// The instrument's holes double as piano keys: press one to hear what covering
+// down to it sounds like, release to stop — a long scheduled duration cut short
+// by release(). A bare tap still gets a minimum audible sustain rather than a
+// click-length blip.
 const AXIS_MIN_HOLD_MS = 330
 let axisPressedAt = 0
-function onAxisPointerDown(e, n) {
-  if (!editMode.value || e.button !== 0) return
-  e.preventDefault()
+function onRollHold(midi) {
+  if (midi == null) return
+  ensureAudio()
   if (axisVoice) axisVoice.release(0.02)
-  axisVoice = playBawuTone(n.midi, 30)
+  axisVoice = playBawuTone(midi, 30)
   axisPressedAt = performance.now()
   window.addEventListener('pointerup', onAxisPointerUp)
   window.addEventListener('pointercancel', onAxisPointerUp)
@@ -2107,7 +1949,7 @@ function enterEdit() {
 function exitEdit() {
   editMode.value = false
   selectedIds.value = new Set()
-  marquee.value = null
+  fluteRoll.value?.closeMenu()
   endPreview()
   mode.value = 'listen'
 }
@@ -2118,21 +1960,6 @@ function toggleEdit() {
 function editableBase() {
   const d = activeData.value || { key: 'F', bpm: 80, timeSig: '4/4', lines: [] }
   return JSON.parse(JSON.stringify({ key: d.key, bpm: d.bpm, timeSig: d.timeSig, lines: d.lines || [] }))
-}
-
-function beatFromClientX(clientX) {
-  const rect = laneEl.value?.getBoundingClientRect()
-  if (!rect) return 0
-  return Math.max(0, (clientX - rect.left) / PX.value)
-}
-function rowFromClientY(clientY) {
-  const rect = rollEl.value?.getBoundingClientRect()
-  if (!rect) return BAWU_NOTES.length - 1
-  const frac = (clientY - rect.top) / rect.height
-  return Math.max(0, Math.min(BAWU_NOTES.length - 1, Math.floor(frac * BAWU_NOTES.length)))
-}
-function midiFromClientY(clientY) {
-  return BAWU_NOTES[rowFromClientY(clientY)].midi
 }
 
 function commitEdit(newData) {
@@ -2332,12 +2159,16 @@ function copySelection() {
   showToast(`${sel.length} ${sel.length === 1 ? 'note' : 'notes'} copied`)
 }
 function pasteSelection() {
+  pasteAt(snapBeat(t, GRID))
+}
+// Paste anchored anywhere — the transport cursor from ⌘V, or the spot the
+// right-click menu was opened on.
+function pasteAt(at) {
   const clip = clipboard.value
   if (!clip || !clip.length) return
   pushUndo()
   const base = editableBase()
   const events = dataToEvents(base)
-  const at = snapBeat(t, GRID)
   const pasted = clip.map((c, k) => ({ ...c, id: 'p' + Date.now() + k, start: at + c.start }))
   const all = [...events, ...pasted]
   commitEdit(eventsToData(all, base, beatsPerBar.value))
@@ -2368,177 +2199,29 @@ function stepInsert(deg) {
   t = start + beats
 }
 
-// Marquee box-select on empty roll space.
-function onRollPointerDown(e) {
-  if (!editMode.value || e.button !== 0) return
-  if (e.target.closest('.note')) return
-  const rect = rollEl.value?.getBoundingClientRect()
-  if (!rect) return
-  mqRect = rect
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  marquee.value = { x0: x, y0: y, x1: x, y1: y }
-  window.addEventListener('pointermove', onMarqueeMove)
-  window.addEventListener('pointerup', onMarqueeUp)
-}
-function onMarqueeMove(e) {
-  if (!marquee.value || !mqRect) return
-  marquee.value = { ...marquee.value, x1: e.clientX - mqRect.left, y1: e.clientY - mqRect.top }
-}
-function onMarqueeUp() {
-  window.removeEventListener('pointermove', onMarqueeMove)
-  window.removeEventListener('pointerup', onMarqueeUp)
-  const mq = marquee.value
-  const rect = mqRect
-  marquee.value = null
-  mqRect = null
-  if (!mq || !rect) return
-  const w = Math.abs(mq.x1 - mq.x0)
-  const h = Math.abs(mq.y1 - mq.y0)
-  if (w < 5 && h < 5) { selectedIds.value = new Set(); return } // a plain click clears
-  // Measure where the lane actually sits rather than recomputing it: the two
-  // playhead modes park it in different places, and mid page-flip it's between.
-  const laneOff = (laneEl.value?.getBoundingClientRect().left ?? rect.left) - rect.left
-  const b0 = (Math.min(mq.x0, mq.x1) - laneOff) / PX.value
-  const b1 = (Math.max(mq.x0, mq.x1) - laneOff) / PX.value
-  const rows = BAWU_NOTES.length
-  const r0 = Math.floor((Math.min(mq.y0, mq.y1) / rect.height) * rows)
-  const r1 = Math.floor((Math.max(mq.y0, mq.y1) / rect.height) * rows)
-  const ids = laneNotes.value
-    .filter((n) => {
-      const row = n.row === null ? nearestRow(n.midi ?? 69) : n.row
-      return n.start < b1 && n.start + n.beats > b0 && row >= r0 && row <= r1
-    })
-    .map((n) => n.idx)
-  selectedIds.value = new Set(ids)
-}
-const mqOn = computed(() => {
-  const m = marquee.value
-  return !!m && (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4)
-})
-const mqStyle = computed(() => {
-  const m = marquee.value
-  if (!m) return {}
-  return {
-    left: Math.min(m.x0, m.x1) + 'px',
-    top: Math.min(m.y0, m.y1) + 'px',
-    width: Math.abs(m.x1 - m.x0) + 'px',
-    height: Math.abs(m.y1 - m.y0) + 'px',
-  }
-})
-
-function onNoteClick(e, n) {
-  if (editMode.value) {
-    // pointerdown already sounded the grab; the guard keeps the click quiet
-    // unless the pitch moved under the drag.
-    previewTone(n.midi)
-    const has = selectedIds.value.has(n.idx)
-    if (e.shiftKey) {
-      const next = new Set(selectedIds.value)
-      if (has) next.delete(n.idx)
-      else next.add(n.idx)
-      selectedIds.value = next
-    } else {
-      selectedIds.value = new Set([n.idx])
-    }
-  } else {
-    jumpTo(n)
-  }
-}
-
-function onNotePointerDown(e, n) {
-  if (!editMode.value || e.button !== 0) return
-  e.preventDefault()
-  e.stopPropagation() // don't start a marquee when grabbing a note
+// ── Deck events ─────────────────────────────────────────────────────────────
+// BawuFluteRoll works out where a gesture landed and hands back a finished
+// score; everything below decides what that means for the sheet.
+function onRollCommit({ data, base, select }) {
   playing.value = false
-  if (!selectedIds.value.has(n.idx) && !e.shiftKey) selectedIds.value = new Set([n.idx])
-  const base = editableBase()
-  const events = dataToEvents(base)
-  const ev = events[n.idx]
-  if (!ev) return
-  // Drag every selected note together, not just the one grabbed — each keeps
-  // its own offset from the grab point so the group moves as a rigid shape.
-  const group = [...selectedIds.value]
-    .map((i) => events[i])
-    .filter(Boolean)
-    .map((g) => ({ ev: g, origStart: g.start, origRow: nearestRow(g.midi) }))
-  if (!group.some((g) => g.ev === ev)) group.push({ ev, origStart: ev.start, origRow: nearestRow(ev.midi) })
-  drag = {
-    type: 'move', events, ev, base,
-    startX: e.clientX, origStart: ev.start,
-    startRow: rowFromClientY(e.clientY), group,
-    moved: false,
-  }
-  previewTone(ev.midi, true) // hear what you grabbed, like a piano roll
-  window.addEventListener('pointermove', onDragMove)
-  window.addEventListener('pointerup', onDragUp)
+  if (base) snapshotUndo(base)
+  commitEdit(data)
+  selectedIds.value = new Set(select || [])
 }
-
-function onResizePointerDown(e, n) {
-  if (!editMode.value || e.button !== 0) return
-  e.preventDefault()
-  e.stopPropagation()
-  playing.value = false
-  selectedIds.value = new Set([n.idx])
-  const base = editableBase()
-  const events = dataToEvents(base)
-  const ev = events[n.idx]
-  if (!ev) return
-  drag = { type: 'resize', events, ev, base, startX: e.clientX, origBeats: ev.beats, moved: false }
-  window.addEventListener('pointermove', onDragMove)
-  window.addEventListener('pointerup', onDragUp)
+function onRollAudition({ midi, force }) {
+  previewTone(midi, force)
 }
-
-function onDragMove(e) {
-  if (!drag) return
-  if (drag.type === 'move') {
-    const dxBeats = (e.clientX - drag.startX) / PX.value
-    const snappedStart = Math.max(0, snapBeat(drag.origStart + dxBeats, GRID))
-    const startDelta = snappedStart - drag.origStart
-    const rowDelta = rowFromClientY(e.clientY) - drag.startRow
-    for (const g of drag.group) {
-      g.ev.start = Math.max(0, g.origStart + startDelta)
-      const nr = Math.max(0, Math.min(BAWU_NOTES.length - 1, g.origRow + rowDelta))
-      g.ev.midi = BAWU_NOTES[nr].midi
-    }
-    previewTone(drag.ev.midi) // one tone per row crossed, not per pixel
-  } else {
-    const dxBeats = (e.clientX - drag.startX) / PX.value
-    drag.ev.beats = Math.max(MIN_BEATS, snapBeat(drag.origBeats + dxBeats, GRID))
-    lastAddBeats = drag.ev.beats
-  }
-  drag.moved = true
-  liveEdit.value = eventsToData(drag.events, drag.base, beatsPerBar.value)
-}
-
-function onDragUp() {
-  window.removeEventListener('pointermove', onDragMove)
-  window.removeEventListener('pointerup', onDragUp)
-  const d = drag
-  drag = null
-  if (d && d.moved) {
-    snapshotUndo(d.base) // d.base is the pre-drag snapshot
-    commitEdit(eventsToData(d.events, d.base, beatsPerBar.value))
-    const group = d.group || [{ ev: d.ev }]
-    selectedIds.value = new Set(group.map((g) => rankOfEvent(d.events, g.ev)))
-  }
-  liveEdit.value = null
-}
-
-function onRollDblClick(e) {
-  if (!editMode.value || !score.value) return
-  if (e.target.closest('.note')) return
-  playing.value = false
-  pushUndo()
-  const base = editableBase()
-  const events = dataToEvents(base)
-  const start = snapBeat(beatFromClientX(e.clientX), GRID)
-  const midi = midiFromClientY(e.clientY)
-  const ev = newEvent(Date.now(), start, lastAddBeats, midi)
-  events.push(ev)
-  commitEdit(eventsToData(events, base, beatsPerBar.value))
-  selectedIds.value = new Set([rankOfEvent(events, ev)])
-  previewTone(midi, true)
+// Scrolling the deck by hand moves the song position with it, so the NOW line
+// always means what it says and the transport stays in step.
+function onRollSeekBeat(beat) {
+  if (playing.value) return
+  t = beat
+  const notes = playableNotes.value
+  let i = 0
+  while (i < notes.length - 1 && notes[i + 1].start <= t + 1e-6) i++
+  curIdx = notes.length ? i : 0
+  uiIdx.value = curIdx
+  syncTriggers()
 }
 
 // New empty sheet → straight into edit mode.
@@ -2555,7 +2238,7 @@ async function createBlankSheet(key = 'F') {
       importOpen.value = false
       railOpen.value = false
       enterEdit()
-      showToast('Blank sheet — double-click the roll or press 1–7')
+      showToast('Blank sheet — right-click the roll to add a note, or press 1–7')
     }
   } catch (e) {
     console.error('[Bawu] blank sheet failed:', e)
@@ -3168,10 +2851,6 @@ watch(
   { immediate: true },
 )
 
-// The pill height comes from a clamp() in the CSS, so it can only be measured
-// off a real note — re-check once notes exist, and whenever the zoom changes it.
-watch([() => laneNotes.value.length, PX], () => nextTick(measurePill))
-
 // Keep the where-are-we band visible as the piece walks down the picture.
 watch(
   () => currentNote.value?.lineIdx,
@@ -3291,10 +2970,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('orientationchange', onResize)
-  window.removeEventListener('pointermove', onDragMove)
-  window.removeEventListener('pointerup', onDragUp)
-  window.removeEventListener('pointermove', onMarqueeMove)
-  window.removeEventListener('pointerup', onMarqueeUp)
+  window.removeEventListener('pointerup', onAxisPointerUp)
+  window.removeEventListener('pointercancel', onAxisPointerUp)
   window.removeEventListener('pointermove', onColResizeMove)
   window.removeEventListener('pointerup', onColResizeUp)
   document.removeEventListener('click', onDocClick)
@@ -3540,8 +3217,9 @@ onBeforeUnmount(() => {
 
 /* ── Player ── */
 .player { flex: 1; min-height: 0; display: flex; gap: 0.75rem; }
-.desk { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 0.875rem; overflow: hidden; background: var(--bg-card); min-height: 0; box-shadow: var(--shadow); }
-.deck { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+/* Sunken, because the deck inside it is a capped, centred sheet — the surround
+   has to read as desk rather than as a panel that failed to fill. */
+.desk { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 0.875rem; overflow: hidden; background: var(--bg-sunken); min-height: 0; box-shadow: var(--shadow); }
 
 /* Practice toolbar */
 .desk-bar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border-soft); background: var(--bg-card); flex-shrink: 0; }
@@ -3572,53 +3250,15 @@ onBeforeUnmount(() => {
 .eb-hint { font-size: 0.72rem; color: var(--accent-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kbd { font-family: var(--mono); font-weight: 600; font-size: 0.85em; }
 
-/* Fingering axis */
-.fingering { width: 14rem; border-right: 1px solid var(--border); background: #fcfcfb; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.hole-legend { flex-shrink: 0; display: flex; align-items: center; padding: 0.25rem 0.6rem 0.2rem; border-bottom: 1px solid var(--border-soft); background: #f7f6f4; font-size: 0.56rem; font-weight: 700; color: var(--text-faint); }
-.hole-legend .lbl-note { width: 1.8rem; }
-.hole-legend .lbl-pitch { width: 2rem; }
-.hole-legend .holes-legend { display: flex; align-items: center; margin-left: auto; gap: 0.2rem; }
-.hole-legend .hg { width: 0.8rem; text-align: center; }
-.hole-legend .hg.t { width: 0.85rem; }
-.hole-legend .gap { width: 0.45rem; }
-.hole-legend .gap.lg { width: 0.65rem; }
-.note-rows { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.note-row { flex: 1 1 0; min-height: 0; display: flex; align-items: center; gap: 0.45rem; padding: 0 0.6rem; border-left: 3px solid transparent; border-bottom: 1px solid var(--border-soft); }
-.note-row:last-child { border-bottom: none; }
-.note-row:nth-child(even) { background: rgba(243, 242, 240, 0.65); }
-.note-row.active { background: var(--accent-050); border-left-color: var(--accent-500); }
-.note-row.playable { cursor: pointer; user-select: none; touch-action: none; }
-.note-row.playable:hover { background: var(--accent-050); }
-.note-row.playable:active { background: var(--accent-100); border-left-color: var(--accent-500); }
-.note-row .jp { width: 2rem; font-size: clamp(1rem, 2.2vh, 1.3rem); font-weight: 800; flex-shrink: 0; letter-spacing: -0.02em; line-height: 1.4; }
-.note-row.active .jp { color: var(--accent-600); }
-.note-row .pitch { width: 2rem; font-family: var(--mono); font-size: clamp(0.62rem, 1.25vh, 0.75rem); font-weight: 600; color: var(--text-faint); flex-shrink: 0; }
-.note-row.active .pitch { color: var(--accent-600); }
-.holes { display: flex; align-items: center; flex-shrink: 0; margin-left: auto; gap: 0.2rem; }
-.hole { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 1.5px solid #a8a29e; background: transparent; flex-shrink: 0; }
-.hole.on { background: var(--text); border-color: var(--text); }
-.hole.thumb { border-radius: 0.2rem; width: 0.75rem; height: 0.75rem; }
-.hole-gap { width: 0.25rem; flex-shrink: 0; }
-.hole-gap.lg { width: 0.45rem; position: relative; }
-.hole-gap.lg::after { content: ''; position: absolute; left: 50%; top: 15%; bottom: 15%; width: 1px; background: var(--border); transform: translateX(-50%); }
-.note-row.active .hole { border-color: var(--accent-400); }
-.note-row.active .hole.on { background: var(--accent-500); border-color: var(--accent-500); }
-
-/* Roll */
-.roll { position: relative; flex: 1; min-width: 0; overflow: hidden; background: #fff; touch-action: none; }
-.roll.editing { cursor: crosshair; }
-.roll .row-bg { position: absolute; inset: 0; display: flex; flex-direction: column; pointer-events: none; }
-.roll .row-bg i { flex: 1 1 0; border-bottom: 1px solid var(--border-soft); }
-.roll .row-bg i:last-child { border-bottom: none; }
-.roll .row-bg i:nth-child(even) { background: rgba(243, 242, 240, 0.5); }
-.roll .row-bg i.active { background: rgba(239, 68, 68, 0.05); }
+/* ── Phone-landscape roll ──
+   The desktop deck (BawuFluteRoll) carries its own styles; what follows is the
+   horizontal roll, which only the phone in landscape still uses — a short, wide
+   screen reads a scrolling pitch axis far better than a standing one. */
 .lane { position: absolute; top: 0; bottom: 0; left: 0; will-change: transform; }
 .barline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-soft); }
-.bar-num { position: absolute; top: 2px; left: 5px; font-size: 0.62rem; font-family: var(--mono); color: var(--text-faint); }
 
 .note { position: absolute; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0 0.8rem; font-size: clamp(0.9rem, 2.2vh, 1.15rem); font-weight: 700; transform: translateY(-50%); height: clamp(1.9rem, 6vh, 2.6rem); user-select: none; cursor: pointer; white-space: nowrap; z-index: 1; }
 .note-lab { flex: none; }
-.note-syl { font-weight: 500; font-size: 0.66rem; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; max-width: 5rem; }
 .note.upcoming { background: #fff; border: 1.5px solid #d6d4d0; color: #44403c; }
 .note.done { background: #bbf7d0; border: 1px solid #86efac; color: var(--ok-ink); }
 .note.current { background: var(--accent-500); border: none; color: #fff; box-shadow: 0 3px 12px rgba(239, 68, 68, 0.4); z-index: 3; }
@@ -3629,30 +3269,17 @@ onBeforeUnmount(() => {
 .bawu-app .note.tied-in { border-top-left-radius: 0.25rem; border-bottom-left-radius: 0.25rem; padding-left: 0.45rem; }
 .bawu-app .note.ties-out { border-top-right-radius: 0.25rem; border-bottom-right-radius: 0.25rem; padding-right: 0.45rem; }
 .bawu-app .note.tied-in .note-lab { opacity: 0.55; font-weight: 600; }
-.note-warn { font-size: 0.7rem; }
-.roll.editing .note { cursor: grab; border-style: solid; }
-.roll.editing .note:active { cursor: grabbing; }
-.note.selected { background: var(--accent-050); border: 1.5px solid var(--accent-500); color: var(--accent-600); outline: 2px solid rgba(239, 68, 68, 0.5); outline-offset: 1px; z-index: 5; }
-.note-resize { position: absolute; top: 0; right: 0; bottom: 0; width: 10px; cursor: ew-resize; border-radius: 0 999px 999px 0; }
-.note-resize::after { content: ''; position: absolute; top: 50%; right: 3px; transform: translateY(-50%); width: 2px; height: 45%; border-radius: 1px; background: currentColor; opacity: 0.5; }
 /* Short notes: a squarer, tighter pill so the length stays honest — the label
    keeps its full size, the padding is what gives way. */
 .bawu-app .note.tight { padding: 0 0.25rem; gap: 0.2rem; border-radius: 0.5rem; }
-.bawu-app .note.tight .note-syl { display: none; }
 .bawu-app .note.tiny { padding: 0; border-radius: 0.3rem; font-size: clamp(0.65rem, 1.6vh, 0.8rem); }
 .bawu-app .note.tiny .note-lab { display: none; }
-.bawu-app .note.tight .note-resize { width: 6px; }
 
-.marquee { position: absolute; border: 1.5px dashed var(--accent-500); background: rgba(239, 68, 68, 0.06); border-radius: 0.4rem; z-index: 6; pointer-events: none; }
-/* The playhead lives in one zero-width group the rAF loop translates: parked at
-   PLAYHEAD_X while the sheet scrolls, sweeping across it in line mode. Children
-   are positioned relative to the line, not to the roll. */
+/* The playhead lives in one zero-width group the rAF loop translates: parked
+   near the left edge while the sheet scrolls, sweeping across it in line mode.
+   Children are positioned relative to the line, not to the roll. */
 .now-group { position: absolute; top: 0; bottom: 0; left: 0; width: 0; z-index: 6; pointer-events: none; will-change: transform; }
 .nowline { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent-500); box-shadow: 0 0 14px rgba(239, 68, 68, 0.45); }
-.now-halo { position: absolute; top: 0; bottom: 0; left: -60px; width: 120px; background: linear-gradient(90deg, rgba(239,68,68,0) 0%, rgba(239,68,68,0.06) 50%, rgba(239,68,68,0) 100%); }
-.now-label { position: absolute; top: 6px; left: 8px; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; color: var(--accent-500); }
-.trace-canvas { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
-.trace-tip { position: absolute; left: 34px; background: var(--text); color: #fff; font-size: 0.72rem; font-family: var(--mono); border-radius: 0.4rem; padding: 0.2rem 0.55rem; white-space: nowrap; }
 
 /* Expression overlay: ties, slurs, slides, bends, vibrato. */
 .lane-fx { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; z-index: 2; }
@@ -3661,8 +3288,6 @@ onBeforeUnmount(() => {
 .lane-fx .fx-slur { stroke: #78716c; stroke-width: 1.4; }
 .lane-fx .fx-gliss { stroke: var(--warn); stroke-width: 1.8; }
 .lane-fx .fx-bend, .lane-fx .fx-vib { stroke: var(--warn); stroke-width: 1.4; }
-.roll-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-faint); font-size: 0.875rem; text-align: center; padding: 1rem; z-index: 2; pointer-events: none; }
-.legend { position: absolute; right: 10px; bottom: 8px; font-size: 0.66rem; color: var(--text-faint); background: rgba(255,255,255,0.92); border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.15rem 0.5rem; z-index: 4; pointer-events: none; }
 
 /* Karaoke band */
 .band { display: flex; align-items: center; gap: 1.25rem; padding: 0.9rem 1.5rem; border-top: 1px solid var(--border-soft); background: #1a1a1a; flex-shrink: 0; }
@@ -3926,7 +3551,6 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 1280px) {
   .layout-desktop .score-col { width: 21rem; }
-  .layout-desktop .fingering { width: 12rem; }
 }
 @media (max-width: 1080px) {
   .layout-desktop .player { flex-direction: column; overflow-y: auto; }

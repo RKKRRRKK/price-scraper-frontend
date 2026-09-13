@@ -3,8 +3,8 @@
 A player aid for a bawu flute in **Chinese F** (筒音作5; the all-covered tube note
 sounds concert **C4**, playable set **C4 D4 E4 F4 G4 A4 C5 D5** — no natural B).
 Photograph Chinese jianpu or western notation (or type jianpu by hand), let AI turn
-it into a right-to-left scrolling practice roll with the fingering chart on the
-left, and play along with the mic listening.
+it into a practice roll that rises into a drawing of the instrument, and play
+along with the mic listening.
 
 ## Setup
 
@@ -148,7 +148,8 @@ the button doesn't appear for them.
 
 | File | What it is |
 | --- | --- |
-| `src/views/BawuView.vue` | The whole tool: catalogue rail, mode bar, fingering axis + scrolling roll, transport, original-score panel, key/transpose card. |
+| `src/views/BawuView.vue` | The whole tool: catalogue rail, mode bar, the deck, transport, original-score panel, key/transpose card. Owns the score, the playback loop and what an edit *means*; the deck owns where a gesture landed. |
+| `src/components/bawu/BawuFluteRoll.vue` | The deck: a transverse bawu drawn across the top (reed end right) and a fingering roll climbing into it — one column per hole in bore order `6 5 4 · 3 2 1 · T`, a note drawn as seven bars (green = covered, grey = open). Scrolls itself, draws the mic trace, and carries the whole on-pane editing gesture set including the right-click menu. |
 | `src/components/bawu/BawuImportModal.vue` | Add score: picture (drop/browse/paste, model + effort dropdowns → hands the stream to the player) or typed jianpu with live parse feedback. |
 | `src/components/bawu/BawuLyricsModal.vue` | The lyrics pass: confirm what will run (pīnyīn, overwrite, model, effort, guidance) → watch it stream → review the alignment row by row → **Apply**. |
 | `src/components/bawu/BawuStreamLog.vue` | The stream inspector: live wire log, the exact prompt that was sent, and request/timing/parse counters with the OpenRouter id. |
@@ -169,16 +170,80 @@ the button doesn't appear for them.
 - **Modes** — *Follow me*: the song waits at the playhead until the mic hears the
   target note held for ~120 ms (Space advances manually). *Steady*: scrolls at the
   set BPM with metronome, optional synth. *Listen*: synth plays the piece.
-- **Roll** — notes flow right → left into the dashed playhead. The mic trace is
-  drawn as an orange line/dot mapped onto the note rows; in follow mode a tip
-  shows what was heard and which finger to move.
-- **Scroll ⇄ Line** — the toolbar toggle picks how the roll moves while playing
-  (sticky in `localStorage`). **Scroll** is the original: the sheet slides
-  leftwards under a NOW line pinned at `PLAYHEAD_X`. **Line** holds the sheet
-  still and sweeps the line across it, sliding one screenful when it reaches the
-  right edge — easier to read ahead from. Both are painted by `paintRoll()` in
-  the rAF loop; in line mode the lane transform is only written on a page turn,
-  which is what lets a CSS transition animate the flip.
+- **The deck** — a **transverse** bawu is drawn across the top, held out to the
+  player's right the way it is actually played: foot at the left, then the finger
+  holes, then the **reed housing you blow across the side of** at the right-hand
+  end (not an end-blown mouthpiece). The roll stands on its end beneath it —
+  **one column per hole**, with notes **entering at the bottom and climbing into
+  the instrument**. Each note is seven bars — **green where the hole is covered,
+  pale grey where it is open** — and the holes on the instrument light up to
+  match at the NOW line. You read the shape of the fingering, not a pitch row;
+  the jianpu/western label, lyric and expression marks print in a gutter down the
+  left, under the foot where the instrument has no holes.
+
+  **The column order is the bore order**, left→right: `6 5 4 · 3 2 1 · T`. The
+  thumb hole comes last because it is the one *nearest the mouth* — the last hole
+  to open — so covering it alone sounds C5 and adding hole 1 gives A4, the very
+  next note down. It is bored through the far side of the tube, so it is drawn
+  low and ringed with a narrower column and almost no gap, which puts it right
+  beside hole 1 where the thumb actually falls. The covered staircase therefore
+  grows from the **reed end**, and pointing past the thumb means nothing covered
+  at all.
+
+  The holes are drawn as **cut-outs of the tube's silhouette**, not discs resting
+  on it: each is a half-disc whose flat side lies along the edge it is bored
+  through — the six front holes notch the **top** edge, the thumb notches the
+  **bottom** — which is the shape the instrument presents when it is turned so
+  the centred blow hole faces you.
+
+  **Every size, shape and colour is a dial.** The block at the top of
+  `BawuFluteRoll.vue`'s script holds the lot — spacing, hole width, tube
+  geometry, type sizes, bar fill, the green/grey pair — and the stylesheet reads
+  all of it through CSS variables, so retuning the look is a one-line edit there
+  and nothing else.
+
+  Colour says one thing and one thing only: **green is a covered hole**. So the
+  note being played is *not* recoloured — it is called out by lighting the row it
+  sits in, played notes simply fade, and where nothing sounds nothing is drawn,
+  so a rest reads as the empty space it is. The lane is laid out top-down with
+  beat 0 at the head.
+
+  A hole column has a **ceiling**, so the three under one hand stay a hand's width
+  apart rather than spreading with the window, and the gap between the hands is
+  wider than any gap within one. The deck is capped and centred to match, with
+  the `.desk` surround sunken so it reads as a sheet laid on a desk rather than a
+  panel that failed to fill. Bars and holes are sized as a fraction of a column
+  (capped first, so every bar comes out the same width even though the thumb's
+  column is narrower) and shrink together once the deck gets tight.
+
+  The one fact the geometry rests on: `BAWU_NOTES` is ordered high→low and the
+  fingerings are a strict prefix chain (T, then 1, 2, … 6), so **a note's index in
+  that table is the number of holes covered**. `BawuFluteRoll` calls that number
+  the `level`, and it turns a pointer position, a menu choice and a drag delta
+  into a pitch with no lookup table: *the column you point at is the last hole
+  that stays covered.* Levels descend left→right across the columns, matching the
+  bore.
+- **It really scrolls.** The deck is a native scroll container, not a transform:
+  the rAF loop drives `scrollTop` while the song plays, and the wheel drives the
+  song while it doesn't — scrolling by hand moves the playhead with it, so the
+  NOW line always means what it says. A cached last-painted position is what
+  keeps the two from fighting. Notes and grid lines outside a few screenfuls
+  aren't in the DOM at all (seven bars a note adds up), and the window re-centres
+  in steps rather than every frame.
+- **Mic trace** — a narrow ribbon beside the ruler, appearing only while the mic
+  is on: pitch across, time *up* alongside the notes it is there to be compared
+  against, with the target pitch as a red band. The heard
+  *fingering* is also drawn as an amber ghost row at the playhead, so being one
+  step off reads as one bar out of place; in follow mode a tip on the instrument
+  says which finger to move.
+- **Phone landscape keeps the old roll.** A short, wide screen reads a horizontal
+  scrolling pitch axis far better than a standing one, so that layout still uses
+  `paintRoll()` and the `.note` pills, with the **Scroll ⇄ Line** behaviour
+  (sticky in `localStorage`, now without a toggle since the desktop deck always
+  scrolls). **Scroll** slides the sheet leftwards under a pinned NOW line;
+  **Line** holds the sheet still and sweeps the line across it, sliding one
+  screenful at the right edge — in line mode the lane transform is only written
+  on a page turn, which is what lets a CSS transition animate the flip.
 - **Score data** — lives in `bawu_scores.data` as JSONB (`key`, `bpm`, `timeSig`,
   `lines[].notes[] {deg, oct, beats, acc?, art?, ly?, py?}` plus the expression
   fields below). `ly`/`py` are the sung syllable and its pīnyīn. Line grouping
@@ -216,26 +281,46 @@ the button doesn't appear for them.
   tone colour and a small level dip together, so a bend darkens, a fall-off
   closes down and goes breathy, and a slide pulls back at the join.
 - **How they look** — arcs and diagonals can't come out of a stack of positioned
-  pills, so the roll draws them as one SVG layer inside the lane (`buildFxPaths`,
-  real pixels so the curves aren't distorted); the jianpu sheet wraps each linked
-  run in an `.a4-grp` box with a CSS arc, and prints slide, bend and vibrato marks
-  beside the digits.
-- **Note names** — the roll toolbar's **1 / C** toggle relabels every roll note
-  between the jianpu digit and its western pitch name (e.g. `5` ⇄ `C5`).
+  pills, so the phone roll draws them as one SVG layer inside the lane
+  (`buildFxPaths`, real pixels so the curves aren't distorted); the jianpu sheet
+  wraps each linked run in an `.a4-grp` box with a CSS arc, and prints slide, bend
+  and vibrato marks beside the digits. Stood on its end there is nowhere for an
+  arc to go, so the deck prints the marks as **glyphs beside the label**
+  (`⟋ ⟍ → ↗1 〜 ⌣ ⌢`) and runs a **spine** down the gutter edge of a tied or
+  slurred note — the halves touch, so it reads as one unbroken line.
+- **Note names** — the toolbar's **1 / C** toggle relabels every note in the
+  gutter between the jianpu digit and its western pitch name (e.g. `5` ⇄ `C5`),
+  **and the instrument with it**: each hole is tagged with the note it *makes* —
+  the one that sounds when it is the last hole still covered — so the tags read
+  `5̣ 6̣ 7̣ · 1 2 3 · 5` or `C4 D4 E4 · F4 G4 A4 · C5`. The hole's own number stays
+  in its tooltip.
 - **Lyrics** — when a score carries `ly`/`py` syllables they print under the
   numbers in the transcribed-jianpu panel; the toolbar's **Lyrics** toggle also
   shows them under the roll notes, and **中文 / Pīnyīn** switches script.
-- **Edit notes on the roll** — the toolbar's **Edit notes** button makes the roll
-  directly editable: drag a note to move it in time and pitch (snaps to the grid
-  and to a bawu row), drag its right edge to change length, double-click empty
-  space to drop a note, and **Del** removes the selected one. A second inspector
-  row sets tie / slur / slide / bend / vibrato on the selection. Notes **sound as
-  you click, drop and drag them** (one tone per row crossed) — the speaker button
-  in the edit bar mutes that. Edits to a manual score save in place; edits to a
+- **Edit notes on the deck** — the toolbar's **Edit** button makes the roll
+  directly editable:
+  - **Right-click** anywhere for the note menu: eight pitches, each with its own
+    little fingering diagram, and the length presets. On empty space a pitch drops
+    a note there; on a note it changes that note, and **Delete** removes it.
+    Picking a length on empty space only sets the default and leaves the menu up,
+    so length-then-pitch is one gesture.
+  - **Double-click** a column to drop a note without the menu — the column you
+    click is the last hole that stays covered.
+  - **Drag** a note: up and down moves it in time, left and right points at the
+    hole the fingering should stop at. Everything selected travels together.
+    Drag a note's **bottom edge** (its end, since the lane runs top-down) to
+    change its length.
+  - **Drag on empty space** to box-select; **1–7** step-insert at the cursor;
+    **↑↓** move the selection's pitch, **←→** its length, **Del** removes it.
+
+  A second inspector row sets tie / slur / slide / bend / vibrato on the selection,
+  and the **holes on the instrument are piano keys** — press one to hear what
+  covering down to it sounds like. Notes **sound as you click, drop and drag them**
+  — the speaker button in the edit bar mutes that. Edits to a manual score save in place; edits to a
   picture-derived score are kept as the `data.adjusted` variant so the original
   transcription is never overwritten. Everything persists through the store's
   debounced save.
-- **Blank sheet** — **Blank sheet** (empty state or roll toolbar) creates an empty
+- **Blank sheet** — **Blank sheet** (empty state or the rail) creates an empty
   manual score and drops straight into edit mode to build it up by hand.
 - **Key & transpose** — F / G / C / A♯ reinterpret the same degrees onto the
   instrument; unplayable notes are flagged (dashed amber pills, fit indicator). Keys
