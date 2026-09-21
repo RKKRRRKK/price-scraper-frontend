@@ -107,6 +107,11 @@
             <i class="pi pi-headphones mr-2" />Bawu
           </a>
         </router-link>
+        <router-link :to="{ name: 'groovy' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }">
+            <i class="pi pi-stopwatch mr-2" />Groovy
+          </a>
+        </router-link>
       </div>
     </div>
   </div>
@@ -233,6 +238,11 @@
               <i class="pi pi-headphones mr-2" />Bawu
             </a>
           </router-link>
+          <router-link :to="{ name: 'groovy' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-stopwatch mr-2" />Groovy
+            </a>
+          </router-link>
         </div>
       </AccordionContent>
     </AccordionPanel>
@@ -280,6 +290,7 @@ import { useBreadboardStore } from '@/stores/breadboard'
 import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 import { useCanvyStore } from '@/stores/canvy'
 import { useBawuStore } from '@/stores/bawu'
+import { useGroovyStore } from '@/stores/groovy'
 // Assuming supabase is initialized and available if needed for direct calls (like removeAllChannels)
 // import { supabase } from '@/lib/supabase';
 
@@ -295,6 +306,7 @@ const breadboardStore = useBreadboardStore()
 const breadboardLibraryStore = useBreadboardLibraryStore()
 const canvyStore = useCanvyStore()
 const bawuStore = useBawuStore()
+const groovyStore = useGroovyStore()
 
 const ready = ref(false)
 const router = useRouter()
@@ -370,6 +382,7 @@ async function fetchDataForUser() {
       breadboardLibraryStore.fetchLibrary(), // Fetch Breadboard parts library + stock
       canvyStore.fetchBoards(), // Fetch Canvy whiteboard boards
       bawuStore.fetchScores(), // Fetch Bawu practice scores
+      groovyStore.fetchTakes(), // Fetch Groovy timing takes
     ])
     // Initialize Supabase Realtime subscriptions AFTER initial data is loaded
     // Ensure initRealtime checks if subscriptions already exist to avoid duplicates
@@ -395,6 +408,7 @@ function resetStores() {
   breadboardLibraryStore.reset()
   canvyStore.reset()
   bawuStore.reset()
+  groovyStore.reset()
   // Explicitly remove Supabase subscriptions if stores don't handle it in reset()
   // This prevents potential errors or duplicate listeners if the user logs back in.
   // try {
@@ -615,6 +629,21 @@ function goLogin() {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+/* Below ~2000px the full-fat spacing no longer fits: four sections, thirteen
+   nowrap links and 5rem gutters add up to ~1980px, which puts a horizontal
+   page scrollbar on a 1920 display — and pushes the right-hand column of every
+   tool off-screen — the moment a fifth tool joins the bar. Tighter gutters and
+   link padding pull it back under ~1760px; nothing changes on wider screens. */
+@media (max-width: 1999.98px) {
+  .nav-groups {
+    gap: 2.5rem;
+  }
+
+  .nav-section-links a {
+    padding: 0.4rem 0.6rem;
+  }
 }
 
 /* ── Mobile / desktop visibility utilities ── */

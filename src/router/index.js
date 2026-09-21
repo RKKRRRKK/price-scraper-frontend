@@ -15,6 +15,7 @@ import SquellView from '@/views/SquellView.vue'
 import BreadboardView from '@/views/BreadboardView.vue'
 import CanvyView from '@/views/CanvyView.vue'
 import BawuView from '@/views/BawuView.vue'
+import GroovyView from '@/views/GroovyView.vue'
 
 const routes = [
   {
@@ -96,6 +97,12 @@ const routes = [
     path: '/bawu',
     name: 'bawu',
     component: BawuView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/groovy',
+    name: 'groovy',
+    component: GroovyView,
     meta: { requiresAuth: true },
   },
 ]

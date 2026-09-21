@@ -290,12 +290,25 @@ const NOTE_GAP = 3 // px trimmed off a bar so neighbours don't fuse
 // played (and the mic trace behind it) goes before it fades into the bawu.
 const HEAD_Y = 72
 
-// COLOUR ─ green means a covered hole, and nothing else
-const C_DOWN = '#16a34a'
-const C_DOWN_LIT = '#22c55e'
-const C_DOWN_EDGE = '#15803d'
-const C_OPEN = '#e7e5e4'
+// COLOUR ─ one hue means "covered", and nothing else borrows it.
+// The app's orange (#f97316). Swap these three for #dc2626 / #ef4444 / #b91c1c
+// and the fingering goes brand red instead — nothing else needs touching.
+const C_DOWN = '#f97316'      // ← the covered fingering
+const C_DOWN_LIT = '#fb923c'  // its lit face
+const C_DOWN_EDGE = '#c2410c' // its rim, and the tie spine
+const C_DOWN_PALE = '#fed7aa' // the ringed thumb's rim when it is down
+const C_OPEN = '#e7e5e4'      // ← an open hole
 const C_OPEN_EDGE = '#d6d3d1'
+// Everything that used to sit near the fingering's hue has been moved off it, so
+// nothing competes: the played row and the edit selection are ink, a pitch the
+// bawu cannot make is red, and what the microphone heard is cyan — a cool hue, so
+// "what you played" can never be mistaken for "what you should play".
+const C_NOW = 'rgba(28, 25, 23, 0.06)'
+const C_NOW_EDGE = 'rgba(28, 25, 23, 0.2)'
+const C_SELECT = 'rgba(28, 25, 23, 0.8)'
+const C_BAD = '#ef4444'       // a note outside C4–D5
+const C_BAD_SOFT = '#fef2f2'
+const C_HEARD = '#0e7490'     // the mic trace and the heard-fingering ghost
 
 const vars = computed(() => {
   const trace = props.micActive ? TRACE_W : '0rem'
@@ -339,6 +352,13 @@ const vars = computed(() => {
     '--down': C_DOWN,
     '--down-lit': C_DOWN_LIT,
     '--down-edge': C_DOWN_EDGE,
+    '--down-pale': C_DOWN_PALE,
+    '--now-bg': C_NOW,
+    '--now-edge': C_NOW_EDGE,
+    '--select': C_SELECT,
+    '--bad': C_BAD,
+    '--bad-soft': C_BAD_SOFT,
+    '--heard': C_HEARD,
     '--open': C_OPEN,
     '--open-edge': C_OPEN_EDGE,
   }
@@ -566,11 +586,11 @@ function drawTrace() {
   const yOf = (at) => HEAD_Y - ((now - at) / 1000) * pxPerSec
 
   if (curLevel.value !== null) {
-    g.fillStyle = 'rgba(239,68,68,0.16)'
+    g.fillStyle = 'rgba(249, 115, 22, 0.18)'
     g.fillRect(xOf(BAWU_NOTES[curLevel.value].midi) - 3, 0, 6, h)
   }
 
-  g.strokeStyle = '#d97706'
+  g.strokeStyle = C_HEARD
   g.lineWidth = 2.25
   g.lineJoin = 'round'
   g.lineCap = 'round'
@@ -594,8 +614,8 @@ function drawTrace() {
 
   const last = samples[samples.length - 1]
   if (last && now - last.at < 300) {
-    g.fillStyle = '#d97706'
-    g.shadowColor = 'rgba(217,119,6,0.8)'
+    g.fillStyle = C_HEARD
+    g.shadowColor = 'rgba(14, 116, 144, 0.8)'
     g.shadowBlur = 9
     g.beginPath()
     g.arc(xOf(last.mf), HEAD_Y, 5, 0, Math.PI * 2)
@@ -984,7 +1004,7 @@ defineExpose({ paint, closeMenu })
   border: 2px dashed rgba(255, 233, 198, 0.75); border-bottom: none;
   box-shadow: inset 0 2px 3px rgba(0,0,0,0.3);
 }
-.hole-cell.back .hole.covered { border-color: #bbf7d0; }
+.hole-cell.back .hole.covered { border-color: var(--down-pale); }
 /* A dotted riser from the tag up to the hole, saying "this one is round the
    back" without a legend. */
 .hole-cell.back::after {
@@ -993,12 +1013,12 @@ defineExpose({ paint, closeMenu })
 }
 .hole-tag.back-tag { color: var(--text-dim); }
 .hole-cell .hole.covered {
-  background: linear-gradient(180deg, #86efac, var(--down-lit) 50%, var(--down) 100%);
+  background: linear-gradient(180deg, var(--down-lit), var(--down) 60%, var(--down-edge) 100%);
   border-color: var(--down-edge);
-  box-shadow: 0 0 0.5rem rgba(34, 197, 94, 0.55), inset 0 1px 2px rgba(255,255,255,0.45);
+  box-shadow: 0 0 0.5rem rgba(239, 68, 68, 0.5), inset 0 1px 2px rgba(255,255,255,0.4);
 }
-.hole-cell.back .hole.covered { background: linear-gradient(180deg, var(--down), var(--down-lit) 50%, #86efac 100%); }
-.hole-cell .hole.off { outline: 2px solid rgba(217, 119, 6, 0.9); outline-offset: 2px; }
+.hole-cell.back .hole.covered { background: linear-gradient(180deg, var(--down-edge), var(--down) 45%, var(--down-lit) 100%); }
+.hole-cell .hole.off { outline: 2px solid var(--heard); outline-offset: 2px; }
 .hole-cell .hole:hover { border-color: #fff; }
 .hole-tag { position: absolute; left: 0; right: 0; bottom: 0.1rem; text-align: center; font-size: var(--tag-size); font-weight: 800; font-style: normal; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; }
 .flute-tip {
@@ -1034,18 +1054,18 @@ defineExpose({ paint, closeMenu })
    column is narrower than the rest; the percentage only takes over when the
    deck gets tight enough that they all have to shrink together. */
 .fnote .fbar { display: block; height: 100%; width: var(--fill); min-width: 0.5rem; margin: 0 auto; border-radius: var(--bar-r); background: var(--open); border: 1px solid var(--open-edge); }
-.fnote .fbar.on { background: linear-gradient(180deg, var(--down-lit), var(--down)); border-color: var(--down-edge); box-shadow: 0 1px 3px rgba(21, 128, 61, 0.3); }
+.fnote .fbar.on { background: linear-gradient(180deg, var(--down-lit), var(--down)); border-color: var(--down-edge); box-shadow: 0 1px 3px rgba(185, 28, 28, 0.28); }
 
 .fnote.done { opacity: 0.32; }
 /* The note being played keeps the same green — green means covered, and that
    must not shift. It is called out by lighting the row it occupies instead, so
    the fingering itself stays the only thing the colour is saying. */
-.fnote.current { z-index: 3; background: rgba(239, 68, 68, 0.07); box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.28); }
-.fnote.current .fbar.on { box-shadow: 0 0 0.7rem rgba(34, 197, 94, 0.6); }
-.fnote.unplayable .fbar { border-style: dashed; border-color: var(--warn); background: var(--warn-soft); }
-.fnote.unplayable .fbar.on { background: #fde68a; border-color: var(--warn); }
+.fnote.current { z-index: 3; background: var(--now-bg); box-shadow: inset 0 0 0 1px var(--now-edge); }
+.fnote.current .fbar.on { box-shadow: 0 0 0.7rem rgba(239, 68, 68, 0.55); }
+.fnote.unplayable .fbar { border-style: dashed; border-color: var(--bad); background: var(--bad-soft); }
+.fnote.unplayable .fbar.on { background: #fecaca; border-color: var(--bad); }
 .fnote.selected { z-index: 5; }
-.fnote.selected .fbar { outline: 2px solid rgba(239, 68, 68, 0.6); outline-offset: 1px; }
+.fnote.selected .fbar { outline: 2px solid var(--select); outline-offset: 1px; }
 .froll.editing .fnote { cursor: grab; }
 .froll.editing .fnote:active { cursor: grabbing; }
 
@@ -1054,7 +1074,7 @@ defineExpose({ paint, closeMenu })
 .fn-lab { display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem; flex-wrap: wrap; align-content: center; text-align: right; padding: 0 0.55rem 0 0.25rem; overflow: hidden; }
 .fn-pill { display: inline-flex; align-items: center; gap: 0.1rem; font-size: var(--label-size); font-weight: 800; line-height: 1.1; color: #44403c; }
 .fnote.current .fn-pill { color: var(--down-edge); }
-.fnote.unplayable .fn-pill { color: var(--warn); }
+.fnote.unplayable .fn-pill { color: var(--bad); }
 .fn-warn { font-style: normal; font-size: 0.7rem; }
 .fn-fx { display: inline-flex; gap: 0.15rem; font-size: var(--fx-size); color: var(--text-faint); font-style: normal; }
 .fn-fx i { font-style: normal; }
@@ -1069,7 +1089,7 @@ defineExpose({ paint, closeMenu })
 .fnote.ties-out .fn-lab, .fnote.tied-in .fn-lab { border-right: 2px solid var(--down-edge); }
 /* The note's end is its lower edge now that the lane runs top-down. */
 .fn-grip { position: absolute; left: var(--ruler-w); right: 0; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 6; }
-.froll.editing .fnote.selected .fn-grip { background: rgba(239, 68, 68, 0.35); border-radius: 999px; }
+.froll.editing .fnote.selected .fn-grip { background: var(--select); opacity: 0.55; border-radius: 999px; }
 
 /* ── Viewport overlays ────────────────────────────────────────────────────── */
 .fr-fade { position: absolute; left: 0; right: 0; top: 0; height: 2.1rem; background: linear-gradient(180deg, #fff 30%, rgba(255,255,255,0)); z-index: 2; pointer-events: none; }
@@ -1079,9 +1099,9 @@ defineExpose({ paint, closeMenu })
 /* The heard fingering sits in the strip above the line — the part of the roll
    that is already spent — so it never covers a note still to be played. */
 .fr-heard { position: absolute; left: 0; right: 0; top: calc(var(--head-y) - 1.35rem); height: 1.15rem; z-index: 3; pointer-events: none; }
-.fr-heard-lab { font-size: 0.56rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 0.07em; display: flex; align-items: center; justify-content: flex-end; padding-right: 0.35rem; }
-.fr-heard .hbar { display: block; height: 100%; width: var(--fill); margin: 0 auto; border-radius: 0.4rem; border: 1.5px dashed rgba(217, 119, 6, 0.55); }
-.fr-heard .hbar.on { background: rgba(217, 119, 6, 0.5); border-style: solid; }
+.fr-heard-lab { font-size: 0.56rem; font-weight: 800; color: var(--heard); text-transform: uppercase; letter-spacing: 0.07em; display: flex; align-items: center; justify-content: flex-end; padding-right: 0.35rem; }
+.fr-heard .hbar { display: block; height: 100%; width: var(--fill); margin: 0 auto; border-radius: 0.4rem; border: 1.5px dashed color-mix(in srgb, var(--heard) 55%, transparent); }
+.fr-heard .hbar.on { background: color-mix(in srgb, var(--heard) 55%, transparent); border-style: solid; }
 .fr-marquee { position: absolute; border: 1px dashed var(--accent-500); background: rgba(239, 68, 68, 0.08); z-index: 6; pointer-events: none; }
 .fr-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-faint); font-size: 0.875rem; text-align: center; padding: 1rem; z-index: 5; pointer-events: none; }
 

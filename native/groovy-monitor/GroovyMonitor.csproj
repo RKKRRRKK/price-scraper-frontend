@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    groovy-monitor: the Windows-native monitoring path for Groovy.
+
+    Bass in → the same amp chain as src/lib/groovy/amp.js → the interface's
+    outputs (speakers or headphones, whatever is on them), on
+    ASIO or on WASAPI's low-latency shared mode, controlled by the web app over
+    a WebSocket on 127.0.0.1. Timing never comes here; the browser keeps that.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>groovy-monitor</AssemblyName>
+    <RootNamespace>GroovyMonitor</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Workstation, concurrent GC: the audio threads must never be paused for
+         long, and nothing on them allocates once running. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NAudio.Asio talks to ASIO drivers through their COM vtable directly,
+         so no Steinberg SDK is needed to build or run. NAudio.Wasapi is used
+         only to enumerate endpoints; the low-latency stream itself is opened
+         through IAudioClient3 in WasapiBackend.cs. -->
+    <PackageReference Include="NAudio.Asio" Version="2.2.1" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+</Project>

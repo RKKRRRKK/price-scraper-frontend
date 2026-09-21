@@ -32,6 +32,10 @@ coverage
 
 *.tsbuildinfo
 
+# native/groovy-monitor build output (.NET)
+native/**/bin/
+native/**/obj/
+
 
 #extra stuff
 local_utilities
