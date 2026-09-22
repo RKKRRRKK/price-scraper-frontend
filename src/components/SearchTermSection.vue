@@ -193,9 +193,11 @@ async function syncFromOther() {
     0 1px 2px rgba(0, 0, 0, 0.24);
 }
 
+/* a floor, not a fixed width — min() lets the column give way once the grid
+   track is narrower than the floor, so the section never overflows its cell */
 @media (min-width: 1024px) {
   .min-w-section {
-    min-width: 460px;
+    min-width: min(100%, 28.75rem);
   }
 }
 

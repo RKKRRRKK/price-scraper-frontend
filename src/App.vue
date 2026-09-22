@@ -30,18 +30,18 @@
       <span class="nav-section-label">Scraper</span>
       <div class="nav-section-links">
         <router-link :to="{ name: 'home' }" custom v-slot="{ href, navigate, isExactActive }">
-          <a :href="href" @click="navigate" :class="{ active: isExactActive }">
-            <i class="pi pi-home mr-2" />Home
+          <a :href="href" @click="navigate" :class="{ active: isExactActive }" title="Home">
+            <i class="pi pi-home mr-2" /><span class="nav-text">Home</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'dashboard' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-chart-bar mr-2" />Dashboard
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Dashboard">
+            <i class="pi pi-chart-bar mr-2" /><span class="nav-text">Dashboard</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'database' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-database mr-2" />Database
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Database">
+            <i class="pi pi-database mr-2" /><span class="nav-text">Database</span>
           </a>
         </router-link>
       </div>
@@ -51,13 +51,13 @@
       <span class="nav-section-label">Sensors</span>
       <div class="nav-section-links">
         <router-link :to="{ name: 'temps' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-sun mr-2" />Weather
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Weather">
+            <i class="pi pi-sun mr-2" /><span class="nav-text">Weather</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'monitor' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-server mr-2" />Monitor
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Monitor">
+            <i class="pi pi-server mr-2" /><span class="nav-text">Monitor</span>
           </a>
         </router-link>
       </div>
@@ -67,18 +67,18 @@
       <span class="nav-section-label">Productivity</span>
       <div class="nav-section-links">
         <router-link :to="{ name: 'notes' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-file-edit mr-2" />Notes
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Notes">
+            <i class="pi pi-file-edit mr-2" /><span class="nav-text">Notes</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'reminders' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-bell mr-2" />Reminders
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Reminders">
+            <i class="pi pi-bell mr-2" /><span class="nav-text">Reminders</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'documents' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-camera mr-2" />Documents
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Documents">
+            <i class="pi pi-camera mr-2" /><span class="nav-text">Documents</span>
           </a>
         </router-link>
       </div>
@@ -88,28 +88,28 @@
       <span class="nav-section-label">Tools</span>
       <div class="nav-section-links">
         <router-link :to="{ name: 'breadboard' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-microchip mr-2" />Breadly
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Breadly">
+            <i class="pi pi-microchip mr-2" /><span class="nav-text">Breadly</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'squell' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-database mr-2" />Diffy
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Diffy">
+            <i class="pi pi-database mr-2" /><span class="nav-text">Diffy</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'canvy' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-clone mr-2" />Canvy
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Canvy">
+            <i class="pi pi-clone mr-2" /><span class="nav-text">Canvy</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'bawu' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-headphones mr-2" />Bawu
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Bawu">
+            <i class="pi pi-headphones mr-2" /><span class="nav-text">Bawu</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'groovy' }" custom v-slot="{ href, navigate, isActive }">
-          <a :href="href" @click="navigate" :class="{ active: isActive }">
-            <i class="pi pi-stopwatch mr-2" />Groovy
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Groovy">
+            <i class="pi pi-stopwatch mr-2" /><span class="nav-text">Groovy</span>
           </a>
         </router-link>
       </div>
@@ -490,25 +490,28 @@ function goLogin() {
 .app-navbar {
   display: flex;
   align-items: center;
-  padding: 0.55rem 2rem;
+  padding: 0.55rem clamp(0.75rem, 1.6vw, 2rem);
   border: none;
-  gap: 1.5rem;
+  gap: clamp(0.5rem, 1.2vw, 1.5rem);
 }
 
 .logo-link {
   display: flex;
   align-items: center;
-  margin-right: 1.5rem;
+  margin-right: clamp(0.5rem, 1.5vw, 1.5rem);
   text-decoration: none;
 }
 
+/* The gutters between sections are the bar's biggest slack: they give up most
+   of their width before the links themselves start tightening. */
 .nav-groups {
   padding: 0.5rem;
   padding-bottom: 0.25rem;
   display: flex;
   align-items: stretch;
-  gap: 5rem;
+  gap: clamp(1rem, 2.6vw, 5rem);
   flex: 1;
+  min-width: 0;
 }
 
 /* ── Section (Scraper / Sensors) ── */
@@ -516,7 +519,7 @@ function goLogin() {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding-left: 0.85rem;
+  padding-left: clamp(0.45rem, 0.9vw, 0.85rem);
   border-left: 2px solid transparent;
 }
 
@@ -569,7 +572,10 @@ function goLogin() {
 .nav-section-links a {
   display: flex;
   align-items: center;
-  padding: 0.4rem 0.85rem;
+  /* pinned so dropping the labels below 1300px doesn't shorten the bar — the
+     tool views size themselves off it with calc(100vh - 6.75rem) */
+  min-height: 2.4rem;
+  padding: 0.4rem clamp(0.35rem, 0.6vw, 0.85rem);
   border-radius: 0.375rem;
   font-size: 1rem;
   font-weight: 500;
@@ -631,18 +637,33 @@ function goLogin() {
   gap: 0.25rem;
 }
 
-/* Below ~2000px the full-fat spacing no longer fits: four sections, thirteen
-   nowrap links and 5rem gutters add up to ~1980px, which puts a horizontal
-   page scrollbar on a 1920 display — and pushes the right-hand column of every
-   tool off-screen — the moment a fifth tool joins the bar. Tighter gutters and
-   link padding pull it back under ~1760px; nothing changes on wider screens. */
-@media (max-width: 1999.98px) {
-  .nav-groups {
-    gap: 2.5rem;
+/* Thirteen links across four labelled sections need ~1570px with icons and
+   labels; below that the bar sheds one layer at a time rather than overflowing
+   the page. First the icons go — a word identifies a destination better than a
+   glyph, and two of these links would otherwise both be pi-database. */
+@media (max-width: 1699.98px) {
+  .nav-section-links a .pi {
+    display: none;
+  }
+}
+
+/* Under ~1300px the labels no longer fit either, so it inverts: icons only,
+   with the section labels and colour coding still naming each group and a
+   title tooltip on every link. That takes the bar to roughly 750px, just past
+   the drawer breakpoint below. */
+@media (max-width: 1299.98px) {
+  .nav-text {
+    display: none;
+  }
+
+  .nav-section-links a .pi {
+    display: block;
+    margin-right: 0 !important;
+    font-size: 1.05rem;
   }
 
   .nav-section-links a {
-    padding: 0.4rem 0.6rem;
+    padding: 0.4rem 0.55rem;
   }
 }
 

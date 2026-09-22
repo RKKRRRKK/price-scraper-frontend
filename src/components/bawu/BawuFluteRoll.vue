@@ -17,7 +17,6 @@
       </div>
       <div class="frow flute-row">
         <span class="cell-ruler"></span>
-        <span class="cell-trace"></span>
         <span class="cell-lab flute-name">
           <b>bawu</b><small>1={{ keyLabel }}</small>
         </span>
@@ -34,7 +33,31 @@
           </span>
         </template>
       </div>
-      <div v-if="tip" class="flute-tip">{{ tip }}</div>
+    </div>
+
+    <!-- ══ The mic readout ══ what you are actually playing, right under the
+         instrument: the note heard, how far it sits from the note asked for,
+         and — in follow mode — how much of that note you have held. -->
+    <div v-if="micActive" class="mic-bar" :class="{ live: heardMidi !== null, ok: onTarget }">
+      <span class="mic-now">
+        <i class="pi pi-microphone"></i>
+        <b>{{ heardMidi !== null ? heardLabel : '—' }}</b>
+      </span>
+      <div class="mic-meter" :title="targetMidi !== null ? 'Distance from the note you are meant to be playing' : 'Nothing to compare against'">
+        <span class="mm-zone"></span>
+        <span class="mm-mid"></span>
+        <span v-for="s in [-2, -1, 1, 2]" :key="s" class="mm-tick" :style="{ left: 50 + s * 25 + '%' }"></span>
+        <span class="mm-low">flat</span>
+        <span class="mm-high">sharp</span>
+        <span v-if="offset !== null" class="mm-dot" :style="{ left: dotLeft }"></span>
+      </div>
+      <span class="mic-read">
+        <b v-if="offset !== null">{{ offsetLabel }}</b>
+        <small>{{ heardMidi === null ? 'listening…' : tip }}</small>
+      </span>
+      <div v-if="follow" class="mic-hold" title="How much of the note you have held">
+        <span class="mh-fill" ref="holdEl"></span>
+      </div>
     </div>
 
     <!-- ══ The roll ══ time runs upwards: notes rise into the instrument. -->
@@ -42,7 +65,6 @@
       <!-- Column stripes, pinned to the viewport (the notes scroll over them). -->
       <div class="frow fr-cols" ref="colsRow">
         <span class="cell-ruler"></span>
-        <span class="cell-trace"></span>
         <span class="cell-lab"></span>
         <template v-for="(c, ci) in CELLS" :key="'bg' + ci">
           <span v-if="c.gap" class="cell-gap" :class="{ big: c.big }"></span>
@@ -81,7 +103,6 @@
             @click="onNoteClick($event, n)"
           >
             <span class="cell-ruler"></span>
-            <span class="cell-trace"></span>
             <span class="cell-lab fn-lab">
               <span class="fn-pill">{{ noteLabel(n) }}<i v-if="n.row === null" class="fn-warn">⚠</i></span>
               <span v-if="fxBadges(n).length" class="fn-fx">
@@ -104,7 +125,6 @@
       <div class="fr-now"><span class="fr-now-lab">NOW</span></div>
       <div v-if="heardLevel !== null && micActive" class="frow fr-heard">
         <span class="cell-ruler"></span>
-        <span class="cell-trace"></span>
         <span class="cell-lab fr-heard-lab">heard</span>
         <template v-for="(c, ci) in CELLS" :key="'hb' + ci">
           <span v-if="c.gap" class="cell-gap" :class="{ big: c.big }"></span>
@@ -201,6 +221,7 @@ const props = defineProps({
   playing: Boolean,
   micActive: Boolean,
   heardMidi: { type: Number, default: null }, // mic pitch as a float MIDI number
+  follow: Boolean, // follow mode — the hold bar fills as the note is held
   tip: { type: String, default: '' },
   traceSamples: { type: Array, default: () => [] },
   bpm: { type: Number, default: 80 },
@@ -254,7 +275,6 @@ const T_GAP = '0rem'     // thumb ↔ hole 1
 const MID_GAP = '6.0rem'    // between the two hands (on top of the usual column gap)
 const HEAD_PAD = '10rem'  // clearance at the right for the reed housing
 const RULER_W = '2.1rem'    // bar-number margin, far left
-const TRACE_W = '2.75rem'   // mic-trace ribbon (collapses to zero when the mic is off)
 const GUTTER_MIN = '6rem'   // note labels + lyrics; takes whatever slack is left over
 
 // THE INSTRUMENT ─ the drawing across the top
@@ -311,7 +331,6 @@ const C_BAD_SOFT = '#fef2f2'
 const C_HEARD = '#0e7490'     // the mic trace and the heard-fingering ghost
 
 const vars = computed(() => {
-  const trace = props.micActive ? TRACE_W : '0rem'
   // A hole column is capped rather than flexible, so the seven holes crowd
   // together instead of stretching with the window; the label gutter takes the
   // slack, and the tube is drawn across the whole deck regardless.
@@ -320,9 +339,8 @@ const vars = computed(() => {
   return {
     '--deck-w': DECK_W,
     '--ruler-w': RULER_W,
-    '--trace-w': trace,
     '--head-y': HEAD_Y + 'px',
-    '--fcols': `${RULER_W} ${trace} minmax(${GUTTER_MIN}, 1fr) repeat(3, ${col}) ${MID_GAP} repeat(3, ${col}) ${T_GAP} ${tcol} ${HEAD_PAD}`,
+    '--fcols': `${RULER_W} minmax(${GUTTER_MIN}, 1fr) repeat(3, ${col}) ${MID_GAP} repeat(3, ${col}) ${T_GAP} ${tcol} ${HEAD_PAD}`,
     '--flute-h': FLUTE_H,
     '--tube-h': TUBE_H,
     '--tube-top': TUBE_TOP,
@@ -372,6 +390,8 @@ const viewEl = ref(null)
 const laneEl = ref(null)
 const colsRow = ref(null)
 const traceCanvas = ref(null)
+const holdEl = ref(null)
+let lastHold = -1
 const rollH = ref(420) // measured viewport height of the scroller
 
 // The lane is laid out top-down — beat 0 at the head, later beats further down —
@@ -437,6 +457,34 @@ const curLevel = computed(() => (curNote.value ? levelOf(curNote.value) : null))
 const heardLevel = computed(() => {
   if (!props.micActive || props.heardMidi == null) return null
   return Math.round(rowFloatOfMidi(props.heardMidi))
+})
+
+// ── What the mic is hearing, measured against the note that is due ──────────
+const targetMidi = computed(() => (curNote.value && curNote.value.midi != null ? curNote.value.midi : null))
+// Signed distance in semitones: negative is flat, positive is sharp.
+const offset = computed(() => {
+  if (props.heardMidi == null || targetMidi.value == null) return null
+  return props.heardMidi - targetMidi.value
+})
+const onTarget = computed(() => offset.value !== null && Math.abs(offset.value) <= 0.25)
+// The meter reads ±2 semitones, a quarter of its width per semitone.
+const dotLeft = computed(() => {
+  const o = Math.max(-2, Math.min(2, offset.value ?? 0))
+  return 50 + o * 25 + '%'
+})
+const offsetLabel = computed(() => {
+  const o = offset.value
+  if (o === null) return ''
+  if (Math.abs(o) <= 0.5) {
+    const c = Math.round(o * 100)
+    return Math.abs(c) <= 4 ? 'in tune' : (c > 0 ? '+' : '') + c + '¢'
+  }
+  return (o > 0 ? '+' : '') + o.toFixed(1) + ' semitones'
+})
+const heardLabel = computed(() => {
+  if (props.heardMidi == null) return '—'
+  const m = Math.round(props.heardMidi)
+  return props.notation === 'western' ? pitchName(m) : `${jianpuText(m, props.keyName)} · ${pitchName(m)}`
 })
 
 // ── Labels ──────────────────────────────────────────────────────────────────
@@ -529,9 +577,15 @@ function beatForScroll(top) {
 }
 
 // Called from the view's rAF loop with the current song position, in beats.
-function paint(t) {
+function paint(t, hold = 0) {
   const view = viewEl.value
   if (!view) return
+  // The hold bar moves every frame, so it is written straight to the DOM.
+  const pct = Math.round(Math.max(0, Math.min(1, hold)) * 100)
+  if (holdEl.value && lastHold !== pct) {
+    holdEl.value.style.width = pct + '%'
+    lastHold = pct
+  }
   const h = view.clientHeight
   if (h && rollH.value !== h) rollH.value = h
   if (lastT !== t) {
@@ -558,10 +612,37 @@ function onScroll() {
   emit('seek-beat', beat)
 }
 
-// ── Mic trace ═ pitch across, time down ─────────────────────────────────────
-// The old roll drew the heard pitch as a line trailing the playhead across the
-// rows. Stood up, that becomes a narrow ribbon beside the ruler: the horizontal
-// axis is pitch (low left, high right) and the line grows downwards as it ages.
+// ── Mic trace ═ drawn on the hole columns ───────────────────────────────────
+// The trace used to live in a narrow ribbon beside the ruler, which made the
+// one thing the player needs to see the smallest thing on the deck. It is drawn
+// across the deck instead, on the same axis as the fingering: the line sits over
+// the column of the LAST hole your pitch is asking you to cover, so when you are
+// playing the right note it runs straight up the column the note's bars end on.
+// Time still runs upwards — a sample was on the NOW line when it was taken.
+let colXs = null
+let colXW = 0
+function columnXs() {
+  const row = colsRow.value
+  if (!row) return null
+  if (colXs && colXW === row.clientWidth) return colXs
+  const cells = [...row.querySelectorAll('.cell-hole')]
+  if (cells.length < 2) return null
+  // CELLS runs level 7 → 1 across the deck; level 0 (nothing covered) sounds out
+  // past the thumb, over the reed, so it is extrapolated by one column.
+  const xs = []
+  cells.forEach((el, i) => { xs[COLS[i].level] = el.offsetLeft + el.offsetWidth / 2 })
+  xs[0] = xs[1] + (xs[1] - xs[2])
+  colXs = xs
+  colXW = row.clientWidth
+  return xs
+}
+function xOfLevel(xs, level) {
+  const l = Math.max(0, Math.min(BAWU_NOTES.length - 1, level))
+  const lo = Math.floor(l)
+  const hi = Math.min(BAWU_NOTES.length - 1, lo + 1)
+  return xs[lo] + (xs[hi] - xs[lo]) * (l - lo)
+}
+
 function drawTrace() {
   const canvas = traceCanvas.value
   if (!canvas) return
@@ -571,27 +652,36 @@ function drawTrace() {
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w
     canvas.height = h
+    colXs = null
   }
   const g = canvas.getContext('2d')
   g.clearRect(0, 0, w, h)
   const samples = props.traceSamples
-  if (!props.micActive || !samples.length) return
+  if (!props.micActive) return
+  const xs = columnXs()
+  if (!xs) return
 
   const now = performance.now()
   const pxPerSec = props.px * (props.bpm / 60)
-  const rows = BAWU_NOTES.length - 1
-  const xOf = (mf) => 3 + ((rows - rowFloatOfMidi(mf)) / rows) * (w - 6)
-  // A sample was on the line when it was taken and the sheet has climbed since,
-  // so the trail runs upwards with the notes it is meant to be compared against.
+  const xOf = (mf) => xOfLevel(xs, rowFloatOfMidi(mf))
   const yOf = (at) => HEAD_Y - ((now - at) / 1000) * pxPerSec
 
+  // Where the pitch is supposed to be — a soft rail the trace should ride.
   if (curLevel.value !== null) {
-    g.fillStyle = 'rgba(249, 115, 22, 0.18)'
-    g.fillRect(xOf(BAWU_NOTES[curLevel.value].midi) - 3, 0, 6, h)
+    const tx = xOfLevel(xs, curLevel.value)
+    g.fillStyle = 'rgba(249, 115, 22, 0.16)'
+    g.fillRect(tx - 5, 0, 10, h)
+    g.strokeStyle = 'rgba(194, 65, 12, 0.5)'
+    g.lineWidth = 1
+    g.beginPath()
+    g.moveTo(tx + 0.5, 0)
+    g.lineTo(tx + 0.5, h)
+    g.stroke()
   }
+  if (!samples.length) return
 
   g.strokeStyle = C_HEARD
-  g.lineWidth = 2.25
+  g.lineWidth = 3
   g.lineJoin = 'round'
   g.lineCap = 'round'
   let started = false
@@ -614,11 +704,28 @@ function drawTrace() {
 
   const last = samples[samples.length - 1]
   if (last && now - last.at < 300) {
+    const hx = xOf(last.mf)
+    // The gap to the target, drawn as the gap it is: a dashed run along the NOW
+    // line from what you are playing to what is written.
+    if (curLevel.value !== null) {
+      const tx = xOfLevel(xs, curLevel.value)
+      if (Math.abs(tx - hx) > 6) {
+        g.save()
+        g.strokeStyle = 'rgba(14, 116, 144, 0.75)'
+        g.lineWidth = 1.5
+        g.setLineDash([4, 4])
+        g.beginPath()
+        g.moveTo(hx, HEAD_Y)
+        g.lineTo(tx, HEAD_Y)
+        g.stroke()
+        g.restore()
+      }
+    }
     g.fillStyle = C_HEARD
     g.shadowColor = 'rgba(14, 116, 144, 0.8)'
-    g.shadowBlur = 9
+    g.shadowBlur = 10
     g.beginPath()
-    g.arc(xOf(last.mf), HEAD_Y, 5, 0, Math.PI * 2)
+    g.arc(hx, HEAD_Y, 6, 0, Math.PI * 2)
     g.fill()
     g.shadowBlur = 0
   }
@@ -917,6 +1024,8 @@ function menuPaste() {
 // re-seat the scroller, which only happens when the loop thinks the position
 // moved. Clearing the cached value makes the next frame write it again.
 watch([() => props.px, () => props.totalBeats, padTail], () => { lastT = null })
+// The readout strip comes and goes with the mic, taking the bar with it.
+watch(holdEl, () => { lastHold = -1 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onDragMove)
@@ -1021,11 +1130,45 @@ defineExpose({ paint, closeMenu })
 .hole-cell .hole.off { outline: 2px solid var(--heard); outline-offset: 2px; }
 .hole-cell .hole:hover { border-color: #fff; }
 .hole-tag { position: absolute; left: 0; right: 0; bottom: 0.1rem; text-align: center; font-size: var(--tag-size); font-weight: 800; font-style: normal; color: var(--text-faint); letter-spacing: 0.04em; white-space: nowrap; }
-.flute-tip {
-  position: absolute; right: 0.6rem; top: 0.1rem; z-index: 3; font-size: 0.66rem; font-weight: 700;
-  color: var(--warn); background: var(--warn-soft); border: 1px solid #fde68a; border-radius: 999px; padding: 0.05rem 0.5rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+/* ── The mic readout ──────────────────────────────────────────────────────── */
+/* One strip under the instrument, the full width of the deck: what is being
+   heard on the left, how far it is from the written note in the middle, and how
+   much of that note has been held along the bottom. */
+.mic-bar {
+  position: relative; flex: none; display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.4rem 0.85rem 0.5rem; border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #fbfbfa, #f4f3f1);
 }
+.mic-now { display: inline-flex; align-items: baseline; gap: 0.4rem; min-width: 7rem; }
+.mic-now i { font-size: 0.75rem; color: var(--text-faint); align-self: center; }
+.mic-bar.live .mic-now i { color: var(--heard); }
+.mic-now b { font-size: 1.1rem; font-weight: 800; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mic-bar.live .mic-now b { color: var(--heard); }
+.mic-bar.ok .mic-now b { color: #16a34a; }
+
+/* ±2 semitones across; the middle quarter of it is the note you want. */
+.mic-meter { position: relative; flex: 1; height: 1.15rem; border-radius: 999px; background: #eceae7; box-shadow: inset 0 1px 2px rgba(0,0,0,0.08); overflow: hidden; }
+.mm-zone { position: absolute; left: 43.5%; right: 43.5%; top: 0; bottom: 0; background: rgba(22, 163, 74, 0.16); }
+.mm-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--down-edge); }
+.mm-tick { position: absolute; top: 30%; bottom: 30%; width: 1px; background: #c9c6c1; }
+.mm-low, .mm-high { position: absolute; top: 50%; transform: translateY(-50%); font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+.mm-low { left: 0.45rem; }
+.mm-high { right: 0.45rem; }
+.mm-dot {
+  position: absolute; top: 50%; width: 0.7rem; height: 0.7rem; margin: -0.35rem 0 0 -0.35rem; border-radius: 50%;
+  background: var(--heard); box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.2);
+  transition: left 80ms linear;
+}
+.mic-bar.ok .mm-dot { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.22); }
+
+.mic-read { display: flex; flex-direction: column; align-items: flex-end; min-width: 9rem; line-height: 1.15; }
+.mic-read b { font-size: 0.82rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+.mic-bar.ok .mic-read b { color: #16a34a; }
+.mic-read small { font-size: 0.68rem; color: var(--text-dim); white-space: nowrap; }
+
+/* Follow mode: the written length of the note, filling as it is held. */
+.mic-hold { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #e7e5e4; }
+.mh-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--down-lit), var(--down)); }
 
 /* ── The roll ─────────────────────────────────────────────────────────────── */
 .fr-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #fff; }
@@ -1095,7 +1238,8 @@ defineExpose({ paint, closeMenu })
 .fr-fade { position: absolute; left: 0; right: 0; top: 0; height: 2.1rem; background: linear-gradient(180deg, #fff 30%, rgba(255,255,255,0)); z-index: 2; pointer-events: none; }
 .fr-now { position: absolute; left: 0; right: 0; top: var(--head-y); height: 0; border-top: 2px solid var(--accent-500); box-shadow: 0 0 14px rgba(239, 68, 68, 0.45); z-index: 4; pointer-events: none; }
 .fr-now-lab { position: absolute; right: 0.35rem; top: -0.95rem; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; color: var(--accent-500); }
-.fr-trace { position: absolute; left: var(--ruler-w); top: 0; bottom: 0; width: var(--trace-w); z-index: 3; pointer-events: none; }
+/* The trace is drawn over the whole deck, on the hole columns. */
+.fr-trace { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 /* The heard fingering sits in the strip above the line — the part of the roll
    that is already spent — so it never covers a note still to be played. */
 .fr-heard { position: absolute; left: 0; right: 0; top: calc(var(--head-y) - 1.35rem); height: 1.15rem; z-index: 3; pointer-events: none; }

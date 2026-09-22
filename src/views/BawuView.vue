@@ -370,6 +370,7 @@
                 :playing="playing"
                 :mic-active="micActive"
                 :heard-midi="pitch ? pitch.midiFloat : null"
+                :follow="mode === 'follow'"
                 :tip="tipText"
                 :trace-samples="traceSamples"
                 :bpm="bpm"
@@ -1303,6 +1304,16 @@ let lastBeat = -1
 let rafId = 0
 let lastTs = 0
 let stableStart = null
+// Follow mode: the song moves only while the right note is actually sounding.
+// `followHeld` is how much of the current note has been played, in beats, and
+// `followOkUntil` is how long the last matching pitch keeps it moving — a gap
+// shorter than that is the tracker blinking, not the player stopping.
+let followHeld = 0
+let followOkUntil = 0
+let followFrac = 0 // 0..1 of the current note already played (painted, not reactive)
+const FOLLOW_GRACE_MS = 220 // a dropout shorter than this doesn't stall the note
+const FOLLOW_ONSET_MS = 70 // how long a pitch has to settle before it counts
+const FOLLOW_EARLY = 0.55 // fraction of a note after which the next one may take over
 // The sound currently in the air. A tie or a slur is ONE sound spanning several
 // notes, so the voice outlives the note that started it and gets glided rather
 // than restruck; `glidePending` marks a portamento already scheduled ahead of
@@ -1327,6 +1338,10 @@ function resetPlayback(toIdx = 0) {
   releaseVoice()
   curIdx = Math.max(0, Math.min(playableNotes.value.length - 1, toIdx))
   t = playableNotes.value[curIdx]?.start || 0
+  followHeld = 0
+  followOkUntil = 0
+  followFrac = 0
+  stableStart = null
   syncTriggers()
   uiIdx.value = curIdx
 }
@@ -1396,8 +1411,19 @@ function frame(ts) {
   const notes = playableNotes.value
   if (playing.value && notes.length) {
     if (mode.value === 'follow') {
-      const target = notes[curIdx]?.start ?? t
-      t += (target - t) * Math.min(1, dt * 9)
+      // The playhead walks THROUGH the note for as long as it is being sounded,
+      // at the tempo it is written at, and only steps on once the note has had
+      // its full length. Stop blowing and the song stops with you.
+      const cur = notes[curIdx]
+      if (cur) {
+        if (performance.now() < followOkUntil) {
+          followHeld = Math.min(cur.beats, followHeld + dt * (bpm.value / 60))
+        }
+        const target = cur.start + followHeld
+        t = Math.abs(target - t) < 0.02 ? target : t + (target - t) * Math.min(1, dt * 12)
+        followFrac = cur.beats > 0 ? followHeld / cur.beats : 0
+        if (followHeld >= cur.beats - 1e-6) advanceFollow()
+      }
     } else {
       t += dt * (bpm.value / 60)
       const all = flat.value.notes
@@ -1425,7 +1451,7 @@ function frame(ts) {
 
   // Scroll position + playhead (direct DOM — no reactivity at 60fps).
   measureRoll()
-  fluteRoll.value?.paint(t)
+  fluteRoll.value?.paint(t, mode.value === 'follow' ? followFrac : 0)
   paintRoll(laneElPhone.value, nowElPhone.value, rollElPhone.value, PLAYHEAD_X_PHONE, phoneView)
 
   if (uiIdx.value !== curIdx) uiIdx.value = curIdx
@@ -1505,34 +1531,41 @@ function onPitch(p) {
 
   if (mode.value === 'follow' && playing.value) {
     const cur = playableNotes.value[curIdx]
+    const nxt = playableNotes.value[curIdx + 1]
     if (cur && p.midi === cur.midi) {
-      if (stableStart == null) stableStart = performance.now()
-      if (performance.now() - stableStart >= 120) {
-        stableStart = null
-        advanceFollow()
-      }
+      // Settle first, then keep the note moving for as long as it keeps coming.
+      if (stableStart == null) stableStart = at
+      if (at - stableStart >= FOLLOW_ONSET_MS) followOkUntil = at + FOLLOW_GRACE_MS
+    } else if (cur && nxt && p.midi === nxt.midi && followHeld >= cur.beats * FOLLOW_EARLY) {
+      // Moved on early — most of the note was played, so take it as played
+      // rather than stalling the song on a note nobody is sounding any more.
+      advanceFollow()
+      stableStart = at
     } else {
       stableStart = null
+      followOkUntil = 0
     }
   }
 }
 
 function updateTip(p) {
-  if (!p || mode.value !== 'follow' || !playing.value) {
-    tipText.value = ''
-    return
-  }
   const cur = playableNotes.value[curIdx]
-  if (!cur || cur.row === null) {
+  if (!p || !micActive.value || !cur || cur.row === null) {
     tipText.value = ''
     return
   }
-  const heardRow = rowOfMidi(p.midi)
-  tipText.value = p.midi === cur.midi ? `${p.name} ✓` : `${p.name} → ${coachDelta(cur.row, heardRow)}`
+  if (p.midi === cur.midi) {
+    tipText.value = mode.value === 'follow' && playing.value ? 'hold it' : 'that’s the note'
+    return
+  }
+  tipText.value = coachDelta(cur.row, rowOfMidi(p.midi))
 }
 
 function advanceFollow() {
   const notes = playableNotes.value
+  followHeld = 0
+  followOkUntil = 0
+  followFrac = 0
   if (curIdx >= notes.length - 1) {
     if (streaming.value) return
     playing.value = false
@@ -1557,6 +1590,9 @@ function togglePlay() {
   if (t > totalBeats.value) resetPlayback(0)
   syncTriggers()
   stableStart = null
+  followHeld = 0
+  followOkUntil = 0
+  followFrac = 0
   playing.value = true
   if (mode.value === 'follow' && !micOn.value) toggleMic()
 }
@@ -1595,6 +1631,9 @@ function setMode(m) {
   playing.value = false
   releaseVoice()
   stableStart = null
+  followHeld = 0
+  followOkUntil = 0
+  followFrac = 0
   syncTriggers()
 }
 
@@ -1725,7 +1764,7 @@ const modeHint = computed(() => {
   if (!cur) return 'No notes yet'
   if (cur.row === null) return `${cur.label} is out of the bawu's range`
   const covered = coveredLabel(cur.row)
-  if (mode.value === 'follow') return `Song waits · play ${cur.label}, cover ${covered}`
+  if (mode.value === 'follow') return `Hold ${cur.label} its full length · cover ${covered}`
   if (mode.value === 'steady') return `${bpm.value} BPM · ${cur.label}, cover ${covered}`
   return `${cur.label} (${BAWU_NOTES[cur.row].pitch}) · cover ${covered}`
 })

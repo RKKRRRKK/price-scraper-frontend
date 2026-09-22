@@ -22,9 +22,10 @@ a,
   }
 
   #app {
-    width: 100vw;
+    /* 100vw includes the vertical scrollbar, which put a horizontal scrollbar
+       on every scrolling page; 100% is the viewport minus the scrollbar */
+    width: 100%;
     display: grid;
-
   }
 }
 

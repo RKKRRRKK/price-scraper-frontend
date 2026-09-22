@@ -43,30 +43,25 @@ function onFileSelected(fileId) {
   user-select: none;
 }
 
-/* main-area grids (copied from your old file) */
+/* main-area grids. auto-fit + min() means the two marketplace columns pair up
+   as soon as there is room for both and fall back to one column when there
+   isn't, instead of being forced side by side from 768px up and overflowing;
+   the gutters and page margins shrink with the viewport rather than staying
+   at their full 10rem/5rem. */
 .sections {
   display: grid;
-  gap: 1rem;
+  gap: clamp(1rem, 6vw, 10rem);
   justify-content: center;
-  transform: scale(0.85);
+  transform: scale(0.9);
   transform-origin: top center;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18.75rem), 1fr));
+  margin: clamp(0.5rem, 3.5vw, 5rem);
+  margin-top: 1rem;
 }
 
 .welcome {
   font-size: 1.5rem;
-  width: 65vw;
+  width: 100%;
   height: 65vh;
-}
-
-/* breakpoints unchanged */
-@media (min-width: 768px) {
-  .sections {
-    grid-template-columns: repeat(2, minmax(300px, 1fr));
-    gap: 10rem;
-    margin: 5rem;
-    margin-top: 1rem;
-    transform: scale(0.9);
-  }
 }
 </style>

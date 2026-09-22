@@ -58,6 +58,17 @@
   font-weight: normal;
 }
 
+/* Fluid root size. Nearly everything in this app — type, padding, gaps, panel
+   widths, PrimeVue's own theme — is expressed in rem, so scaling the root is
+   what makes the whole UI shrink continuously with the viewport instead of
+   staying frozen at its desktop size until a breakpoint fires. 0.8125rem
+   (13px) at 768px up to 1rem (16px) at 1920px, so ≥1920 looks exactly as it
+   did before. Media queries are unaffected: their em/px units always resolve
+   against the initial 16px, not this value. */
+html {
+  font-size: clamp(0.8125rem, 0.6875rem + 0.26vw, 1rem);
+}
+
 body {
   min-height: 100vh;
   color: var(--color-text);
@@ -79,7 +90,7 @@ body {
     'Droid Sans',
     'Helvetica Neue',
     sans-serif;
-  font-size: 15px;
+  font-size: 0.9375rem;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

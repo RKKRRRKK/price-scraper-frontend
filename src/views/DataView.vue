@@ -158,9 +158,11 @@ function askDelete(row) {
 
 <style scoped>
 .wrap {
-  max-width: 70vw;
+  /* 70vw on a wide screen, but on a narrow one that leaves 30% of the viewport
+     empty for no reason — so never give up more than a 1rem gutter each side */
+  width: min(100% - 2rem, max(70vw, 45rem));
   margin: auto;
-  margin-top: 5rem;
+  margin-top: clamp(1.5rem, 4vw, 5rem);
 }
 
 .term-picker {

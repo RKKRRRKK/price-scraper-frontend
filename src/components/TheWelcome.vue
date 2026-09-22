@@ -39,7 +39,11 @@ const visible = ref(true);
   flex: 0 1 auto; /* allow shrinking */
   margin-top: 2em;
   margin-right: 2rem;
-  height: clamp(500px, 60vh, 100vh);
+  /* the 500px floor was wider than the whole flex row on a small laptop, which
+     squeezed the greeting out of view; cap the width and let it letterbox */
+  height: clamp(15rem, 60vh, 100vh);
+  max-width: 40%;
+  object-fit: contain;
   filter: grayscale(50%);
   
 }
@@ -51,14 +55,17 @@ const visible = ref(true);
 }
 
 .welcome-text h1 {
-  font-size: clamp(2.5rem, 8vw, 5rem);
+  /* 8vw outran the column the moment the fruit took its share of the row */
+  font-size: clamp(2rem, 5vw, 5rem);
   font-weight: 700;
   margin-bottom: 1.5rem;
-  white-space: nowrap; /* keep on one line when there's room */
+  /* it still sits on one line wherever it fits; nowrap made it overrun the
+     column instead of breaking when it didn't */
+  text-wrap: balance;
 }
 
 .welcome-text p {
-  font-size: clamp(1rem, 3vw, 2rem);
+  font-size: clamp(1rem, 1.6vw, 2rem);
   color: #555;
   margin-top: 1rem;
 }
@@ -123,22 +130,24 @@ const visible = ref(true);
   }
 }
 
-/* Mobile: stack vertically, text below fox */
-@media (max-width: 600px) {
+/* Stack vertically once the folder rail plus the fruit leave the greeting too
+   narrow to read — that happens well before phone width, since the rail alone
+   is 18rem of a side-by-side row. */
+@media (max-width: 61.99em) {
   .welcome {
     flex-direction: column;
-    margin-left: 20vw;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
     padding: 0;
   }
   .fox {
     margin: 0;
-    height: clamp(300px, 40vh, 60vh);
+    max-width: 80%;
+    height: clamp(9rem, 32vh, 60vh);
   }
   .welcome-text {
     margin-top: 1rem;
-  }
-  .welcome-text h1 {
-    white-space: normal;
   }
 }
 </style>
