@@ -3,6 +3,7 @@
 //   groovy-monitor --list
 //   groovy-monitor [--backend auto|asio|wasapi] [--device <name part>]
 //                  [--in-channel N] [--out-channel N] [--rate 48000]
+//                  (on ASIO the web app can move the input channel at run time)
 //                  [--port 47391] [--origin host]... [--monitor]
 //                  [--seconds N] [--quiet]
 //
@@ -69,7 +70,7 @@ static class Program
         Console.WriteLine($"  latency     in {info.InputLatencyMs:F1} ms + out {info.OutputLatencyMs:F1} ms → about {info.RoundTripMs:F0} ms through this process");
         if (info.Note.Length > 0) Console.WriteLine($"  note        {info.Note}");
 
-        var hosts = new List<string> { "localhost", "127.0.0.1", "quanticart.web.app", "quanticart.firebaseapp.com" };
+        var hosts = new List<string> { "localhost", "127.0.0.1", "quanticart.web.app", "quanticart.firebaseapp.com", "kumquant.com", "www.kumquant.com" };
         hosts.AddRange(a.Origins);
         ControlServer server;
         try

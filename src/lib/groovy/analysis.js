@@ -40,6 +40,22 @@ export function percentile(xs, p) {
   return a[i]
 }
 
+// Where a note sits against the tolerance window, as the one word the roll, the
+// note card and the fretboard all colour the same way:
+//   pocket  inside the window, clear of its edge   (green)
+//   edge    inside it, but in its outer third      (yellow)
+//   out     outside it                             (red)
+// "In pocket" in the stats counts pocket + edge, so it still means "within
+// tolerance" and old takes' numbers stay comparable.
+export const EDGE_FRACTION = 2 / 3
+
+export function pocketZone(devMs, toleranceMs = 25) {
+  const a = Math.abs(devMs)
+  if (a > toleranceMs) return 'out'
+  if (a > toleranceMs * EDGE_FRACTION) return 'edge'
+  return 'pocket'
+}
+
 // A hit is { t, devMs, slotInBar, ... }. `settings` carries the grid it was
 // played against so the per-position breakdown can be labelled.
 export function summarise(hits, settings = {}) {

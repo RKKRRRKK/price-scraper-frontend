@@ -50,8 +50,11 @@ stored rows all agree.
 | `onsetWorkletSource.js` | The detector, as source text (see below) |
 | `onset.js` | Loads that worklet and wraps it in callbacks |
 | `pitch.js` | Bass-range pitch tracking, for the roll only |
-| `analysis.js` | Deviations → statistics |
-| `recorder.js` | Optional audio capture for a take |
+| `analysis.js` | Deviations → statistics, and the pocket zones |
+| `capture.js` | Optional take audio, sample-aligned to the clock |
+| `replay.js` | Playing a take back, with a playhead |
+| `localTakes.js` | Takes kept in this browser (IndexedDB) until uploaded |
+| `scales.js` | Keys, degrees, spelling, fret positions |
 | `index.js` | Barrel + the map of all of the above |
 
 ### `src/components/groovy/` — the UI
@@ -59,13 +62,16 @@ stored rows all agree.
 | File | What it draws |
 |---|---|
 | `GroovyRoll.vue` | The scrolling practice surface (canvas) |
+| `GroovyFretboard.vue` | The scale map, and the selected note lit on it |
+| `GroovyNoteCard.vue` | The selected note read out, plus the running numbers |
+| `GroovyTuner.vue` | Chromatic tuner on the pitch tracker |
 | `GroovyInputSetup.vue` | Device, channel, detector tuning, calibration |
 | `GroovyAmp.vue` | The amp panel |
 | `GroovyTakeCompare.vue` | Tiles, histograms, per-position chart, table |
 
 Plus `src/views/GroovyView.vue` (layout + all the wiring),
-`src/stores/groovy.js` (takes in Supabase, practice settings in localStorage)
-and `supabase/groovy_schema.sql`.
+`src/stores/groovy.js` (takes local-first with optional upload, practice
+settings in localStorage) and `supabase/groovy_schema.sql`.
 
 ---
 
@@ -390,18 +396,36 @@ and monitoring feel comes from the interface's direct monitor, not from here.
 The now-line sits at 72% rather than at the right edge, so the next beat is
 visible on its way in and you can aim at it.
 
-- **Pitch lane** — the note you are playing, as a trace, with a dot at each
-  attack, joined back to the grid line it was aiming at. Open strings are drawn
-  as faint rules. The dot's vertical position is filled in ~130 ms after the
-  timing tick appears, because the pitch tracker needs a moment of steady note
-  before it can say anything; the timing tick, which is the part that matters,
-  is immediate.
-- **Timing lane** — one tick per attack at its grid line, as tall as the error.
-  Up is early, down is late. The shaded band is the tolerance window.
+It is one lane. Every note you play leaves a **large circle** at the moment
+you played it, which then scrolls away with the grid. A short stub joins the
+circle to the grid line it was aiming at, so early and late read as which
+side of the line it landed on. The circle carries three things:
 
-Colour carries exactly one thing: which side of the beat you were on. Blue is
-early, red is late. "In the pocket" is conveyed by the band rather than by
-recolouring the marks, so hue never has to mean two things at once.
+- **Colour is the pocket**, one rule everywhere (`pocketZone()` in
+  `analysis.js`): **green** inside the tolerance window, **yellow** in its
+  outer third, **red** outside it. "In pocket" in the stats still counts
+  green + yellow, so old takes' percentages stay comparable.
+- **The label** is the note's degree or its name, following the scale map's
+  Degrees / Notes toggle. A note outside the key still gets a degree
+  (its distance from the root, e.g. ♯4), so the toggle never leaves a circle
+  blank. The label shows **?** for the ~130 ms the pitch tracker needs, and
+  stays that way if the tracker never names the note.
+- **A dashed dark ring** means the note is outside the key.
+
+Circles are as large as the grid allows: just under half the gap between two
+grid lines, so a busy sixteenth line doesn't overlap. Choose a shorter Window
+for bigger circles.
+
+This replaced a two-lane roll (pitch trace plus timing ticks, blue early/red
+late) at the player's request. Don't reintroduce the pitch trace.
+
+**Selecting a note.** Click a mark and the card under the scale map reads it
+out (pitch, cents, degree in the key, ms from the grid line, beat), and every
+place it can be fretted lights up on the scale map. A detected pitch never
+says which string it was played on, so they all light. Without a selection
+the card and the fretboard follow the latest note. Click empty space or press
+**Esc** to let go, and **← / →** to step through the notes. When the count is
+stopped the roll holds still: drag or scroll it to look back.
 
 ---
 
@@ -468,10 +492,62 @@ Two buttons on that row answer the two questions worth asking:
   browser's own figures, which is the comparison that matters. With nothing
   looped back it reports "0 of 6 pulses" after about seven seconds.
 
-Timing never touches the helper. The click, the detector and the takes stay on
-the `AudioContext` clock exactly as before; the helper only carries what you
-hear. Its input channel is picked on its own command line (`--in-channel`),
-not in the panel, because it opens the interface itself.
+On WASAPI that is all it does: the click, the detector and the takes stay on
+the browser's own streams.
+
+### Engine mode: the helper as the whole sound card (ASIO)
+
+On ASIO the helper also carries the **input and the click**, and the browser's
+WDM streams drop out of the picture. That is the fix for the vendor driver's
+~300 ms input delay, which moved on every load and had to be calibrated every
+session. It switches on by itself whenever the helper is connected on ASIO.
+The input panel then shows **via the helper**, and the channel picker names the
+helper's ASIO inputs. It needs helper 0.2 or later.
+
+The rule is: **the helper is a sound card, and the timing logic never leaves
+JS.** Nothing was ported. The transport, detector, pitch tracker, voices,
+analysis and roll are the same code on a Mac and on Windows.
+
+- **Input.** The helper streams the selected channel, each block stamped with
+  the frame it was captured on, over a second socket that lives in a Worker
+  (`nativeEngine.js`), so the audio never waits behind the main thread. A
+  source worklet (`nativeSourceWorkletSource.js`) plays those blocks into the
+  context about 20 ms behind the newest one. Its output replaces the
+  getUserMedia tap, and the amp, detector, pitch tracker and take capture hang
+  off it unchanged.
+- **The clock bridge is one integer, `k`.** That worklet emits helper frame
+  `currentFrame + k`, so a note detected at context time `t` was captured on
+  helper frame `t·sr + k`. The worklet keeps `k` fixed. A late block isn't
+  played late, a gap plays as silence, and an empty ring plays silence and
+  keeps counting. The only thing that moves it is clock drift between the
+  interface and the browser's output device, corrected one frame (~20 µs) at a
+  time.
+- **Output.** The click, drums and probe pulse are rendered once in an
+  `OfflineAudioContext` by the ordinary voice code, uploaded, and booked on
+  helper frame `T·sr + k` through the transport's voice sink (`voices.js`). The
+  helper mixes each one in on exactly that frame.
+- **Offset.** The input block and the output block of one ASIO callback carry
+  the same frame numbers. So a note played exactly on a click comes back
+  exactly *input latency + output latency* later, and those are the driver's
+  own figures. The offset is set to their sum when the input opens, with no
+  calibration. Calibrating anyway still works if you want your resting bias
+  taken out.
+- **What stays in the browser.** Replay plays through the browser's output,
+  click included. It isn't latency-critical and has to keep its click with its
+  audio, so it calls `scheduleClick()` directly rather than through the sink.
+
+The context is rebuilt at the helper's rate so one helper frame is one context
+frame. If the helper goes away mid-session, the input falls back to the
+browser, the count stops, and the offset resets to be measured again.
+
+To check it end to end, pick the Loopback channel in the input panel and run
+the browser's **loopback test**. The pulse leaves through the helper and comes
+back through the stream and the JS detector, so the result should match the
+driver-reported round trip with jitter near zero.
+
+WASAPI is left in monitor-only mode because its capture and render are two
+streams whose frame counts do not line up, so there is no single clock to hand
+over.
 
 Origins are checked: the helper accepts the app's own hosts and localhost, and
 refuses any other page that tries the socket. Add a host with `--origin`.
@@ -526,10 +602,55 @@ above, and it howls.
 A take stores three things: the grid it was played to (`settings`), every
 attack (`hits`), and the derived numbers (`stats`, denormalised so the
 catalogue can draw a list without re-deriving a standard deviation from a few
-hundred hits). Audio is optional per take, via the "Keep audio" toggle, and goes
-to the private `groovy` bucket.
+hundred hits). Audio is optional per take, via the "Keep audio" toggle.
+
+**Takes stay on this computer until you upload them.** Stopping a take saves
+it to IndexedDB (`localTakes.js`), and nothing is written to Supabase unless
+you click the upload button on the take. Uploading inserts the row with its
+original id and timestamp, puts the audio in the private `groovy` bucket, and
+only then removes the local copy, so a failed upload leaves the take exactly
+where it was. The one Supabase call made without asking is reading the list of
+already-uploaded takes. Uploaded takes show a cloud icon in the list.
 
 Full shapes are documented at the top of `supabase/groovy_schema.sql`.
+
+### Take audio is on the clock
+
+Audio is captured by a second processor in the detector's worklet module
+(`capture.js`), not a MediaRecorder. A MediaRecorder starts whenever it gets
+round to it and never says when, so its audio could only ever be lined up with
+the notes to within its own start-up delay. That is tens of milliseconds, the
+size of the errors this tool exists to show. The worklet reports the context
+time of its first sample, and the take stores where that sample sits on the
+take's axis as `settings.audioLeadSec`, with the latency offset subtracted the
+same way as for every note. The price is 16-bit WAV at about 5.6 MB a minute.
+
+### Replay
+
+Clicking a take opens it on the roll (its ▶ opens and plays; the chart icon
+adds it to the Analysis comparison). A take is laid out on its own grid (a
+`Transport.fixed()`, so it draws exactly like the live one). Play runs the
+take's audio, or a plucked tone per note when it kept none, plus the click on
+its grid, all booked on the AudioContext clock. As the playhead reaches each
+note, the card reads it out and the scale map lights it. Clicking a note while
+paused parks the playhead just before it. Space plays and pauses; Esc (or ×)
+goes back to live. Starting the count closes the replay.
+
+Takes recorded before this carry webm/m4a audio with no `audioLeadSec`. They
+play from 0, which is close but not exact.
+
+---
+
+## Tuner
+
+The **Tuner** chip opens a chromatic tuner beside the note card, running on the
+same pitch tracker as the roll (A4 = 440). The tracker wobbles by a few cents
+between its ~35 readings a second. That is fine for drawing a note and useless
+for tuning one, so the needle shows a median of the last few readings. The run
+restarts whenever the pitch jumps, and the last reading stays up, dimmed, after
+the string dies away. The needle uses the pocket colours: green within ±5¢,
+yellow to ±15¢, red beyond. When the note is an open string of the instrument
+chosen on the scale map, it names the string.
 
 **The number to practise against is the spread, not the mean.** A consistent
 15 ms behind the click is a feel; 15 ms of scatter either side of it is a timing
@@ -551,14 +672,17 @@ the table always shows everything.
 ## Setup
 
 1. Run `supabase/groovy_schema.sql` in the Supabase SQL editor (these tables are
-   created by hand, like the app's other tools).
+   created by hand, like the app's other tools). Only uploading needs it;
+   practice and local takes work without it.
 2. Open Tools → Groovy, press **Enable audio input**, grant the permission.
 3. Pick the interface and the channel the bass is on. Device labels are blank
    until permission has been granted once, which is why the first open uses the
    default device.
 4. Calibrate.
 
-Keyboard: **Space** starts/stops the count, **R** records a take.
+Keyboard: **Space** starts/stops the count (or plays/pauses a replay), **R**
+records a take, **← / →** step through the notes, **Esc** lets go of a
+selected note, then leaves a replay.
 
 ---
 

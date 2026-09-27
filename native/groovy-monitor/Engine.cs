@@ -20,6 +20,19 @@ public interface IBackend : IDisposable
     long Xruns { get; }
     void Start();
     void Stop();
+
+    // ── Engine mode (see VoiceBank.cs) ────────────────────────────────────
+    /// <summary>True when input and output share one frame counter, which is
+    /// what lets the browser run its click and detector through this process.
+    /// Only ASIO: WASAPI's capture and render are two unaligned streams.</summary>
+    bool SupportsEngine { get; }
+    /// <summary>Null unless <see cref="SupportsEngine"/>.</summary>
+    InputTap? Tap { get; }
+    /// <summary>Null unless <see cref="SupportsEngine"/>.</summary>
+    VoiceBank? Voices { get; }
+    string[] InputChannelNames { get; }
+    /// <summary>0-based. Settable at run time where the backend allows it.</summary>
+    int InputChannel { get; set; }
 }
 
 /// <summary>Single-producer / single-consumer float ring for the WASAPI path,

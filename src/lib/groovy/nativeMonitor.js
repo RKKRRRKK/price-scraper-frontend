@@ -1,4 +1,4 @@
-// The web side of the native monitoring path (Windows only).
+// The web side of the native helper (Windows only): its control socket.
 //
 // `native/groovy-monitor` is a small process that runs the same amp chain as
 // amp.js on ASIO or low-latency WASAPI and listens on a WebSocket at
@@ -7,8 +7,9 @@
 // the socket instead. When it is not there — every Mac, and any Windows
 // machine without the helper — nothing changes.
 //
-// Timing never goes near this. The click, the detector and the takes stay on
-// the AudioContext clock; the helper only carries what you hear.
+// On ASIO the helper can also be the whole sound card: input, click and amp.
+// That is engine mode, in nativeEngine.js, which uses this socket to upload
+// and book its voices. Timing logic stays in the browser either way.
 //
 // Protocol: see ControlServer.cs. Text frames of JSON both ways.
 
@@ -30,6 +31,7 @@ export class NativeMonitor {
     this.onStatus = null
     this.onClose = null
     this.onLoopback = null
+    this.onInput = null
     this._timer = 0
     this._wanted = false
   }
@@ -89,6 +91,9 @@ export class NativeMonitor {
         this.onStatus?.(m)
       } else if (m.type === 'loopback') {
         this.onLoopback?.(m)
+      } else if (m.type === 'input') {
+        if (this.info) this.info = { ...this.info, inputChannel: m.channel }
+        this.onInput?.(m)
       }
     }
     ws.onclose = () => {
@@ -130,6 +135,27 @@ export class NativeMonitor {
   // The result arrives on onLoopback: { ok, ms, jitterMs, n, misses }.
   loopback() {
     return this._send({ type: 'loopback' })
+  }
+
+  // ── Engine mode (nativeEngine.js; only when hello says engine: true) ──────
+  // Move the helper's input tap to another channel, 0-based.
+  setInput(channel) {
+    return this._send({ type: 'input', channel })
+  }
+
+  // Voice `id` starts on helper frame `frame`.
+  play(id, frame, gain = 1) {
+    return this._send({ type: 'play', v: id, f: frame, g: gain })
+  }
+
+  // [int32 LE id][float32 LE × n]
+  uploadVoice(id, pcm) {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false
+    const buf = new ArrayBuffer(4 + pcm.length * 4)
+    new DataView(buf).setInt32(0, id, true)
+    new Float32Array(buf, 4).set(pcm)
+    this.ws.send(buf)
+    return true
   }
 
   // Any subset of { gain, drive, compress, bass, mid, treble, level, monitor }.

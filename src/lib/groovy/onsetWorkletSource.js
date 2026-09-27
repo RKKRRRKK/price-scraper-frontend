@@ -28,7 +28,12 @@
 //     values to the real foot of the attack, rather than reporting the moment
 //     the threshold happened to be crossed
 
+//
+// The same module also carries the take-audio tap (see capture.js), so one
+// addModule() call registers both processors.
+
 export const ONSET_PROCESSOR_NAME = 'groovy-onset'
+export const CAPTURE_PROCESSOR_NAME = 'groovy-capture'
 
 export const ONSET_PROCESSOR_SOURCE = `
 function envCoef(tauSec, sr) {
@@ -186,4 +191,49 @@ class GroovyOnsetProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('${ONSET_PROCESSOR_NAME}', GroovyOnsetProcessor)
+
+// Take audio. Copies the input out in chunks and reports the context time of
+// the very first sample it saw, which is what puts the recording on the same
+// clock as the click and the detector. A silent block is written as zeros
+// rather than skipped, so sample n is always first + n / sampleRate.
+class GroovyCaptureProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this.size = 16384
+    this.buf = new Float32Array(this.size)
+    this.n = 0
+    this.started = false
+    this.on = true
+    this.port.onmessage = (e) => {
+      if ((e.data || {}).type !== 'stop') return
+      this.flush()
+      this.on = false
+      this.port.postMessage({ type: 'done' })
+    }
+  }
+
+  flush() {
+    if (!this.n) return
+    const out = this.buf.slice(0, this.n)
+    this.port.postMessage({ type: 'chunk', data: out }, [out.buffer])
+    this.n = 0
+  }
+
+  process(inputs) {
+    if (!this.on) return false
+    const ch = inputs[0] && inputs[0][0]
+    const len = ch ? ch.length : 128
+    if (!this.started) {
+      this.started = true
+      this.port.postMessage({ type: 'start', time: currentTime })
+    }
+    for (let i = 0; i < len; i++) {
+      this.buf[this.n++] = ch ? ch[i] : 0
+      if (this.n === this.size) this.flush()
+    }
+    return true
+  }
+}
+
+registerProcessor('${CAPTURE_PROCESSOR_NAME}', GroovyCaptureProcessor)
 `

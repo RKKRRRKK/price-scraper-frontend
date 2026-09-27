@@ -14,8 +14,7 @@
 
 import { ensureAudio } from './context'
 import { meterById, slotKind, patternRes, patternById } from './grid'
-import { scheduleClick } from './click'
-import { scheduleKick, scheduleSnare, scheduleHat } from './drums'
+import { webVoices } from './voices'
 import { setClickLevel, setDrumLevel } from './bus'
 
 const LOOKAHEAD = 0.12 // seconds of audio booked in advance
@@ -53,6 +52,18 @@ export class Transport {
     this._cur = null
     this._fine = 0
     this._cursorTime = 0
+    // Where the sounds go: Web Audio, or the helper in engine mode. See voices.js.
+    this.voices = webVoices
+  }
+
+  // A grid that never plays: one segment at a fixed origin, for laying a
+  // recorded take out on the roll. Same slot maths as the live grid, so the two
+  // draw identically.
+  static fixed(config, origin = 0) {
+    const t = new Transport()
+    Object.assign(t.config, config)
+    t._openSegment(origin)
+    return t
   }
 
   // ── Configuration ─────────────────────────────────────────────────────────
@@ -308,7 +319,7 @@ export class Transport {
       const clickEvery = seg.fineRes / seg.subdiv
       if (this.config.clickOn && this._fine % clickEvery === 0) {
         const kind = slotKind(this._fine / clickEvery, seg.subdiv, seg.meter)
-        if (kind !== 'sub' || this.config.clickSubdivisions) scheduleClick(ac, when, kind)
+        if (kind !== 'sub' || this.config.clickSubdivisions) this.voices.click(ac, when, kind)
       }
 
       const pat = seg.pattern
@@ -316,9 +327,9 @@ export class Transport {
       if (this.config.drumsOn && pat && this._fine % drumEvery === 0) {
         const stepsPerBar = seg.pulses * seg.patternRes
         const step = ((this._fine / drumEvery) % stepsPerBar + stepsPerBar) % stepsPerBar
-        if (pat.kick.includes(step)) scheduleKick(ac, when)
-        if (pat.snare.includes(step)) scheduleSnare(ac, when)
-        if (pat.hat.includes(step)) scheduleHat(ac, when, 1, step % seg.patternRes === 0)
+        if (pat.kick.includes(step)) this.voices.kick(ac, when)
+        if (pat.snare.includes(step)) this.voices.snare(ac, when)
+        if (pat.hat.includes(step)) this.voices.hat(ac, when, 1, step % seg.patternRes === 0)
       }
 
       this._fine++

@@ -34,39 +34,67 @@
         </div>
         <div v-else-if="!store.takes.length" class="rail-state">
           <i class="pi pi-bookmark rail-state-icon"></i>
-          <span>No takes yet. Hit record while you play and the numbers get kept.</span>
+          <span>No takes yet. Hit record while you play — takes stay on this computer until you upload them.</span>
         </div>
 
         <button
           v-for="t in store.takes"
           :key="t.id"
           class="take"
-          :class="{ picked: store.compareIds.includes(t.id) }"
-          @click="pickTake(t.id)"
+          :class="{ picked: store.compareIds.includes(t.id), reviewing: review?.take.id === t.id }"
+          title="Open on the timeline to replay"
+          @click="openTake(t)"
         >
           <span class="take-chip" :style="chipStyle(t.id)"></span>
           <span class="take-body">
-            <span class="take-name">{{ t.name }}</span>
+            <span class="take-name">
+              <i
+                v-if="t.where === 'cloud'"
+                class="pi pi-cloud take-where"
+                title="Uploaded to Supabase"
+              ></i>
+              {{ t.name }}
+            </span>
             <span class="take-meta">
               {{ t.settings?.bpm }} bpm · {{ t.settings?.meterId }} ·
               {{ t.stats?.count || 0 }} notes
+              <i v-if="t.has_audio || t.audio_path" class="pi pi-volume-up" title="Has audio"></i>
             </span>
             <span class="take-nums">
               <b>{{ fmt1(t.stats?.sdMs) }} ms</b> spread ·
               {{ Math.round(t.stats?.inPocketPct || 0) }}% in pocket
             </span>
           </span>
-          <span class="take-actions">
+          <span class="take-side">
+            <span
+              class="mini replay"
+              title="Replay"
+              @click.stop="openTake(t, true)"
+            ><i class="pi pi-play"></i></span>
             <span
               class="mini"
-              title="Rename"
-              @click.stop="startRename(t)"
-            ><i class="pi pi-pencil"></i></span>
-            <span
-              class="mini danger"
-              title="Delete"
-              @click.stop="confirmDelete(t)"
-            ><i class="pi pi-trash"></i></span>
+              :class="{ on: store.compareIds.includes(t.id) }"
+              title="Compare in Analysis"
+              @click.stop="pickTake(t.id)"
+            ><i class="pi pi-chart-bar"></i></span>
+            <span class="take-actions">
+              <span
+                v-if="t.where === 'local'"
+                class="mini"
+                :title="store.uploadingIds.includes(t.id) ? 'Uploading…' : 'Upload to Supabase'"
+                @click.stop="uploadTake(t)"
+              ><i class="pi" :class="store.uploadingIds.includes(t.id) ? 'pi-spin pi-spinner' : 'pi-cloud-upload'"></i></span>
+              <span
+                class="mini"
+                title="Rename"
+                @click.stop="startRename(t)"
+              ><i class="pi pi-pencil"></i></span>
+              <span
+                class="mini danger"
+                title="Delete"
+                @click.stop="confirmDelete(t)"
+              ><i class="pi pi-trash"></i></span>
+            </span>
           </span>
         </button>
       </div>
@@ -244,6 +272,10 @@
 
         <div class="tbar-spacer"></div>
 
+        <button class="chip" :class="{ on: p.tunerOpen }" @click="setPref({ tunerOpen: !p.tunerOpen })">
+          <i class="pi pi-wave-pulse"></i> Tuner
+        </button>
+
         <div class="modes">
           <button :class="{ on: view === 'practice' }" @click="view = 'practice'">Practice</button>
           <button :class="{ on: view === 'analysis' }" @click="view = 'analysis'">
@@ -257,56 +289,59 @@
       <div class="surface">
         <template v-if="view === 'practice'">
           <div class="roll-holder">
-            <GroovyRoll
-              :transport="transport"
-              :hits="liveHits"
-              :trace="trace"
-              :tolerance-ms="p.toleranceMs"
-              :window-bars="p.windowBars"
-              :running="running"
-              :recording="recording"
-              :count-in-until="countInUntil"
-            />
-          </div>
-
-          <!-- Live readout -->
-          <div class="readout">
-            <div class="ro-last" :class="lastClass">
-              <span class="ro-num">
-                <template v-if="last">{{ last.devMs > 0 ? '+' : '' }}{{ Math.round(last.devMs) }}</template>
-                <template v-else>—</template>
+            <div v-if="review" class="review-bar">
+              <button class="rv-play" :title="replaying ? 'Pause (Space)' : 'Play (Space)'" @click="toggleReplay">
+                <i :class="replaying ? 'pi pi-pause' : 'pi pi-play'"></i>
+              </button>
+              <span class="rv-name">{{ review.take.name }}</span>
+              <span class="rv-meta">
+                {{ mmss(replaySec) }} / {{ mmss(review.duration) }} ·
+                {{ review.hasAudio ? 'recorded audio' : 'synth notes' }}
               </span>
-              <span class="ro-unit">ms</span>
-              <span class="ro-word">{{ lastWord }}</span>
-            </div>
-
-            <div class="ro-stats">
-              <div class="ro-stat">
-                <span class="ro-k">Spread</span>
-                <span class="ro-v">{{ fmt1(live.sdMs) }} ms</span>
-              </div>
-              <div class="ro-stat">
-                <span class="ro-k">Feel</span>
-                <span class="ro-v">
-                  {{ live.meanMs > 0 ? '+' : '' }}{{ fmt1(live.meanMs) }} ms
-                </span>
-              </div>
-              <div class="ro-stat">
-                <span class="ro-k">In pocket</span>
-                <span class="ro-v">{{ Math.round(live.inPocketPct) }}%</span>
-              </div>
-              <div class="ro-stat">
-                <span class="ro-k">Notes</span>
-                <span class="ro-v">{{ live.count }}</span>
-              </div>
-              <div class="ro-stat">
-                <span class="ro-k">Bar</span>
-                <span class="ro-v">{{ position }}</span>
-              </div>
-              <button class="ro-reset" @click="resetLive" title="Clear the running numbers">
-                <i class="pi pi-refresh"></i>
+              <button class="rv-close" title="Back to live (Esc)" @click="closeReview">
+                <i class="pi pi-times"></i>
               </button>
             </div>
+            <div class="roll-box">
+              <GroovyRoll
+                ref="roll"
+                :grid="review ? review.grid : transport"
+                :hits="review ? review.hits : liveHits"
+                :clock="rollClock"
+                :cursor="review ? rollCursor : null"
+                :focus="focus"
+                :scale="scaleInfo"
+                :labels="p.scale.labels"
+                :tolerance-ms="review ? review.toleranceMs : p.toleranceMs"
+                :window-bars="p.windowBars"
+                :recording="recording"
+                :count-in-until="countInUntil"
+                @select="selectNote"
+              />
+            </div>
+          </div>
+
+          <GroovyFretboard :value="p.scale" :lit="lit" @update="store.saveScalePrefs" />
+
+          <div class="bottom-row">
+            <GroovyNoteCard
+              :hit="focusView"
+              :pinned="!!pinned"
+              :mode="review ? 'review' : 'live'"
+              :tolerance-ms="review ? review.toleranceMs : p.toleranceMs"
+              :scale="scaleInfo"
+              :stats="review ? review.stats : live"
+              :position="review ? '' : position"
+              @unpin="pinned = null"
+              @reset="resetLive"
+            />
+            <GroovyTuner
+              v-if="p.tunerOpen"
+              :reading="tunerReading"
+              :enabled="inputOpen"
+              :strings="tuningStrings"
+              @close="setPref({ tunerOpen: false })"
+            />
           </div>
         </template>
 
@@ -326,6 +361,8 @@
         :device-id="p.deviceId"
         :channel-count="channelCount"
         :channel-index="p.channelIndex"
+        :engine-device="engineOn ? inputLabel : ''"
+        :channel-names="engineOn ? nativeInfo?.inputChannels || [] : []"
         :opened="inputOpen"
         :error="inputError"
         :level="bandLevel"
@@ -390,7 +427,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, shallowRef, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -402,6 +439,9 @@ import GroovyRoll from '@/components/groovy/GroovyRoll.vue'
 import GroovyAmp from '@/components/groovy/GroovyAmp.vue'
 import GroovyInputSetup from '@/components/groovy/GroovyInputSetup.vue'
 import GroovyTakeCompare from '@/components/groovy/GroovyTakeCompare.vue'
+import GroovyFretboard from '@/components/groovy/GroovyFretboard.vue'
+import GroovyNoteCard from '@/components/groovy/GroovyNoteCard.vue'
+import GroovyTuner from '@/components/groovy/GroovyTuner.vue'
 
 import { useGroovyStore } from '@/stores/groovy'
 import { ensureAudio, currentContext, resetAudio, outputLatencySec } from '@/lib/groovy/context'
@@ -417,7 +457,9 @@ import {
 } from '@/lib/groovy/grid'
 import { Transport } from '@/lib/groovy/transport'
 import { CalibrationRun } from '@/lib/groovy/calibration'
-import { scheduleProbe, PROBE_DETECTOR_CONFIG } from '@/lib/groovy/probe'
+import { PROBE_DETECTOR_CONFIG } from '@/lib/groovy/probe'
+import { webVoices } from '@/lib/groovy/voices'
+import { NativeEngine } from '@/lib/groovy/nativeEngine'
 import {
   openInput,
   selectChannel,
@@ -428,8 +470,10 @@ import {
 import { BassAmp } from '@/lib/groovy/amp'
 import { NativeMonitor, isWindows } from '@/lib/groovy/nativeMonitor'
 import { OnsetDetector, ratioForSensitivity, isWorkletSupported } from '@/lib/groovy/onset'
-import { BassPitchTracker } from '@/lib/groovy/pitch'
-import { TakeRecorder } from '@/lib/groovy/recorder'
+import { BassPitchTracker, midiFloatOfFreq } from '@/lib/groovy/pitch'
+import { TakeCapture } from '@/lib/groovy/capture'
+import { TakeReplay } from '@/lib/groovy/replay'
+import { buildScale, tuningById } from '@/lib/groovy/scales'
 import { summarise, estimateLatency, mean, stdev, median } from '@/lib/groovy/analysis'
 
 const store = useGroovyStore()
@@ -442,15 +486,21 @@ const p = computed(() => store.prefs)
 const transport = new Transport()
 const detector = new OnsetDetector()
 const tracker = new BassPitchTracker()
-const recorder = new TakeRecorder()
+const capture = new TakeCapture()
+const replay = new TakeReplay()
 let amp = null
 let mono = null
 
 // The Windows helper (native/groovy-monitor), when it is running. It carries
 // the monitor path at ASIO or low-latency WASAPI speed; the browser's own amp
 // goes quiet while it is connected and the knobs are mirrored over the socket.
-// Timing is untouched either way — see lib/groovy/nativeMonitor.js.
+// On ASIO it can also be the whole sound card (engine mode, see
+// lib/groovy/nativeEngine.js): input, click and amp all go through it, and
+// the offset comes from the driver instead of a calibration.
 const native = new NativeMonitor()
+const engine = new NativeEngine(native)
+engine.getLevels = () => ({ click: p.value.clickLevel, drums: p.value.drumLevel })
+const engineOn = ref(false)
 const nativeAvailable = isWindows()
 const nativeInfo = ref(null)
 const nativeLevel = ref(0)
@@ -479,7 +529,35 @@ const bandLevel = ref(0)
 const floorLevel = ref(0)
 const outLevel = ref(0)
 
-const last = ref(null)
+// The note the card and the fretboard show: a clicked one if there is one
+// (`pinned`), otherwise the latest played or the one a replay is sounding
+// (`follow`). Live hits are plain objects whose pitch is filled in ~130 ms after
+// they land, so `focusVersion` is bumped to make the card read them again.
+const pinned = shallowRef(null)
+const follow = shallowRef(null)
+const focusVersion = ref(0)
+const focus = computed(() => pinned.value || follow.value)
+const focusView = computed(() => {
+  const v = focusVersion.value
+  return focus.value ? { ...focus.value, v } : null
+})
+const lit = computed(() => {
+  const h = focusView.value
+  return h && h.midi != null ? { midi: h.midi, key: String(h.time) } : null
+})
+
+const tunerReading = shallowRef(null)
+const scaleInfo = computed(() => buildScale(p.value.scale.root, p.value.scale.type))
+const tuningStrings = computed(() => tuningById(p.value.scale.tuning).strings)
+
+// A take opened on the timeline: { take, hits, grid, stats, toleranceMs,
+// duration, hasAudio }. While set, the roll, the card and Space all belong to
+// the replay rather than the metronome.
+const review = shallowRef(null)
+const replaying = ref(false)
+const replaySec = ref(0)
+const roll = ref(null)
+
 const live = ref({ count: 0, meanMs: 0, sdMs: 0, inPocketPct: 0 })
 const liveDevs = []
 const position = ref('—')
@@ -526,7 +604,7 @@ let probeEndTimer = 0
 
 const renameDlg = reactive({ open: false, id: null, name: '' })
 
-const canRecordAudio = computed(() => TakeRecorder.supported)
+const canRecordAudio = computed(() => isWorkletSupported())
 const inputRisky = computed(() => looksLikeBuiltInMic(inputLabel.value))
 const subdivOptions = computed(() => subdivisionsFor(meterById(p.value.meterId)))
 const patterns = computed(() => patternsFor(p.value.meterId))
@@ -552,18 +630,6 @@ const monitorDelayMs = computed(() => {
   if (r && !r.failed) return r.roundTripMs
   if (lastCalibration.value) return lastCalibration.value.medianMs
   return null
-})
-
-const lastClass = computed(() => {
-  if (!last.value) return 'idle'
-  if (Math.abs(last.value.devMs) <= p.value.toleranceMs) return 'ok'
-  return last.value.devMs < 0 ? 'early' : 'late'
-})
-
-const lastWord = computed(() => {
-  if (!last.value) return 'waiting'
-  if (Math.abs(last.value.devMs) <= p.value.toleranceMs) return 'in the pocket'
-  return last.value.devMs < 0 ? 'early' : 'late'
 })
 
 // ── Preferences → engine ────────────────────────────────────────────────────
@@ -679,7 +745,9 @@ native.onHello = (info) => {
   nativeInfo.value = info
   nativeXruns.value = 0
   applyAmp()
-  say(`Native monitor connected — ${String(info.backend).toUpperCase()}, about ${Math.round(info.roundTripMs)} ms.`)
+  // An input already open in the browser moves over to the helper by itself.
+  if (info.engine && inputOpen.value && !engineOn.value) openDevice()
+  else say(`Native monitor connected — ${String(info.backend).toUpperCase()}, about ${Math.round(info.roundTripMs)} ms.`)
 }
 native.onStatus = (s) => {
   nativeLevel.value = s.inRms || 0
@@ -706,7 +774,23 @@ native.onClose = () => {
   nativeProbing.value = false
   nativeLoopback.value = null
   applyAmp()
-  say('Native monitor gone — back to the browser amp.')
+  if (engineOn.value) leaveEngine()
+  else say('Native monitor gone — back to the browser amp.')
+}
+engine.onClosed = () => {
+  if (engineOn.value) leaveEngine()
+}
+
+// The helper went away mid-session: carry on in the browser. The offset it
+// set describes a path that no longer exists, so it goes back to the browser's
+// own first guess and wants measuring again.
+function leaveEngine() {
+  const wasRunning = running.value
+  teardownInput()
+  if (wasRunning) toggleRun()
+  store.savePrefs({ offsetMs: 0 })
+  say('The helper went away. The input is back in the browser, so calibrate again.')
+  openDevice()
 }
 
 // ── Transport ───────────────────────────────────────────────────────────────
@@ -722,6 +806,8 @@ function toggleRun() {
     say('This browser has no Web Audio support.')
     return
   }
+  // Counting in means playing live, so a take open for replay gives way.
+  if (review.value) closeReview()
   setClickLevel(ac, p.value.clickLevel)
   setDrumLevel(ac, p.value.drumLevel)
   transport.setConfig({
@@ -752,6 +838,7 @@ async function openDevice(deviceId) {
   }
 
   teardownInput()
+  if (nativeInfo.value?.engine) return openEngine(ac)
   try {
     let info = await openInput(ac, {
       deviceId: deviceId ?? p.value.deviceId,
@@ -789,15 +876,7 @@ async function openDevice(deviceId) {
       channelIndex: Math.min(p.value.channelIndex, info.channelCount - 1),
     })
 
-    amp = new BassAmp(ac)
-    amp.connectFrom(mono)
-    applyAmp()
-
-    await detector.attach(ac, mono, detectorConfig())
-    detector.onOnset = onOnset
-    detector.onLevel = onLevel
-
-    tracker.start(ac, mono, onPitch)
+    await attachChain(ac)
 
     devices.value = await listInputDevices()
     inputOpen.value = true
@@ -837,9 +916,60 @@ async function openDevice(deviceId) {
   }
 }
 
+// Everything that listens to the input, hung off `mono` — the same whichever
+// way the input arrived.
+async function attachChain(ac) {
+  amp = new BassAmp(ac)
+  amp.connectFrom(mono)
+  applyAmp()
+
+  await detector.attach(ac, mono, detectorConfig())
+  detector.onOnset = onOnset
+  detector.onLevel = onLevel
+
+  tracker.start(ac, mono, onPitch)
+}
+
+// Engine mode: the input, the click and the amp all go through the helper.
+// The context has to run at the helper's rate so one frame is one frame.
+async function openEngine(ac) {
+  const info = nativeInfo.value
+  try {
+    if (Math.abs(ac.sampleRate - info.sampleRate) > 1) {
+      transport.stop()
+      running.value = false
+      ac = (await resetAudio(info.sampleRate)) || ac
+    }
+    const names = info.inputChannels || []
+    const ch = Math.min(p.value.channelIndex, Math.max(0, names.length - 1))
+    native.setInput(ch)
+    mono = await engine.open(ac, info)
+    transport.voices = engine.voices
+    engineOn.value = true
+    channelCount.value = names.length
+    inputLabel.value = info.device
+    store.savePrefs({ channelIndex: ch })
+
+    await attachChain(ac)
+    inputOpen.value = true
+    diag.value = null
+
+    // Input and output share one ASIO callback, so the round trip is what the
+    // driver says it is. No calibration; calibrating anyway still works, for
+    // anyone who wants their own resting bias taken out.
+    store.savePrefs({ offsetMs: Math.round(info.roundTripMs * 10) / 10 })
+    say(`Input, click and amp are on the helper (${String(info.backend).toUpperCase()}). Offset ${info.roundTripMs.toFixed(1)} ms from the driver.`)
+  } catch (e) {
+    console.error('[Groovy] engine open error:', e)
+    teardownInput()
+    inputError.value = e?.message || 'Could not open the helper’s input.'
+  }
+}
+
 function setChannel(idx) {
   store.savePrefs({ channelIndex: idx })
-  selectChannel(idx)
+  if (engineOn.value) native.setInput(idx)
+  else selectChannel(idx)
 }
 
 function teardownInput() {
@@ -849,6 +979,9 @@ function teardownInput() {
   amp = null
   mono = null
   closeInput()
+  engine.close()
+  transport.voices = webVoices
+  engineOn.value = false
   inputOpen.value = false
 }
 
@@ -880,8 +1013,10 @@ function onLevel(msg) {
 }
 
 function onPitch(res) {
+  const ok = !!res && res.clarity >= 0.78
+  if (p.value.tunerOpen) tunerReading.value = ok ? res : null
   const ac = currentContext()
-  if (!ac || !res || res.clarity < 0.78) return
+  if (!ac || !ok) return
   // The analysis window looks backwards, so the reading describes a moment
   // roughly half a window ago. Stamping it there keeps the trace under the note.
   trace.push({ t: ac.currentTime - 0.04, midiFloat: res.midiFloat, midi: res.midi, freq: res.freq })
@@ -942,7 +1077,7 @@ function onOnset(msg) {
   // so the dot's vertical position is filled in shortly after the tick appears.
   setTimeout(() => fillPitch(hit), 130)
 
-  last.value = hit
+  follow.value = hit
   liveDevs.push(devMs)
   if (liveDevs.length > 400) liveDevs.shift()
   live.value = {
@@ -987,13 +1122,168 @@ function fillPitch(hit) {
   hit.midi = best.midi
   hit.midiFloat = best.midiFloat
   hit.freq = best.freq
+  if (focus.value === hit) focusVersion.value++
 }
 
 function resetLive() {
   liveDevs.length = 0
   liveHits.length = 0
-  last.value = null
+  follow.value = null
+  pinned.value = null
   live.value = { count: 0, meanMs: 0, sdMs: 0, inPocketPct: 0 }
+}
+
+// ── Selecting notes ─────────────────────────────────────────────────────────
+// A click on the roll pins that note to the card and the fretboard; a click on
+// empty space lets go. In a paused replay it also parks the playhead just
+// before the note, so Play starts from there.
+function selectNote(hit) {
+  pinned.value = hit
+  if (hit && review.value && !replay.playing) {
+    replay.seek(Math.max(0, hit.time - 0.4))
+    replaySec.value = replay.position()
+  }
+}
+
+function currentHits() {
+  return review.value ? review.value.hits : liveHits
+}
+
+// ← / → walk the notes, starting from whichever one is showing.
+function stepNote(d) {
+  const hits = currentHits()
+  if (!hits.length) return
+  const at = focus.value ? hits.indexOf(focus.value) : -1
+  const next = at === -1 ? (d < 0 ? hits.length - 1 : 0) : Math.max(0, Math.min(hits.length - 1, at + d))
+  selectNote(hits[next])
+}
+
+// The roll follows the metronome while it runs, a replay while it plays, and
+// otherwise holds still for browsing.
+function rollClock() {
+  if (review.value) return replay.playing ? replay.position() : null
+  const ac = currentContext()
+  return running.value && ac ? ac.currentTime : null
+}
+
+function rollCursor() {
+  return replay.position()
+}
+
+// ── Replay ──────────────────────────────────────────────────────────────────
+// Take hits are stored relative to the take's first downbeat; the roll wants
+// the live shape, so lay them out on a fixed grid starting at 0.
+function toRollHits(take) {
+  const s = take.settings || {}
+  const meter = meterById(s.meterId)
+  return (take.hits || []).map((h) => ({
+    time: h.t,
+    slotTime: h.t - h.devMs / 1000,
+    devMs: h.devMs,
+    slotInBar: h.slotInBar,
+    bar: h.bar,
+    label: slotLabel(h.slotInBar, s.subdiv || 2, meter),
+    midi: h.midi ?? null,
+    midiFloat: h.freq ? midiFloatOfFreq(h.freq) : (h.midi ?? null),
+    freq: h.freq ?? null,
+    str: h.str || 0,
+  }))
+}
+
+// Opens a saved take on the roll, and starts it playing when asked (the ▶).
+// Opening the take that is already open just switches to it.
+async function openTake(t, autoplay = false) {
+  if (running.value) toggleRun()
+  view.value = 'practice'
+  railOpen.value = false
+  if (review.value?.take.id === t.id) {
+    if (autoplay && !replay.playing) toggleReplay()
+    return
+  }
+  pinned.value = null
+  follow.value = null
+  let audio = null
+  if (t.has_audio || t.audio_path) {
+    try {
+      audio = await store.getTakeAudio(t)
+    } catch {
+      say('Could not load that take’s audio — replaying the notes instead.')
+    }
+  }
+  await replay.load(t, audio)
+  review.value = {
+    take: t,
+    hits: toRollHits(t),
+    grid: replay.grid,
+    stats: t.stats || {},
+    toleranceMs: t.settings?.toleranceMs ?? t.stats?.toleranceMs ?? p.value.toleranceMs,
+    duration: replay.duration,
+    hasAudio: replay.hasAudio,
+  }
+  replaying.value = false
+  replaySec.value = 0
+  await nextTick()
+  roll.value?.showAt(0, 'left')
+  if (autoplay) toggleReplay()
+}
+
+function closeReview() {
+  replay.stop()
+  cancelAnimationFrame(replayRaf)
+  replaying.value = false
+  review.value = null
+  pinned.value = null
+  follow.value = liveHits[liveHits.length - 1] || null
+}
+
+function toggleReplay() {
+  if (!review.value) return
+  if (replay.playing) {
+    replay.pause()
+    replaying.value = false
+    replaySec.value = replay.position()
+    return
+  }
+  pinned.value = null
+  replay.play({ click: p.value.clickOn })
+  replaying.value = true
+  replayIdx = -1
+  tickReplay()
+}
+
+replay.onEnd = () => {
+  replaying.value = false
+  replaySec.value = 0
+}
+
+// Hand the sounding note to the card and the fretboard as the playhead
+// reaches it.
+let replayRaf = 0
+let replayIdx = -1
+function tickReplay() {
+  cancelAnimationFrame(replayRaf)
+  const step = () => {
+    const rv = review.value
+    if (!rv) return
+    const pos = replay.position()
+    const hits = rv.hits
+    let i = replayIdx
+    if (i >= hits.length || (i >= 0 && hits[i].time > pos)) i = -1
+    while (i + 1 < hits.length && hits[i + 1].time <= pos) i++
+    if (i !== replayIdx) {
+      replayIdx = i
+      if (i >= 0) follow.value = hits[i]
+    }
+    const sec = Math.floor(pos)
+    if (sec !== Math.floor(replaySec.value)) replaySec.value = sec
+    if (replay.playing) replayRaf = requestAnimationFrame(step)
+  }
+  replayRaf = requestAnimationFrame(step)
+}
+
+function mmss(sec) {
+  const s = Math.max(0, Math.floor(sec || 0))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
 // ── Takes ───────────────────────────────────────────────────────────────────
@@ -1011,6 +1301,7 @@ function toggleRecord() {
   countInUntil.value = takeStartTime
   armed.value = true
   view.value = 'practice'
+  pinned.value = null
 
   // Arm slightly early so a rushed first note is not lost to setTimeout jitter;
   // the grid-line test above decides what actually counts.
@@ -1020,7 +1311,12 @@ function toggleRecord() {
   armTimer = setTimeout(() => {
     armed.value = false
     recording.value = true
-    if (p.value.keepAudio && canRecordAudio.value) recorder.start()
+    if (p.value.keepAudio && canRecordAudio.value && mono) {
+      capture.start(currentContext(), mono).catch((e) => {
+        console.error('[Groovy] audio capture error:', e)
+        say('Could not record audio — the notes are still being kept.')
+      })
+    }
   }, waitMs)
 }
 
@@ -1046,13 +1342,13 @@ async function stopTake(silent) {
   recording.value = false
   countInUntil.value = 0
 
-  // Always stop the recorder if it is running — "keep audio" may have been
-  // switched off mid-take, and a live MediaRecorder left behind holds the
-  // stream open. Whether the result is kept is a separate question.
-  const captured = recorder.recording ? await recorder.stop() : null
-  const blob = p.value.keepAudio ? captured : null
+  // Always stop the capture if it is running — "keep audio" may have been
+  // switched off mid-take, and a tap left behind keeps copying samples.
+  // Whether the result is kept is a separate question.
+  const captured = await capture.stop()
+  const audio = p.value.keepAudio ? captured : null
   if (!wasRecording || !hits.length) {
-    recorder.cancel()
+    capture.cancel()
     if (!silent) say(hits.length ? 'Take discarded.' : 'Nothing was played — no take saved.')
     takeHits = []
     return
@@ -1079,6 +1375,12 @@ async function stopTake(silent) {
     patternId: patternId.value,
     countInBars: p.value.countInBars,
   }
+  // Where the audio's first sample sits on the take's own time axis. Capture
+  // times are raw detector-clock times, so the offset comes off them exactly as
+  // it comes off every note; replay then puts sample and note back together.
+  if (audio) {
+    settings.audioLeadSec = +(audio.startTime - p.value.offsetMs / 1000 - takeStartTime).toFixed(5)
+  }
   const stats = summarise(hits, settings)
   const durationMs = hits.length ? hits[hits.length - 1].t * 1000 : 0
 
@@ -1089,9 +1391,9 @@ async function stopTake(silent) {
       hits,
       stats,
       durationMs,
-      audioBlob: blob,
+      audioBlob: audio?.blob || null,
     })
-    say(`Take saved — ${hits.length} notes, ${stats.sdMs.toFixed(1)} ms spread.`)
+    say(`Take saved on this computer — ${hits.length} notes, ${stats.sdMs.toFixed(1)} ms spread.`)
   } catch {
     say('Could not save that take.')
   }
@@ -1127,19 +1429,33 @@ async function commitRename() {
 }
 
 function confirmDelete(t) {
+  const withAudio = t.audio_path || t.has_audio ? ' and its audio' : ''
   confirm.require({
-    message: `Delete “${t.name}”? The timing data${t.audio_path ? ' and its audio' : ''} goes with it.`,
+    message:
+      t.where === 'local'
+        ? `Delete “${t.name}”? It only exists on this computer, so the timing data${withAudio} is gone for good.`
+        : `Delete “${t.name}” from Supabase? The timing data${withAudio} goes with it.`,
     header: 'Delete take',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
       try {
         await store.deleteTake(t.id)
+        if (review.value?.take.id === t.id) closeReview()
       } catch {
         say('Delete failed.')
       }
     },
   })
+}
+
+async function uploadTake(t) {
+  try {
+    await store.uploadTake(t.id)
+    say(`“${t.name}” uploaded to Supabase.`)
+  } catch (e) {
+    say(e?.message === 'signed-out' ? 'Sign in to upload takes.' : 'Upload failed — the take is still on this computer.')
+  }
 }
 
 // ── Calibration ─────────────────────────────────────────────────────────────
@@ -1166,7 +1482,7 @@ function startCalibration() {
 
   calDevs.value = []
   calibrating.value = true
-  calRun = new CalibrationRun(ac, { count: CAL_TARGET, intervalSec: 1.2 })
+  calRun = new CalibrationRun(ac, { count: CAL_TARGET, intervalSec: 1.2, voices: transport.voices })
   calRun.start()
 
   // Finish on its own when the train runs out, however many notes landed.
@@ -1279,7 +1595,7 @@ function startLoopbackTest() {
     count: PROBE_COUNT,
     intervalSec: 1.2,
     silent: PROBE_SILENT,
-    voice: (c, when) => scheduleProbe(c, when),
+    voice: (c, when) => transport.voices.probe(c, when),
   })
 
   // Run the direct-capture detector against the same pulses.
@@ -1376,9 +1692,17 @@ function onKey(e) {
   if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return
   if (e.code === 'Space') {
     e.preventDefault()
-    toggleRun()
+    if (review.value) toggleReplay()
+    else toggleRun()
   } else if (e.key === 'r' || e.key === 'R') {
     if (inputOpen.value) toggleRecord()
+  } else if (e.key === 'Escape') {
+    if (pinned.value) pinned.value = null
+    else if (review.value) closeReview()
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (view.value !== 'practice') return
+    e.preventDefault()
+    stepNote(e.key === 'ArrowLeft' ? -1 : 1)
   }
 }
 
@@ -1395,13 +1719,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   cancelAnimationFrame(posRaf)
   cancelAnimationFrame(countInRaf)
+  cancelAnimationFrame(replayRaf)
   clearTimeout(armTimer)
   clearTimeout(calEndTimer)
   clearTimeout(probeEndTimer)
   clearTimeout(toastTimer)
   calRun?.stop()
   probeRun?.stop()
-  recorder.cancel()
+  capture.cancel()
+  replay.stop()
   transport.stop()
   teardownInput()
 })
@@ -1601,6 +1927,43 @@ onBeforeUnmount(() => {
 .take-nums b {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+}
+
+.take.reviewing {
+  border-color: #2a78d6;
+  box-shadow: inset 0.2rem 0 0 #2a78d6;
+}
+
+.take-where {
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  margin-right: 0.15rem;
+}
+
+.take-meta .pi {
+  font-size: 0.58rem;
+  margin-left: 0.15rem;
+}
+
+.take-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.mini.replay {
+  color: #2a78d6;
+}
+
+.mini.on {
+  color: var(--text);
+  background: var(--border-soft);
+}
+
+.mini.replay:hover {
+  background: #e8f1fc;
+  color: #1c5fb0;
 }
 
 .take-actions {
@@ -1923,6 +2286,8 @@ onBeforeUnmount(() => {
 .roll-holder {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   overflow: hidden;
@@ -1930,106 +2295,72 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-sm);
 }
 
-/* ── Readout ── */
-.readout {
+.roll-box {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Replay bar ── */
+.review-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.6rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.4rem;
+  border-bottom: 1px solid var(--border-soft);
+  background: #f4f8fd;
 }
 
-.ro-last {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  min-width: 11rem;
-}
-
-.ro-num {
-  font-size: 2.4rem;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-
-.ro-unit {
-  font-size: 0.8rem;
-  color: var(--text-faint);
-}
-
-.ro-word {
-  font-size: 0.74rem;
-  font-weight: 700;
-  margin-left: 0.25rem;
-}
-
-.ro-last.idle .ro-num,
-.ro-last.idle .ro-word {
-  color: var(--text-faint);
-}
-
-.ro-last.ok .ro-num,
-.ro-last.ok .ro-word {
-  color: var(--ok-ink);
-}
-
-.ro-last.early .ro-num,
-.ro-last.early .ro-word {
-  color: var(--early);
-}
-
-.ro-last.late .ro-num,
-.ro-last.late .ro-word {
-  color: var(--late);
-}
-
-.ro-stats {
-  display: flex;
-  align-items: center;
-  gap: 1.1rem;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
-.ro-stat {
-  display: flex;
-  flex-direction: column;
-}
-
-.ro-k {
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
-}
-
-.ro-v {
-  font-size: 0.95rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.ro-reset {
+.rv-play {
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 0.45rem;
-  border: 1px solid var(--border);
   display: grid;
   place-items: center;
-  color: var(--text-faint);
+  background: #2a78d6 !important;
+  color: #fff !important;
   font-size: 0.72rem;
 }
 
-.ro-reset:hover {
+.rv-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.rv-meta {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rv-close {
+  margin-left: auto;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.4rem;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 0.66rem;
+}
+
+.rv-close:hover {
+  background: #fff;
   color: var(--text);
-  border-color: var(--accent-400);
+}
+
+/* ── Note card + tuner ── */
+.bottom-row {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+  flex-wrap: wrap;
 }
 
 /* ── Side panel ── */
@@ -2158,14 +2489,6 @@ onBeforeUnmount(() => {
 
   .bpm-slider {
     display: none;
-  }
-
-  .readout {
-    gap: 0.6rem;
-  }
-
-  .ro-stats {
-    gap: 0.75rem;
   }
 }
 </style>

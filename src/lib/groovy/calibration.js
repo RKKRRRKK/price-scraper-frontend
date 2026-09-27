@@ -22,7 +22,7 @@
 // number minus the human. The matching below is the fiddly part and is shared
 // by both rather than written twice.
 
-import { scheduleClick } from './click'
+import { webVoices } from './voices'
 
 export class CalibrationRun {
   constructor(
@@ -33,6 +33,7 @@ export class CalibrationRun {
       leadSec = 1.0,
       earlySec = 0.08,
       voice = null,
+      voices = webVoices,
       silent = [],
     } = {},
   ) {
@@ -42,6 +43,8 @@ export class CalibrationRun {
     this.leadSec = leadSec
     // (ac, when, index, count) => void. Defaults to the metronome click.
     this.voice = voice
+    // The sink the default click goes to (voices.js).
+    this.voices = voices
     // Slots that are scheduled but never sounded — the control group. Anything
     // detected in one of these did not come from us, which is the difference
     // between a measurement and a coincidence. See `ghosts` in the view.
@@ -71,7 +74,7 @@ export class CalibrationRun {
       } else {
         // The last two are accented so you can hear the run ending rather than
         // being left wondering whether it is still going.
-        scheduleClick(this.ac, when, i >= this.count - 2 ? 'bar' : 'pulse')
+        this.voices.click(this.ac, when, i >= this.count - 2 ? 'bar' : 'pulse')
       }
     }
     return t0

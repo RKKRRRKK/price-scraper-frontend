@@ -1,28 +1,37 @@
 <!-- File: src/components/groovy/GroovyRoll.vue -->
 <!--
-  The practice surface: a grid scrolling right-to-left past a fixed now-line,
-  with what you played drawn on it.
+  The practice surface: one lane scrolling right-to-left past a now-line, with
+  a large circle for every note you play, left where you played it.
 
-  Two lanes share one time axis.
+  Each circle carries three things:
+    colour  the pocket, the same three words everywhere in the tool (see
+            pocketZone() in analysis.js): green in the pocket, yellow on the
+            edge, red outside
+    label   the note's degree or its name, by the scale map's Degrees / Notes
+            toggle
+    ring    a dashed dark ring when the note is outside the key
 
-    Pitch lane   the note you are playing, as a trace, with a dot at each
-                 detected attack. The open strings are drawn as faint rules so
-                 the vertical axis means something at a glance.
-    Timing lane  one tick per attack, at the grid line it belongs to, as tall as
-                 the error is large. Up is early, down is late. The shaded band
-                 across the middle is the tolerance window — hits inside it are
-                 the ones you were trying for.
+  The circle sits at the moment the note was played; a short stub joins it to
+  the grid line it was aiming at, so early and late read as which side of the
+  line it landed on. The exact numbers are on the note card underneath.
 
-  Colour carries one thing only: which side of the beat you were on. Blue is
-  early, red is late, and "in the pocket" is conveyed by the band rather than by
-  recolouring the marks, so the hue never has to mean two things at once.
-
-  The now-line sits at 72% rather than at the right edge so the next beat is
-  visible on its way in — you can see a bar line coming and aim at it.
+  The roll follows whatever `clock` returns: the AudioContext time while the
+  count runs, a replay's playhead while a take plays. When it returns null the
+  roll holds still and can be dragged or scrolled through. Clicking a circle
+  selects that note; clicking empty space clears the selection.
 -->
 <template>
   <div class="roll-wrap" ref="wrap">
-    <canvas ref="cv" class="roll-canvas" @pointermove="onHover" @pointerleave="hover = null"></canvas>
+    <canvas
+      ref="cv"
+      class="roll-canvas"
+      :class="{ pannable }"
+      @pointerdown="onDown"
+      @pointermove="onMove"
+      @pointerup="onUp"
+      @pointercancel="down = null"
+      @pointerleave="hover = null"
+    ></canvas>
 
     <div
       v-if="hover"
@@ -30,64 +39,76 @@
       :style="{ left: hover.x + 'px', top: hover.y + 'px' }"
       role="tooltip"
     >
-      <b :class="hover.hit.devMs < 0 ? 'early' : 'late'">
+      <b :style="{ color: TIP[zoneOf(hover.hit)] }">
         {{ hover.hit.devMs > 0 ? '+' : '' }}{{ Math.round(hover.hit.devMs) }} ms
       </b>
       <span class="tip-sub">
-        {{ hover.hit.devMs < 0 ? 'early' : 'late' }} · beat {{ hover.hit.label }}
-        <template v-if="hover.hit.midi"> · {{ noteNameOfMidi(hover.hit.midi) }}</template>
+        <template v-if="hover.hit.midi != null">{{ noteLabel(hover.hit.midi, scale) }} · </template>
+        beat {{ hover.hit.label }}
       </span>
     </div>
 
-    <div v-if="!running" class="roll-idle">
+    <div v-if="idle" class="roll-idle">
       <i class="pi pi-play-circle"></i>
-      <span>Start the count to begin</span>
+      <span>{{ idleText }}</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { currentContext } from '@/lib/groovy/context'
-import { noteNameOfMidi } from '@/lib/groovy/pitch'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { pocketZone } from '@/lib/groovy/analysis'
+import { noteLabel, markLabel } from '@/lib/groovy/scales'
 
 const props = defineProps({
-  transport: { type: Object, required: true },
-  // Live hits, in playing order: { time, devMs, slotTime, slotInBar, label, midi, midiFloat, str }
+  // Anything with the Transport's grid API: segments, slotsBetween, barSeconds.
+  grid: { type: Object, required: true },
+  // In playing order: { time, devMs, slotTime, label, midi, str }
   hits: { type: Array, default: () => [] },
-  // Pitch samples: { t, midiFloat }
-  trace: { type: Array, default: () => [] },
+  // () => time to follow, or null to hold still.
+  clock: { type: Function, default: null },
+  // () => a parked playhead to mark while holding still, or null.
+  cursor: { type: Function, default: null },
+  // The selected note — one of `hits`, by identity.
+  focus: { type: Object, default: null },
+  // buildScale() output, for labels and the out-of-key ring.
+  scale: { type: Object, default: null },
+  // 'degrees' | 'notes' — the scale map's toggle.
+  labels: { type: String, default: 'degrees' },
   toleranceMs: { type: Number, default: 25 },
   windowBars: { type: Number, default: 2 },
-  running: { type: Boolean, default: false },
   recording: { type: Boolean, default: false },
-  // While counting in, everything before this context time is shaded out.
+  // While counting in, everything before this time is shaded out.
   countInUntil: { type: Number, default: 0 },
+  idleText: { type: String, default: 'Start the count to begin' },
 })
+const emit = defineEmits(['select'])
 
 const wrap = ref(null)
 const cv = ref(null)
 const hover = ref(null)
+const idle = ref(true)
+const pannable = ref(false)
+const down = ref(null)
 
 let raf = 0
 let ro = null
 let w = 0
 let h = 0
 let dpr = 1
-// Hit positions from the last frame, in CSS pixels, for hover testing.
+// Circle positions from the last frame, in CSS pixels, for picking.
 let picks = []
+// The time sitting under NOW_X, and whether it has been set for this grid.
+let anchor = 0
+let hasAnchor = false
+let following = false
 
 const NOW_X = 0.72
-const OPEN_STRINGS = [
-  { midi: 28, name: 'E1' },
-  { midi: 33, name: 'A1' },
-  { midi: 38, name: 'D2' },
-  { midi: 43, name: 'G2' },
-]
+const MAX_R = 28
+const MIN_R = 11
 
 const C = {
   surface: '#ffffff',
-  sunken: '#faf9f7',
   bar: '#b9b6b0',
   pulse: '#d6d4ce',
   medium: '#c8c5bf',
@@ -95,18 +116,58 @@ const C = {
   ink: '#1a1a1a',
   dim: '#5c5c5c',
   faint: '#9a9a9a',
-  early: '#2a78d6',
-  late: '#e34948',
   now: '#ef4444',
-  band: 'rgba(22, 163, 74, 0.10)',
-  bandEdge: 'rgba(22, 163, 74, 0.35)',
-  trace: '#6f6c66',
+  cursor: '#2a78d6',
 }
 
-// Pitch window, eased toward what is actually being played so the roll does not
-// jump a full octave the moment one low note lands.
-let loMidi = 26
-let hiMidi = 55
+// Fill, and the label colour that reads on it. Yellow is too light for white
+// text, so it takes dark ink instead.
+const ZONE = {
+  pocket: { fill: '#16a34a', text: '#ffffff' },
+  edge: { fill: '#f0b400', text: '#3d2c00' },
+  out: { fill: '#e34948', text: '#ffffff' },
+}
+// The same three, lightened for the dark tooltip.
+const TIP = { pocket: '#86efac', edge: '#fcd34d', out: '#fca5a5' }
+
+function zoneOf(hit) {
+  return pocketZone(hit.devMs, props.toleranceMs)
+}
+
+function windowSeconds() {
+  return Math.max(0.5, props.grid.barSeconds() * props.windowBars)
+}
+
+// Put a time under the now-line, or ('left') just inside the left edge.
+function showAt(t, align = 'now') {
+  const win = windowSeconds()
+  anchor = align === 'left' ? t + (NOW_X - 0.06) * win : t
+  hasAnchor = true
+}
+defineExpose({ showAt })
+
+watch(
+  () => props.grid,
+  () => {
+    hasAnchor = false
+  },
+)
+
+// Selecting a note that is off screen while the roll is holding still brings it
+// to the middle.
+watch(
+  () => props.focus,
+  (hit) => {
+    if (!hit || following || !props.grid?.segments?.length) return
+    const win = windowSeconds()
+    const t0 = anchor - NOW_X * win
+    const t1 = t0 + win
+    if (hit.time < t0 + win * 0.05 || hit.time > t1 - win * 0.05) {
+      anchor = hit.time + (NOW_X - 0.5) * win
+      hasAnchor = true
+    }
+  },
+)
 
 function resize() {
   const el = wrap.value
@@ -121,94 +182,89 @@ function resize() {
   c.style.height = h + 'px'
 }
 
-function fitPitch() {
-  let lo = Infinity
-  let hi = -Infinity
-  for (let i = props.trace.length - 1; i >= 0 && props.trace.length - i < 900; i--) {
-    const m = props.trace[i].midiFloat
-    if (m < lo) lo = m
-    if (m > hi) hi = m
-  }
-  for (const s of props.hits) {
-    if (!s.midiFloat) continue
-    if (s.midiFloat < lo) lo = s.midiFloat
-    if (s.midiFloat > hi) hi = s.midiFloat
-  }
-  if (!Number.isFinite(lo)) return
-  const targetLo = Math.min(lo - 3, 43)
-  const targetHi = Math.max(hi + 3, 33)
-  loMidi += (targetLo - loMidi) * 0.04
-  hiMidi += (targetHi - hiMidi) * 0.04
-  if (hiMidi - loMidi < 12) hiMidi = loMidi + 12
-}
-
 function draw() {
   raf = requestAnimationFrame(draw)
   const c = cv.value
   if (!c || !w || !h) return
   const g = c.getContext('2d')
-  const ac = currentContext()
   g.setTransform(dpr, 0, 0, dpr, 0, 0)
-  g.clearRect(0, 0, w, h)
   g.fillStyle = C.surface
   g.fillRect(0, 0, w, h)
 
-  const pitchH = Math.round(h * 0.66)
-  const laneY = pitchH + 1
-  const laneH = h - laneY
+  const f = props.clock ? props.clock() : null
+  following = f != null
+  if (following) {
+    anchor = f
+    hasAnchor = true
+  } else if (!hasAnchor && props.hits.length) {
+    anchor = props.hits[props.hits.length - 1].time
+    hasAnchor = true
+  }
+  const isIdle = !following && !props.hits.length
+  if (idle.value !== isIdle) idle.value = isIdle
+  const canPan = !following && hasAnchor && !isIdle
+  if (pannable.value !== canPan) pannable.value = canPan
 
-  g.fillStyle = C.sunken
-  g.fillRect(0, laneY, w, laneH)
-
-  if (!ac || !props.running || !props.transport?.segments?.length) {
-    drawStringRules(g, pitchH)
+  if (!hasAnchor || !props.grid?.segments?.length) {
+    picks = []
     return
   }
 
-  fitPitch()
+  const windowSec = windowSeconds()
+  const t0 = anchor - NOW_X * windowSec
+  const t1 = t0 + windowSec
+  const X = (t) => ((t - t0) / windowSec) * w
 
-  const now = ac.currentTime
-  const windowSec = Math.max(0.5, props.transport.barSeconds() * props.windowBars)
-  const t0 = now - NOW_X * windowSec
-  const t1 = now + (1 - NOW_X) * windowSec
-  const X = (t) => ((t - t0) / (t1 - t0)) * w
-  const Y = (midi) => pitchH - ((midi - loMidi) / (hiMidi - loMidi)) * (pitchH - 14) - 7
+  // Circles as big as the grid allows: just under half the gap between two
+  // grid lines, so neighbouring notes on a busy line do not swallow each other.
+  const seg = props.grid.segments[props.grid.segments.length - 1]
+  const slotPx = (seg.slotSec / windowSec) * w
+  const r = Math.max(MIN_R, Math.min(MAX_R, slotPx * 0.46, (h - 24) * 0.3))
+  const midY = Math.round(14 + (h - 14) / 2)
 
-  const maxDev = Math.max(50, props.toleranceMs * 2.5)
-  const centreY = laneY + laneH / 2
-  const devY = (ms) => centreY + (Math.max(-maxDev, Math.min(maxDev, ms)) / maxDev) * (laneH / 2 - 6)
-
-  drawGrid(g, X, t0, t1, h, pitchH, laneY)
-  drawStringRules(g, pitchH, Y)
-  drawToleranceBand(g, devY, laneY, laneH)
-  drawTrace(g, X, Y, t0)
-  picks = drawHits(g, X, Y, devY, t0, centreY)
+  drawGrid(g, X, t0, t1, midY)
+  picks = drawHits(g, X, t0, t1, midY, r)
 
   // Count-in: everything before the take starts is dimmed, so the moment
   // recording begins is unmissable without a flashing number.
-  if (props.countInUntil > now) {
+  if (following && props.countInUntil > anchor) {
     g.fillStyle = 'rgba(250, 249, 247, 0.72)'
     g.fillRect(0, 0, w, h)
   }
 
-  // Now-line last so nothing sits on top of it.
-  const nx = X(now)
-  g.strokeStyle = C.now
-  g.lineWidth = 2
-  g.beginPath()
-  g.moveTo(nx, 0)
-  g.lineTo(nx, h)
-  g.stroke()
-  if (props.recording) {
-    g.fillStyle = C.now
+  if (following) {
+    // Now-line last so nothing sits on top of it.
+    const nx = X(anchor)
+    g.strokeStyle = C.now
+    g.lineWidth = 2
     g.beginPath()
-    g.arc(nx, 9, 4, 0, Math.PI * 2)
-    g.fill()
+    g.moveTo(nx, 0)
+    g.lineTo(nx, h)
+    g.stroke()
+    if (props.recording) {
+      g.fillStyle = C.now
+      g.beginPath()
+      g.arc(nx, 9, 4, 0, Math.PI * 2)
+      g.fill()
+    }
+  } else {
+    const cur = props.cursor ? props.cursor() : null
+    if (cur != null && cur >= t0 && cur <= t1) {
+      const cx = Math.round(X(cur)) + 0.5
+      g.strokeStyle = C.cursor
+      g.lineWidth = 1.5
+      g.setLineDash([4, 3])
+      g.beginPath()
+      g.moveTo(cx, 0)
+      g.lineTo(cx, h)
+      g.stroke()
+      g.setLineDash([])
+    }
   }
 }
 
-function drawGrid(g, X, t0, t1, height, pitchH, laneY) {
-  const slots = props.transport.slotsBetween(t0, t1)
+function drawGrid(g, X, t0, t1, midY) {
+  const slots = props.grid.slotsBetween(t0, t1)
   g.lineWidth = 1
   for (const s of slots) {
     const x = Math.round(X(s.time)) + 0.5
@@ -218,13 +274,14 @@ function drawGrid(g, X, t0, t1, height, pitchH, laneY) {
     else g.strokeStyle = C.pulse
     g.beginPath()
     g.moveTo(x, s.kind === 'sub' ? 14 : 0)
-    g.lineTo(x, height)
+    g.lineTo(x, h)
     g.stroke()
 
     if (s.kind !== 'sub') {
       g.fillStyle = s.kind === 'bar' ? C.dim : C.faint
       g.font = `${s.kind === 'bar' ? 700 : 500} 10px ui-monospace, Menlo, Consolas, monospace`
       g.textAlign = 'left'
+      g.textBaseline = 'alphabetic'
       g.fillText(
         s.kind === 'bar' ? String(s.bar + 1) : String(Math.floor(s.slotInBar / s.subdiv) + 1),
         x + 3,
@@ -232,166 +289,157 @@ function drawGrid(g, X, t0, t1, height, pitchH, laneY) {
       )
     }
   }
-  g.strokeStyle = C.pulse
+  // The line the circles sit on.
+  g.strokeStyle = '#efeeea'
   g.beginPath()
-  g.moveTo(0, laneY - 0.5)
-  g.lineTo(w, laneY - 0.5)
+  g.moveTo(0, midY + 0.5)
+  g.lineTo(w, midY + 0.5)
   g.stroke()
 }
 
-function drawStringRules(g, pitchH, Y) {
-  if (!Y) return
-  g.lineWidth = 1
-  g.setLineDash([])
-  for (const s of OPEN_STRINGS) {
-    const y = Math.round(Y(s.midi)) + 0.5
-    if (y < 12 || y > pitchH - 2) continue
-    g.strokeStyle = '#efeeea'
-    g.beginPath()
-    g.moveTo(0, y)
-    g.lineTo(w, y)
-    g.stroke()
-    g.fillStyle = C.faint
-    g.font = '500 9px ui-monospace, Menlo, Consolas, monospace'
-    g.textAlign = 'left'
-    g.fillText(s.name, 3, y - 3)
-  }
-}
-
-function drawToleranceBand(g, devY, laneY, laneH) {
-  const top = devY(-props.toleranceMs)
-  const bottom = devY(props.toleranceMs)
-  g.fillStyle = C.band
-  g.fillRect(0, top, w, bottom - top)
-  g.strokeStyle = C.bandEdge
-  g.lineWidth = 1
-  g.beginPath()
-  g.moveTo(0, Math.round(top) + 0.5)
-  g.lineTo(w, Math.round(top) + 0.5)
-  g.moveTo(0, Math.round(bottom) + 0.5)
-  g.lineTo(w, Math.round(bottom) + 0.5)
-  g.stroke()
-
-  const centre = laneY + laneH / 2
-  g.strokeStyle = '#c3c2b7'
-  g.beginPath()
-  g.moveTo(0, Math.round(centre) + 0.5)
-  g.lineTo(w, Math.round(centre) + 0.5)
-  g.stroke()
-
-  g.fillStyle = C.faint
-  g.font = '500 9px ui-monospace, Menlo, Consolas, monospace'
-  g.textAlign = 'right'
-  g.fillText('early', w - 4, top - 3)
-  g.fillText('late', w - 4, bottom + 10)
-}
-
-function drawTrace(g, X, Y, t0) {
-  const tr = props.trace
-  if (tr.length < 2) return
-  g.strokeStyle = C.trace
-  g.lineWidth = 2
-  g.lineJoin = 'round'
-  g.lineCap = 'round'
-  g.beginPath()
-  let pen = false
-  let prevT = 0
-  for (let i = 0; i < tr.length; i++) {
-    const p = tr[i]
-    if (p.t < t0) continue
-    const x = X(p.t)
-    const y = Y(p.midiFloat)
-    // A gap in the samples is a gap in the playing — don't join across silence.
-    if (!pen || p.t - prevT > 0.12) {
-      g.moveTo(x, y)
-      pen = true
-    } else {
-      g.lineTo(x, y)
-    }
-    prevT = p.t
-  }
-  g.stroke()
-}
-
-function drawHits(g, X, Y, devY, t0, centreY) {
+function drawHits(g, X, t0, t1, y, r) {
   const out = []
   const hits = props.hits
+  const tones = props.scale?.tones
+  const font = Math.round(r * 0.72)
   for (let i = hits.length - 1; i >= 0; i--) {
     const hit = hits[i]
-    if (hit.time < t0) break
-    const late = hit.devMs > 0
-    const col = late ? C.late : C.early
+    if (hit.time > t1 + 0.3) continue
+    if (hit.time < t0 - 0.3) break
+    const zone = ZONE[zoneOf(hit)]
     const gx = X(hit.slotTime)
     const hx = X(hit.time)
+    const pitched = hit.midi != null
+    const inKey = !pitched || !tones || tones.has(((hit.midi % 12) + 12) % 12)
 
-    // Timing lane: a tick from the zero line to the error.
-    const y = devY(hit.devMs)
-    g.strokeStyle = col
+    // Stub from the grid line to the note, and a notch on the line itself.
+    g.strokeStyle = zone.fill
+    g.lineWidth = 3
+    g.beginPath()
+    g.moveTo(gx, y)
+    g.lineTo(hx, y)
+    g.stroke()
     g.lineWidth = 2
     g.beginPath()
-    g.moveTo(Math.round(gx) + 0.5, centreY)
-    g.lineTo(Math.round(gx) + 0.5, y)
+    g.moveTo(Math.round(gx) + 0.5, y - r - 5)
+    g.lineTo(Math.round(gx) + 0.5, y + r + 5)
     g.stroke()
-    g.fillStyle = col
+
+    // A white halo so overlapping circles stay separate.
+    g.fillStyle = C.surface
     g.beginPath()
-    g.arc(gx, y, 3, 0, Math.PI * 2)
+    g.arc(hx, y, r + 2.5, 0, Math.PI * 2)
     g.fill()
 
-    // Pitch lane: the note, joined back to the grid line it was aiming at.
-    if (hit.midiFloat) {
-      const py = Y(hit.midiFloat)
-      g.strokeStyle = col
-      g.globalAlpha = 0.5
-      g.lineWidth = 2
-      g.beginPath()
-      g.moveTo(gx, py)
-      g.lineTo(hx, py)
-      g.stroke()
-      g.globalAlpha = 1
+    g.beginPath()
+    g.arc(hx, y, r, 0, Math.PI * 2)
+    g.fillStyle = zone.fill
+    g.fill()
 
-      const r = 4 + Math.min(4, (hit.str || 0) * 26)
-      g.fillStyle = C.surface
+    if (!inKey) {
+      g.strokeStyle = C.ink
+      g.lineWidth = 2.5
+      g.setLineDash([5, 3.5])
       g.beginPath()
-      g.arc(hx, py, r + 2, 0, Math.PI * 2)
-      g.fill()
-      g.fillStyle = col
-      g.beginPath()
-      g.arc(hx, py, r, 0, Math.PI * 2)
-      g.fill()
-      out.push({ x: hx, y: py, hit })
-    } else {
-      out.push({ x: gx, y, hit })
+      g.arc(hx, y, r + 5.5, 0, Math.PI * 2)
+      g.stroke()
+      g.setLineDash([])
     }
+
+    // The pitch arrives ~130 ms after the note does; until then, and for a note
+    // the tracker never names, a question mark.
+    g.fillStyle = zone.text
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    const text = pitched ? markLabel(hit.midi, props.scale, props.labels) : '?'
+    g.font = `800 ${text.length > 2 ? Math.round(font * 0.82) : font}px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif`
+    g.fillText(text, hx, y + 1)
+
+    if (hit === props.focus) {
+      g.strokeStyle = '#2a78d6'
+      g.lineWidth = 3
+      g.beginPath()
+      g.arc(hx, y, r + (inKey ? 6 : 10), 0, Math.PI * 2)
+      g.stroke()
+    }
+    out.push({ x: hx, y, r, hit })
   }
   return out
 }
 
-function onHover(e) {
-  const rect = cv.value?.getBoundingClientRect()
-  if (!rect) return
-  const mx = e.clientX - rect.left
-  const my = e.clientY - rect.top
+// ── Pointer ─────────────────────────────────────────────────────────────────
+function localXY(e) {
+  const rect = cv.value.getBoundingClientRect()
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+}
+
+function pickAt(x, y) {
   let best = null
-  let bestD = 24 * 24 // a generous hit area — these are small marks
+  let bestD = Infinity
   for (const p of picks) {
-    const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my)
-    if (d < bestD) {
+    const d = Math.hypot(p.x - x, p.y - y)
+    if (d <= p.r + 6 && d < bestD) {
       bestD = d
       best = p
     }
   }
-  hover.value = best ? { x: best.x, y: best.y, hit: best.hit } : null
+  return best
+}
+
+function onDown(e) {
+  if (e.button !== 0) return
+  const { x } = localXY(e)
+  down.value = { x, anchor, moved: false }
+  cv.value.setPointerCapture?.(e.pointerId)
+}
+
+function onMove(e) {
+  const { x, y } = localXY(e)
+  const d = down.value
+  if (d) {
+    const dx = x - d.x
+    if (!d.moved && Math.abs(dx) > 4) d.moved = true
+    if (d.moved && pannable.value) {
+      anchor = d.anchor - (dx / w) * windowSeconds()
+      hover.value = null
+    }
+    return
+  }
+  const p = pickAt(x, y)
+  hover.value = p ? { x: p.x, y: p.y - p.r, hit: p.hit } : null
+}
+
+function onUp(e) {
+  const d = down.value
+  down.value = null
+  cv.value.releasePointerCapture?.(e.pointerId)
+  if (!d || d.moved) return
+  const { x, y } = localXY(e)
+  const p = pickAt(x, y)
+  emit('select', p ? p.hit : null)
+}
+
+function onWheel(e) {
+  if (!pannable.value) return
+  e.preventDefault()
+  const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+  const px = e.deltaMode === 1 ? d * 16 : d
+  anchor += (px / w) * windowSeconds() * 0.6
+  hover.value = null
 }
 
 onMounted(() => {
   resize()
   ro = new ResizeObserver(resize)
   if (wrap.value) ro.observe(wrap.value)
+  // Not passive: a wheel over a still roll scrolls the roll, not the page.
+  wrap.value?.addEventListener('wheel', onWheel, { passive: false })
   raf = requestAnimationFrame(draw)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
+  wrap.value?.removeEventListener('wheel', onWheel)
   ro?.disconnect()
   ro = null
 })
@@ -412,11 +460,20 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   touch-action: none;
+  cursor: pointer;
+}
+
+.roll-canvas.pannable {
+  cursor: grab;
+}
+
+.roll-canvas.pannable:active {
+  cursor: grabbing;
 }
 
 .roll-tip {
   position: absolute;
-  transform: translate(-50%, calc(-100% - 0.75rem));
+  transform: translate(-50%, calc(-100% - 0.9rem));
   pointer-events: none;
   background: #1a1a1a;
   color: #fff;
@@ -435,22 +492,17 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.roll-tip b.early {
-  color: #8dbcf2;
-}
-
-.roll-tip b.late {
-  color: #f3a3a3;
-}
-
 .tip-sub {
   font-size: 0.66rem;
   color: #c3c2b7;
 }
 
+/* Opaque: an idle grid behind a half-transparent message read as a broken box
+   rather than a waiting one. */
 .roll-idle {
   position: absolute;
   inset: 0;
+  background: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;

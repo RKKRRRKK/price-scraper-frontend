@@ -6,7 +6,9 @@
     Bass in → the same amp chain as src/lib/groovy/amp.js → the interface's
     outputs (speakers or headphones, whatever is on them), on
     ASIO or on WASAPI's low-latency shared mode, controlled by the web app over
-    a WebSocket on 127.0.0.1. Timing never comes here; the browser keeps that.
+    a WebSocket on 127.0.0.1. On ASIO it can also stream the input and play
+    the click for the browser (engine mode, VoiceBank.cs); the timing logic
+    itself always stays in the browser.
   -->
 
   <PropertyGroup>

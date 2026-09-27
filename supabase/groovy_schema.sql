@@ -27,8 +27,15 @@
 --     "drumsOn": true,
 --     "patternId": "rock",
 --     "clickSubdivisions": false,
---     "countInBars": 1
+--     "countInBars": 1,
+--     "audioLeadSec": -0.0712  -- only with audio: where the recording's first
+--                              -- sample sits on the take's time axis (t = 0 is
+--                              -- the first downbeat), so replay lines the audio
+--                              -- up with the notes exactly
 --   }
+--
+-- Takes are saved in the browser (IndexedDB) first and only land here when
+-- the player uploads one, keeping their original id and created_at.
 --
 -- `hits` is an array, in playing order. Negative deviation is EARLY (rushing),
 -- positive is LATE (dragging) — the same convention the whole app uses:
@@ -90,9 +97,10 @@ create policy "global_app_a_whitelist_restriction"
   using ( is_whitelisted_user(auth.uid()) );
 
 -- ── Storage: private `groovy` bucket for optional take audio ────────────────
--- Only written when "keep audio" is on for a take. Files are stored under
--- <user_id>/<take_id>.<ext> and read through short-lived signed URLs, the same
--- pattern as the `bawu` and `documents` buckets.
+-- Only written when a take that kept its audio is uploaded. Files are stored
+-- under <user_id>/<take_id>.<ext> — .wav for current takes, .webm/.m4a for
+-- ones recorded before Sep 23 2026 — and read through short-lived signed URLs,
+-- the same pattern as the `bawu` and `documents` buckets.
 insert into storage.buckets (id, name, public)
 values ('groovy', 'groovy', false)
 on conflict (id) do nothing;

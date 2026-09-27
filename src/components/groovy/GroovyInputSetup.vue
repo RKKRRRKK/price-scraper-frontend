@@ -28,7 +28,11 @@
     </button>
 
     <template v-else>
-      <label class="field">
+      <div v-if="engineDevice" class="field">
+        <span class="f-label">Device</span>
+        <span class="engine-device"><i class="pi pi-bolt"></i> {{ engineDevice }} · via the helper</span>
+      </div>
+      <label v-else class="field">
         <span class="f-label">Device</span>
         <select :value="deviceId" @change="$emit('open', $event.target.value)">
           <option v-for="d in devices" :key="d.deviceId" :value="d.deviceId">{{ d.label }}</option>
@@ -38,7 +42,9 @@
       <label v-if="channelCount > 1" class="field">
         <span class="f-label">Channel</span>
         <select :value="channelIndex" @change="$emit('channel', +$event.target.value)">
-          <option v-for="n in channelCount" :key="n" :value="n - 1">Input {{ n }}</option>
+          <option v-for="n in channelCount" :key="n" :value="n - 1">
+            {{ channelNames[n - 1] || `Input ${n}` }}
+          </option>
         </select>
       </label>
       <p v-else class="f-hint">Mono input — nothing to choose.</p>
@@ -406,6 +412,9 @@ const props = defineProps({
   deviceId: { type: String, default: null },
   channelCount: { type: Number, default: 1 },
   channelIndex: { type: Number, default: 0 },
+  // Engine mode: the input comes from the Windows helper, not getUserMedia.
+  engineDevice: { type: String, default: '' },
+  channelNames: { type: Array, default: () => [] },
   opened: { type: Boolean, default: false },
   error: { type: String, default: '' },
   level: { type: Number, default: 0 },
@@ -604,6 +613,20 @@ const rateMismatch = computed(() => {
   padding: 0 0.4rem;
   font-size: 0.76rem;
   max-width: 100%;
+}
+
+.engine-device {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.9rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.engine-device .pi {
+  color: var(--accent-500, #ef4444);
+  font-size: 0.72rem;
 }
 
 .f-hint {

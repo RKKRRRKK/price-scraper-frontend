@@ -48,6 +48,14 @@ public sealed class WasapiBackend : IBackend
     public LoopbackProbe Probe { get; private set; } = null!;
     public long Xruns => Interlocked.Read(ref xruns);
 
+    // Monitor only: capture and render are two streams whose frame counts do
+    // not line up, so there is no single clock to hand the browser.
+    public bool SupportsEngine => false;
+    public InputTap? Tap => null;
+    public VoiceBank? Voices => null;
+    public string[] InputChannelNames => Enumerable.Range(1, capChannels).Select(i => $"Input {i}").ToArray();
+    public int InputChannel { get => inChannel; set { } }
+
     public WasapiBackend(string? deviceMatch, int inChannel, Amp? ampFactoryResult, Func<int, Amp> ampFactory)
     {
         this.inChannel = inChannel;

@@ -13,13 +13,20 @@
 //   grid.js       meters, subdivisions, slot naming, drum patterns
 //   click.js      the metronome voice
 //   drums.js      kick, snare, hat
+//   voices.js     where those sounds go: Web Audio, or the Windows helper
 //   transport.js  the lookahead scheduler and the grid it hands out
 //   input.js      device and channel selection, the mono tap
 //   amp.js        the bass amp chain
 //   onset*.js     the attack detector (worklet) and its main-thread wrapper
 //   pitch.js      bass-range pitch tracking for the roll
 //   analysis.js   deviations into statistics
-//   recorder.js   optional audio for a take
+//   capture.js    optional audio for a take, sample-aligned to the clock
+//   replay.js     playing a take back, with a playhead
+//   localTakes.js takes kept in this browser until uploaded
+//   scales.js     keys, degrees and spelling for the fretboard scale map
+//   nativeMonitor.js  the Windows helper's control socket (amp remote)
+//   nativeEngine.js   engine mode: the helper as the whole sound card
+//   nativeSource*.js  the helper's input played into the context, and `k`
 
 export { ensureAudio, currentContext, outputLatencySec } from './context'
 export { setClickLevel, setDrumLevel } from './bus'
@@ -48,5 +55,35 @@ export {
 export { BassAmp } from './amp'
 export { OnsetDetector, isWorkletSupported, ratioForSensitivity } from './onset'
 export { BassPitchTracker, midiFloatOfFreq, noteNameOfMidi, freqOfMidi } from './pitch'
-export { summarise, histogram, grade, feelLabel, mean, stdev, median, percentile } from './analysis'
-export { TakeRecorder, takeExtension } from './recorder'
+export {
+  summarise,
+  histogram,
+  grade,
+  feelLabel,
+  pocketZone,
+  mean,
+  stdev,
+  median,
+  percentile,
+} from './analysis'
+export { TakeCapture } from './capture'
+export { TakeReplay } from './replay'
+export {
+  listLocalTakes,
+  saveLocalTake,
+  updateLocalTake,
+  getLocalAudio,
+  deleteLocalTake,
+} from './localTakes'
+export {
+  SCALES,
+  TUNINGS,
+  ROOTS,
+  MAX_FRET,
+  buildScale,
+  scaleById,
+  tuningById,
+  stringName,
+  noteLabel,
+  positionsOf,
+} from './scales'
