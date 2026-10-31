@@ -120,48 +120,49 @@
         <div class="tempo">
           <button class="step" @click="nudgeBpm(-1)" title="Slower"><i class="pi pi-minus"></i></button>
           <input
+            v-model="bpmDraft"
             class="bpm"
-            type="number"
-            min="20"
-            max="300"
-            :value="p.bpm"
-            @change="setPref({ bpm: clampBpm(+$event.target.value) })"
+            inputmode="numeric"
+            aria-label="Tempo"
+            @focus="bpmEditing = true"
+            @blur="commitBpm"
+            @keydown.enter="$event.target.blur()"
           />
           <button class="step" @click="nudgeBpm(1)" title="Faster"><i class="pi pi-plus"></i></button>
           <span class="tempo-unit">bpm</span>
           <button class="tap" @click="tap">Tap</button>
         </div>
 
-        <input
-          class="bpm-slider"
-          type="range"
-          min="40"
-          max="220"
-          step="1"
-          :value="p.bpm"
-          @input="setPref({ bpm: +$event.target.value })"
-        />
+        <button class="metro-btn" title="Metronome settings (M)" @click="metroOpen = true">
+          <span class="mb-beats" aria-hidden="true">
+            <i v-for="(st, i) in currentBeats" :key="i" :class="['st-' + st, { on: i % p.subdiv === 0 }]"></i>
+          </span>
+          <span class="mb-text">
+            <b>{{ p.meterId }}</b>
+            <span>{{ subdivGlyph }}</span>
+            <span v-if="p.gap.on" class="mb-gap">gap {{ p.gap.play }}·{{ p.gap.mute }}</span>
+          </span>
+          <i class="pi pi-sliders-h mb-icon"></i>
+        </button>
 
-        <label class="sel">
-          <span class="sel-label">Meter</span>
-          <select :value="p.meterId" @change="setMeter($event.target.value)">
-            <option v-for="m in METERS" :key="m.id" :value="m.id">{{ m.label }}</option>
-          </select>
-        </label>
-
-        <div class="seg" role="group" aria-label="Grid subdivision">
-          <button
-            v-for="s in subdivOptions"
-            :key="s.n"
-            :class="{ on: p.subdiv === s.n }"
-            :title="s.label"
-            @click="setPref({ subdiv: s.n })"
-          >
-            {{ s.glyph }}
-          </button>
-        </div>
+        <button
+          class="icon-btn click-toggle"
+          :class="{ off: !p.clickOn }"
+          :title="p.clickOn ? 'Mute the click' : 'Unmute the click'"
+          @click="setPref({ clickOn: !p.clickOn })"
+        >
+          <i class="pi" :class="p.clickOn ? 'pi-volume-up' : 'pi-volume-off'"></i>
+        </button>
 
         <div class="tbar-spacer"></div>
+
+        <button class="tuner-btn" title="Tuner (T)" @click="tunerOpen = true">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3.5 16 A8.5 8.5 0 0 1 20.5 16" />
+            <line x1="12" y1="16" x2="15.5" y2="8.5" />
+          </svg>
+          Tuner
+        </button>
 
         <button
           class="rec"
@@ -181,55 +182,8 @@
         </button>
       </div>
 
-      <!-- Second row: what you hear -->
+      <!-- Second row: how you are judged -->
       <div class="tbar tbar-sub">
-        <button class="chip" :class="{ on: p.clickOn }" @click="setPref({ clickOn: !p.clickOn })">
-          <i class="pi pi-bell"></i> Click
-        </button>
-        <button
-          class="chip"
-          :class="{ on: p.clickSubdivisions }"
-          :disabled="!p.clickOn || p.subdiv === 1"
-          @click="setPref({ clickSubdivisions: !p.clickSubdivisions })"
-        >
-          Subdivisions
-        </button>
-        <input
-          class="mini-slider"
-          type="range"
-          min="0"
-          max="1.4"
-          step="0.02"
-          :value="p.clickLevel"
-          :disabled="!p.clickOn"
-          title="Click level"
-          @input="setPref({ clickLevel: +$event.target.value })"
-        />
-
-        <span class="tb-div"></span>
-
-        <button class="chip" :class="{ on: p.drumsOn }" @click="setPref({ drumsOn: !p.drumsOn })">
-          <i class="pi pi-headphones"></i> Drums
-        </button>
-        <label class="sel" v-if="p.drumsOn">
-          <select :value="patternId" @change="setPref({ patternId: $event.target.value })">
-            <option v-for="pt in patterns" :key="pt.id" :value="pt.id">{{ pt.label }}</option>
-          </select>
-        </label>
-        <input
-          class="mini-slider"
-          type="range"
-          min="0"
-          max="1.4"
-          step="0.02"
-          :value="p.drumLevel"
-          :disabled="!p.drumsOn"
-          title="Drum level"
-          @input="setPref({ drumLevel: +$event.target.value })"
-        />
-
-        <span class="tb-div"></span>
-
         <label class="sel">
           <span class="sel-label">Tolerance</span>
           <select
@@ -242,7 +196,7 @@
           </select>
         </label>
 
-        <label class="sel">
+        <label v-if="review || p.liveView === 'timeline'" class="sel">
           <span class="sel-label">Window</span>
           <select :value="p.windowBars" @change="setPref({ windowBars: +$event.target.value })">
             <option :value="1">1 bar</option>
@@ -272,9 +226,10 @@
 
         <div class="tbar-spacer"></div>
 
-        <button class="chip" :class="{ on: p.tunerOpen }" @click="setPref({ tunerOpen: !p.tunerOpen })">
-          <i class="pi pi-wave-pulse"></i> Tuner
-        </button>
+        <div v-if="!review && view === 'practice'" class="modes" role="group" aria-label="Practice surface">
+          <button :class="{ on: p.liveView === 'pocket' }" @click="setPref({ liveView: 'pocket' })">Pocket</button>
+          <button :class="{ on: p.liveView === 'timeline' }" @click="setPref({ liveView: 'timeline' })">Timeline</button>
+        </div>
 
         <div class="modes">
           <button :class="{ on: view === 'practice' }" @click="view = 'practice'">Practice</button>
@@ -303,7 +258,21 @@
               </button>
             </div>
             <div class="roll-box">
+              <GroovyPocket
+                v-if="!review && p.liveView === 'pocket'"
+                :hits="liveHits"
+                :focus="focus"
+                :tick="hitTick"
+                :pinned="!!pinned"
+                :running="running"
+                :tolerance-ms="p.toleranceMs"
+                :scale="scaleInfo"
+                :labels="p.scale.labels"
+                :meter-id="p.meterId"
+                :subdiv="p.subdiv"
+              />
               <GroovyRoll
+                v-else
                 ref="roll"
                 :grid="review ? review.grid : transport"
                 :hits="review ? review.hits : liveHits"
@@ -332,15 +301,9 @@
               :scale="scaleInfo"
               :stats="review ? review.stats : live"
               :position="review ? '' : position"
+              :timing="!!review || p.liveView !== 'pocket'"
               @unpin="pinned = null"
               @reset="resetLive"
-            />
-            <GroovyTuner
-              v-if="p.tunerOpen"
-              :reading="tunerReading"
-              :enabled="inputOpen"
-              :strings="tuningStrings"
-              @close="setPref({ tunerOpen: false })"
             />
           </div>
         </template>
@@ -422,6 +385,36 @@
 
     <ConfirmDialog />
 
+    <GroovyModal :open="metroOpen" title="Metronome" width="48rem" @close="metroOpen = false">
+      <template #tools>
+        <button class="gm-run" :class="{ on: running }" @click="toggleRun">
+          <i :class="running ? 'pi pi-pause' : 'pi pi-play'"></i>
+          {{ running ? 'Stop' : 'Start' }}
+        </button>
+      </template>
+      <GroovyMetronome
+        :prefs="p"
+        :running="running"
+        :now="metroNow"
+        @update="setPref"
+        @meter="setMeter"
+        @tap="tap"
+        @preview="previewSound"
+      />
+    </GroovyModal>
+
+    <GroovyModal :open="tunerOpen" title="Tuner" tone="dark" width="40rem" @close="tunerOpen = false">
+      <GroovyTuner
+        :reading="tunerReading"
+        :enabled="inputOpen"
+        :strings="tuningStrings"
+        :ref-hz="p.tunerRef"
+        @enable="openDevice()"
+        @reference="playReference"
+        @set-ref="setPref({ tunerRef: $event })"
+      />
+    </GroovyModal>
+
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>
@@ -442,19 +435,24 @@ import GroovyTakeCompare from '@/components/groovy/GroovyTakeCompare.vue'
 import GroovyFretboard from '@/components/groovy/GroovyFretboard.vue'
 import GroovyNoteCard from '@/components/groovy/GroovyNoteCard.vue'
 import GroovyTuner from '@/components/groovy/GroovyTuner.vue'
+import GroovyPocket from '@/components/groovy/GroovyPocket.vue'
+import GroovyMetronome from '@/components/groovy/GroovyMetronome.vue'
+import GroovyModal from '@/components/groovy/GroovyModal.vue'
 
 import { useGroovyStore } from '@/stores/groovy'
 import { ensureAudio, currentContext, resetAudio, outputLatencySec } from '@/lib/groovy/context'
 import { setClickLevel, setDrumLevel } from '@/lib/groovy/bus'
 import {
-  METERS,
   meterById,
   subdivisionsFor,
   coerceSubdiv,
   slotLabel,
   patternsFor,
   patternById,
+  beatKey,
+  defaultBeats,
 } from '@/lib/groovy/grid'
+import { setClickSound, scheduleClick } from '@/lib/groovy/click'
 import { Transport } from '@/lib/groovy/transport'
 import { CalibrationRun } from '@/lib/groovy/calibration'
 import { PROBE_DETECTOR_CONFIG } from '@/lib/groovy/probe'
@@ -515,6 +513,10 @@ const trace = []
 
 const railOpen = ref(false)
 const sideOpen = ref(false)
+const metroOpen = ref(false)
+const tunerOpen = ref(false)
+// Bumped on every live note and on reset, so the Pocket re-reads `liveHits`.
+const hitTick = ref(0)
 const view = ref('practice')
 const running = ref(false)
 const toast = ref('')
@@ -606,8 +608,9 @@ const renameDlg = reactive({ open: false, id: null, name: '' })
 
 const canRecordAudio = computed(() => isWorkletSupported())
 const inputRisky = computed(() => looksLikeBuiltInMic(inputLabel.value))
-const subdivOptions = computed(() => subdivisionsFor(meterById(p.value.meterId)))
-const patterns = computed(() => patternsFor(p.value.meterId))
+const subdivGlyph = computed(
+  () => subdivisionsFor(meterById(p.value.meterId)).find((s) => s.n === p.value.subdiv)?.glyph || '',
+)
 const patternId = computed(() => patternById(p.value.meterId, p.value.patternId)?.id ?? null)
 
 // The best round-trip figure we actually have, and where it came from. Prefers
@@ -655,6 +658,101 @@ function nudgeBpm(d) {
   setPref({ bpm: clampBpm(p.value.bpm + d) })
 }
 
+// The toolbar's tempo field is a draft while focused: this view re-renders
+// ~50x a second with the input meter, and a bound value would be put back
+// under the cursor mid-word (see the README's Vue gotcha).
+const bpmDraft = ref(String(p.value.bpm))
+const bpmEditing = ref(false)
+watch(
+  () => p.value.bpm,
+  (v) => {
+    if (!bpmEditing.value) bpmDraft.value = String(v)
+  },
+)
+
+function commitBpm() {
+  bpmEditing.value = false
+  const v = +bpmDraft.value
+  if (bpmDraft.value.trim() && Number.isFinite(v)) setPref({ bpm: clampBpm(v) })
+  bpmDraft.value = String(p.value.bpm)
+}
+
+// ── Metronome popup ─────────────────────────────────────────────────────────
+// What the click plays on each slot: an edited pattern if there is one for
+// this meter + subdivision, otherwise the plain weights.
+function beatsFor(meterId, subdiv) {
+  return (
+    p.value.beatPatterns[beatKey(meterId, subdiv)] ||
+    defaultBeats(meterById(meterId), subdiv, p.value.clickSubdivisions)
+  )
+}
+transport.setConfig({ beatsFor })
+
+const currentBeats = computed(() => beatsFor(p.value.meterId, p.value.subdiv))
+
+// What the popup's pads and gap strip light up: the slot being heard now.
+function metroNow() {
+  const ac = currentContext()
+  if (!ac || !running.value) return null
+  const pos = transport.positionAt(ac.currentTime - outputLatencySec())
+  if (!pos) return null
+  return {
+    slot: pos.slotInBar,
+    spb: pos.seg.slotsPerBar,
+    cycle: transport.gapPhase(pos.bar),
+    silent: transport.isGapBar(pos.bar),
+  }
+}
+
+// Accent, normal, soft: the three weights of the chosen sound.
+function previewSound(id) {
+  const ac = ensureAudio()
+  if (!ac) return
+  setClickSound(id)
+  setClickLevel(ac, p.value.clickLevel)
+  const t = ac.currentTime + 0.03
+  scheduleClick(ac, t, 'bar', id)
+  scheduleClick(ac, t + 0.24, 'pulse', id)
+  scheduleClick(ac, t + 0.48, 'sub', id)
+}
+
+watch(
+  () => p.value.clickSound,
+  (id) => {
+    setClickSound(id)
+    if (engineOn.value) engine.refreshClicks().catch((e) => console.error('[Groovy] click render error:', e))
+  },
+  { immediate: true },
+)
+
+// The tuner's reference pitch for an open string. A few harmonics on top of
+// the fundamental, or a 41 Hz low E is inaudible on anything but a cab.
+function playReference(midi) {
+  const ac = ensureAudio()
+  if (!ac) return
+  const f = p.value.tunerRef * Math.pow(2, (midi - 69) / 12)
+  const t = ac.currentTime + 0.02
+  const out = ac.createGain()
+  out.gain.setValueAtTime(0.0001, t)
+  out.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
+  out.gain.setTargetAtTime(0.0001, t + 0.4, 0.5)
+  out.connect(ac.destination)
+  for (const [k, a] of [[1, 1], [2, 0.55], [3, 0.3], [4, 0.16]]) {
+    const o = ac.createOscillator()
+    o.frequency.value = f * k
+    const g = ac.createGain()
+    g.gain.value = a
+    o.connect(g)
+    g.connect(out)
+    o.start(t)
+    o.stop(t + 2.8)
+  }
+}
+
+watch(tunerOpen, (v) => {
+  if (!v) tunerReading.value = null
+})
+
 let taps = []
 function tap() {
   const now = performance.now()
@@ -668,7 +766,7 @@ function tap() {
 }
 
 watch(
-  () => [p.value.bpm, p.value.meterId, p.value.subdiv, p.value.clickOn, p.value.clickSubdivisions, p.value.drumsOn, patternId.value],
+  () => [p.value.bpm, p.value.meterId, p.value.subdiv, p.value.clickOn, p.value.clickSubdivisions, p.value.drumsOn, patternId.value, p.value.gap],
   () => {
     transport.setConfig({
       bpm: p.value.bpm,
@@ -678,6 +776,7 @@ watch(
       clickSubdivisions: p.value.clickSubdivisions,
       drumsOn: p.value.drumsOn,
       patternId: patternId.value,
+      gap: p.value.gap,
     })
   },
 )
@@ -818,6 +917,7 @@ function toggleRun() {
     clickSubdivisions: p.value.clickSubdivisions,
     drumsOn: p.value.drumsOn,
     patternId: patternId.value,
+    gap: p.value.gap,
   })
   transport.start()
   running.value = true
@@ -1014,7 +1114,7 @@ function onLevel(msg) {
 
 function onPitch(res) {
   const ok = !!res && res.clarity >= 0.78
-  if (p.value.tunerOpen) tunerReading.value = ok ? res : null
+  if (tunerOpen.value) tunerReading.value = ok ? res : null
   const ac = currentContext()
   if (!ac || !ok) return
   // The analysis window looks backwards, so the reading describes a moment
@@ -1064,6 +1164,7 @@ function onOnset(msg) {
     slotInBar: slot.slotInBar,
     bar: slot.bar,
     label: slotLabel(slot.slotInBar, slot.subdiv, meter),
+    gridKey: beatKey(slot.meterId, slot.subdiv),
     midi: null,
     midiFloat: null,
     freq: null,
@@ -1072,6 +1173,7 @@ function onOnset(msg) {
 
   liveHits.push(hit)
   while (liveHits.length > 600) liveHits.shift()
+  hitTick.value++
 
   // The pitch tracker needs a moment of steady note before it can say anything,
   // so the dot's vertical position is filled in shortly after the tick appears.
@@ -1131,6 +1233,7 @@ function resetLive() {
   follow.value = null
   pinned.value = null
   live.value = { count: 0, meanMs: 0, sdMs: 0, inPocketPct: 0 }
+  hitTick.value++
 }
 
 // ── Selecting notes ─────────────────────────────────────────────────────────
@@ -1299,6 +1402,8 @@ function toggleRecord() {
   takeHitCount.value = 0
   takeStartTime = transport.nextBarTime(p.value.countInBars, 0.3)
   countInUntil.value = takeStartTime
+  // The gap cycle restarts on the take's first bar, so the count-in clicks.
+  transport.gapFrom = transport.positionAt(takeStartTime + 1e-4)?.bar ?? 0
   armed.value = true
   view.value = 'practice'
   pinned.value = null
@@ -1371,6 +1476,9 @@ async function stopTake(silent) {
     toleranceMs: p.value.toleranceMs,
     offsetMs: p.value.offsetMs,
     clickSubdivisions: p.value.clickSubdivisions,
+    beats: currentBeats.value,
+    clickSound: p.value.clickSound,
+    gap: p.value.gap.on ? { ...p.value.gap } : null,
     drumsOn: p.value.drumsOn,
     patternId: patternId.value,
     countInBars: p.value.countInBars,
@@ -1696,11 +1804,19 @@ function onKey(e) {
     else toggleRun()
   } else if (e.key === 'r' || e.key === 'R') {
     if (inputOpen.value) toggleRecord()
+  } else if (e.key === 'm' || e.key === 'M') {
+    tunerOpen.value = false
+    metroOpen.value = !metroOpen.value
+  } else if (e.key === 't' || e.key === 'T') {
+    metroOpen.value = false
+    tunerOpen.value = !tunerOpen.value
   } else if (e.key === 'Escape') {
-    if (pinned.value) pinned.value = null
+    if (tunerOpen.value) tunerOpen.value = false
+    else if (metroOpen.value) metroOpen.value = false
+    else if (pinned.value) pinned.value = null
     else if (review.value) closeReview()
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    if (view.value !== 'practice') return
+    if (view.value !== 'practice' || metroOpen.value || tunerOpen.value) return
     e.preventDefault()
     stepNote(e.key === 'ArrowLeft' ? -1 : 1)
   }
@@ -2112,19 +2228,140 @@ onBeforeUnmount(() => {
   color: var(--accent-600);
 }
 
-.bpm-slider,
-.mini-slider {
-  accent-color: var(--accent-500);
-  cursor: pointer;
+/* The metronome's summary: the beat pattern in miniature, then the meter.
+   Clicking it opens the full sheet. */
+.metro-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 2.1rem;
+  padding: 0 0.7rem 0 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
 }
 
-.bpm-slider {
-  width: 8rem;
+.metro-btn:hover {
+  border-color: var(--accent-400);
+  box-shadow: 0 0 0 3px var(--accent-050);
 }
 
-.mini-slider {
-  width: 4.5rem;
+.mb-beats {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.12rem;
+  height: 1.05rem;
 }
+
+.mb-beats i {
+  width: 0.2rem;
+  border-radius: 0.1rem;
+}
+
+.mb-beats i.on {
+  width: 0.28rem;
+}
+
+.mb-beats i.st-a {
+  height: 100%;
+  background: #dc2626;
+}
+
+.mb-beats i.st-n {
+  height: 64%;
+  background: #3f3f46;
+}
+
+.mb-beats i.st-s {
+  height: 34%;
+  background: #c4c0b8;
+}
+
+.mb-beats i.st-m {
+  height: 100%;
+  box-shadow: inset 0 0 0 1px #dcd9d3;
+}
+
+.mb-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.mb-text b {
+  color: var(--text);
+}
+
+.mb-gap {
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff;
+}
+
+.mb-icon {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+.click-toggle.off {
+  color: var(--accent-600);
+  border-color: var(--accent-400);
+  background: var(--accent-050);
+}
+
+.tuner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2.1rem;
+  padding: 0 0.8rem 0 0.65rem;
+  border-radius: 0.5rem;
+  background: #141312 !important;
+  color: #f4f3ef !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tuner-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: #22c55e;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.tuner-btn:hover svg {
+  stroke: #4ade80;
+}
+
+/* Start / Stop in the metronome sheet's header. */
+.gm-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  background: var(--text) !important;
+  color: #fff !important;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.gm-run.on {
+  background: var(--accent-500) !important;
+}
+
 
 .sel {
   display: inline-flex;
@@ -2485,10 +2722,6 @@ onBeforeUnmount(() => {
 
   .mobile-only {
     display: grid;
-  }
-
-  .bpm-slider {
-    display: none;
   }
 }
 </style>

@@ -99,6 +99,54 @@ export function slotsPerBar(meter, subdiv) {
   return meter.pulses * subdiv
 }
 
+// ── Beat patterns ────────────────────────────────────────────────────────────
+// What the click plays on each slot of the bar, one letter per slot:
+//   a  accent   n  normal   s  soft   m  muted
+// A pattern belongs to one meter + subdivision (beatKey), since the slots of
+// 4/4 in eighths are not the slots of 6/8 in eighths. The weights map onto the
+// click's existing voices, so the native helper needs no new ones.
+export const BEAT_CYCLE = ['a', 'n', 's', 'm']
+export const BEAT_KIND = { a: 'bar', n: 'pulse', s: 'sub' }
+
+export function beatKey(meterId, subdiv) {
+  return `${meterId}:${subdiv}`
+}
+
+export function defaultBeats(meter, subdiv, withSubs = false) {
+  const spb = meter.pulses * subdiv
+  return Array.from({ length: spb }, (_, i) =>
+    i === 0 ? 'a' : i % subdiv === 0 ? 'n' : withSubs ? 's' : 'm',
+  )
+}
+
+function only(meter, subdiv, sounds) {
+  return Array.from({ length: meter.pulses * subdiv }, (_, i) => sounds(i, Math.floor(i / subdiv), i % subdiv) || 'm')
+}
+
+// One-tap starting points. The backbeat is 2 & 4 in duple meters and 2 & 3 in
+// 3/4 — the beats a drummer's snare would take.
+export function beatPresets(meter, subdiv) {
+  const list = [{ id: 'every', label: 'Every beat', beats: defaultBeats(meter, subdiv, false) }]
+  if (subdiv > 1) list.push({ id: 'subs', label: 'With subdivisions', beats: defaultBeats(meter, subdiv, true) })
+  list.push({ id: 'one', label: 'Downbeat only', beats: only(meter, subdiv, (i) => (i === 0 ? 'a' : null)) })
+  if (meter.pulses > 1) {
+    const back = (p) => (meter.pulses === 3 ? p > 0 : p % 2 === 1)
+    list.push({
+      id: 'back',
+      label: meter.pulses === 3 ? '2 & 3' : meter.pulses === 2 ? 'Beat 2' : '2 & 4',
+      beats: only(meter, subdiv, (i, p, off) => (off === 0 && back(p) ? 'a' : null)),
+    })
+  }
+  if (subdiv % 2 === 0) {
+    list.push({
+      id: 'off',
+      label: 'Off-beats',
+      beats: only(meter, subdiv, (i, p, off) => (off === subdiv / 2 ? 'n' : null)),
+    })
+  }
+  return list
+}
+
 // ── Drums ────────────────────────────────────────────────────────────────────
 // Steps per pulse on the pattern grid: sixteenths in simple meters, and the
 // compound equivalent (six per dotted quarter) in 6/8 and 12/8. Eighths

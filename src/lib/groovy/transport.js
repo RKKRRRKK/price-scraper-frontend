@@ -13,7 +13,7 @@
 // played before the change still match against the grid they were played to.
 
 import { ensureAudio } from './context'
-import { meterById, slotKind, patternRes, patternById } from './grid'
+import { meterById, slotKind, patternRes, patternById, BEAT_KIND } from './grid'
 import { webVoices } from './voices'
 import { setClickLevel, setDrumLevel } from './bus'
 
@@ -46,12 +46,19 @@ export class Transport {
       clickSubdivisions: false,
       drumsOn: false,
       patternId: null,
+      // (meterId, subdiv) => ['a'|'n'|'s'|'m', …] per slot of the bar, or null
+      // to fall back to the plain weights (see beat patterns in grid.js).
+      beatsFor: null,
+      // { on, play, mute }: sound `play` bars, then leave `mute` bars silent.
+      // The grid keeps going underneath, so the silent bars are still measured.
+      gap: null,
     }
     this._ac = null
     this._timer = 0
     this._cur = null
     this._fine = 0
     this._cursorTime = 0
+    this.gapFrom = 0
     // Where the sounds go: Web Audio, or the helper in engine mode. See voices.js.
     this.voices = webVoices
   }
@@ -94,6 +101,7 @@ export class Transport {
     if (!ac) throw new Error('Web Audio is not available in this browser.')
     this._ac = ac
     this.segments = []
+    this.gapFrom = 0
     this._openSegment(ac.currentTime + 0.1)
     this.running = true
     this._timer = setInterval(() => this._schedule(), TICK_MS)
@@ -290,6 +298,31 @@ export class Transport {
     return (60 / this.config.bpm) * meter.pulses
   }
 
+  // Where bar `bar` (counted from Start) sits in the gap cycle, or -1 when the
+  // gap is off. The cycle opens with its sounding bars, so the first bars
+  // after Start always click.
+  // Bars before `gapFrom` always sound: recording moves it to the take's first
+  // bar, so a count-in never lands in a silent stretch.
+  gapPhase(bar) {
+    const g = this.config.gap
+    if (!g?.on || !(g.mute > 0) || bar < this.gapFrom) return -1
+    return (bar - this.gapFrom) % (Math.max(1, g.play) + g.mute)
+  }
+
+  isGapBar(bar) {
+    return this.gapPhase(bar) >= Math.max(1, this.config.gap?.play || 1)
+  }
+
+  // Which click voice a slot gets, or null for none.
+  _clickKind(seg, index) {
+    const spb = seg.slotsPerBar
+    const inBar = ((index % spb) + spb) % spb
+    const beats = this.config.beatsFor?.(seg.meterId, seg.subdiv)
+    if (beats && beats.length === spb) return BEAT_KIND[beats[inBar]] || null
+    const kind = slotKind(index, seg.subdiv, seg.meter)
+    return kind !== 'sub' || this.config.clickSubdivisions ? kind : null
+  }
+
   // ── Scheduling ────────────────────────────────────────────────────────────
   _schedule() {
     const ac = this._ac
@@ -316,15 +349,17 @@ export class Transport {
       const seg = this._cur
       const when = this._cursorTime
 
+      const silent = this.isGapBar(seg.barOffset + Math.floor(this._fine / (seg.fineRes * seg.pulses)))
+
       const clickEvery = seg.fineRes / seg.subdiv
-      if (this.config.clickOn && this._fine % clickEvery === 0) {
-        const kind = slotKind(this._fine / clickEvery, seg.subdiv, seg.meter)
-        if (kind !== 'sub' || this.config.clickSubdivisions) this.voices.click(ac, when, kind)
+      if (this.config.clickOn && !silent && this._fine % clickEvery === 0) {
+        const kind = this._clickKind(seg, this._fine / clickEvery)
+        if (kind) this.voices.click(ac, when, kind)
       }
 
       const pat = seg.pattern
       const drumEvery = seg.fineRes / seg.patternRes
-      if (this.config.drumsOn && pat && this._fine % drumEvery === 0) {
+      if (this.config.drumsOn && !silent && pat && this._fine % drumEvery === 0) {
         const stepsPerBar = seg.pulses * seg.patternRes
         const step = ((this._fine / drumEvery) % stepsPerBar + stepsPerBar) % stepsPerBar
         if (pat.kick.includes(step)) this.voices.kick(ac, when)

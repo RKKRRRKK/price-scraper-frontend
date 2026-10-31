@@ -25,12 +25,13 @@
             <template v-else-if="hit">pitch unclear</template>
             <template v-else>play a note</template>
           </span>
-          <span v-if="note" class="nc-tag" :class="{ off: !tone }" :title="scale?.name">
-            {{ tone ? `${tone.degreeLabel} · in key` : 'not in key' }}
+          <!-- Always laid out (hidden when empty) so the card never changes height. -->
+          <span class="nc-tag" :class="{ off: note && !tone, ghost: !note }" :title="scale?.name">
+            {{ !note ? '·' : tone ? `${tone.degreeLabel} · in key` : 'not in key' }}
           </span>
         </div>
 
-        <div class="nc-block">
+        <div v-if="timing" class="nc-block">
           <span class="nc-big" :class="zone || 'faint'">
             <template v-if="hit">{{ hit.devMs > 0 ? '+' : '' }}{{ Math.round(hit.devMs) }}</template>
             <template v-else>—</template>
@@ -40,17 +41,17 @@
             <template v-if="hit">{{ direction }} · beat {{ hit.label }}</template>
             <template v-else>from the nearest grid line</template>
           </span>
-          <span v-if="zone" class="nc-tag" :class="zone">{{ ZONE_WORDS[zone] }}</span>
+          <span class="nc-tag" :class="zone || 'ghost'">{{ zone ? ZONE_WORDS[zone] : '·' }}</span>
         </div>
       </div>
     </div>
 
     <div class="nc-stats">
-      <div class="nc-stat">
+      <div class="nc-stat wide">
         <span class="nc-k">Spread</span>
         <span class="nc-v">{{ fmt1(stats.sdMs) }} ms</span>
       </div>
-      <div class="nc-stat">
+      <div class="nc-stat wide">
         <span class="nc-k">Feel</span>
         <span class="nc-v">{{ stats.meanMs > 0 ? '+' : '' }}{{ fmt1(stats.meanMs) }} ms</span>
       </div>
@@ -68,6 +69,7 @@
       </div>
       <button v-if="mode === 'live'" class="nc-reset" title="Clear the notes and the running numbers" @click="$emit('reset')">
         <i class="pi pi-refresh"></i>
+        Reset
       </button>
     </div>
   </section>
@@ -87,6 +89,8 @@ const props = defineProps({
   scale: { type: Object, default: null },
   stats: { type: Object, default: () => ({}) },
   position: { type: String, default: '' },
+  // Off when the Pocket above already shows the timing in large.
+  timing: { type: Boolean, default: true },
 })
 defineEmits(['unpin', 'reset'])
 
@@ -143,6 +147,7 @@ function fmt1(v) {
 }
 
 .nc-eyebrow {
+  height: 1.1rem;
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -179,7 +184,7 @@ function fmt1(v) {
   grid-template-columns: auto;
   align-content: start;
   gap: 0.1rem;
-  min-width: 8.5rem;
+  width: 10rem;
 }
 
 .nc-big {
@@ -219,6 +224,8 @@ function fmt1(v) {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nc-tag {
@@ -231,6 +238,10 @@ function fmt1(v) {
   background: var(--bg-sunken);
   color: var(--text-dim);
   white-space: nowrap;
+}
+
+.nc-tag.ghost {
+  visibility: hidden;
 }
 
 .nc-tag.off {
@@ -262,9 +273,15 @@ function fmt1(v) {
   margin-left: auto;
 }
 
+/* Fixed widths: growing digits must not re-wrap the card. */
 .nc-stat {
   display: flex;
   flex-direction: column;
+  min-width: 3.5rem;
+}
+
+.nc-stat.wide {
+  min-width: 5rem;
 }
 
 .nc-k {
@@ -282,14 +299,20 @@ function fmt1(v) {
 }
 
 .nc-reset {
-  width: 1.9rem;
   height: 1.9rem;
+  padding: 0 0.7rem !important;
   border-radius: 0.45rem;
   border: 1px solid var(--border) !important;
-  display: grid;
-  place-items: center;
-  color: var(--text-faint);
-  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.nc-reset i {
+  font-size: 0.7rem;
 }
 
 .nc-reset:hover {

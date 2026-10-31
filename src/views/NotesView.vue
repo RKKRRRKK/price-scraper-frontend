@@ -470,11 +470,16 @@
     </div>
 
     <!-- ── Add / Edit Modal ── -->
-    <div v-if="modalOpen" class="modal-backdrop" @click.self="closeModal">
+    <div
+      v-if="modalOpen"
+      class="modal-backdrop"
+      @mousedown="backdropPressed = $event.target === $event.currentTarget"
+      @click.self="onBackdropClick"
+    >
       <div class="modal">
         <div class="modal-head">
           <span class="modal-title">{{ modalMode === 'add' ? 'New Note' : 'Edit Note' }}</span>
-          <button class="modal-close" @click="closeModal">
+          <button class="modal-close" @click="requestCloseModal">
             <i class="pi pi-times" style="font-size: 0.875rem;"></i>
           </button>
         </div>
@@ -857,6 +862,33 @@ function openAddModal() {
 
 function closeModal() {
   modalOpen.value = false
+}
+
+// Anything the user typed counts; dropdown picks alone don't.
+function modalHasInput() {
+  const f = modalForm.value
+  return !!(
+    htmlToText(f.content).trim()
+    || f.keywords.length
+    || modalNewKeyword.value.trim()
+    || f.speaker.trim()
+    || f.stakeholder.trim()
+    || f.deadline_stakeholder.trim()
+  )
+}
+
+function requestCloseModal() {
+  if (modalHasInput() && !confirm('Discard this note? What you wrote will be lost.')) return
+  closeModal()
+}
+
+// Only a click that both starts and ends on the backdrop closes the modal —
+// otherwise a text-selection drag released outside the dialog would close it.
+const backdropPressed = ref(false)
+function onBackdropClick() {
+  const pressed = backdropPressed.value
+  backdropPressed.value = false
+  if (pressed) requestCloseModal()
 }
 
 function addKeywordToModal() {

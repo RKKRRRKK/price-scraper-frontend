@@ -8,11 +8,12 @@
 
 export const NOTES_TAXONOMY = Object.freeze({
   personal: {
-    Projects:  ['Software Ongoing', 'Software Ideas', 'Hardware', 'Physical', 'Art', 'Analysis', 'Personal Assistant / AI', 'Full-Stack', 'Other/Mix'],
-    Meta:      ['Productivity', 'Sensors', 'Scraper', 'Other/New'],
+    Projects:  ['Software Ongoing', 'Software Ideas', 'Hardware', 'Physical', 'Art', 'Analysis', 'Content', 'Full-Stack', 'Other/Mix'],
+    Marvin:    ['Measurements', 'Summaries', 'Raw', 'Unassigned', 'Todo'],
+    Meta:      ['Productivity', 'Sensors', 'Scraper', 'Tools', 'Other/New'],
     Ideas:     ['Politics/Law', 'Psychology', 'Entertainment', 'Business/Money', 'Analysis', 'MMA', 'Other'],
     Health:    ['Workouts', 'Supplements/Protocols', 'Doctors', 'Analysis', 'Other'],
-    Misc:      ['Favorites', 'Food', 'Random', 'Knowledge/Facts'],
+    Misc:      ['Favorites', 'Food', 'Random', 'Knowledge/Facts', 'Watchlists', 'Buylists'],
     Relations: ['Important Dates', 'Favorites/Interests/Facts', 'Memories', 'Feels'],
   },
   work: {

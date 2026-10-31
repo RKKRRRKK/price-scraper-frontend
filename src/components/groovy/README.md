@@ -61,10 +61,13 @@ stored rows all agree.
 
 | File | What it draws |
 |---|---|
-| `GroovyRoll.vue` | The scrolling practice surface (canvas) |
+| `GroovyPocket.vue` | The live practice surface: a fixed early ↔ late gauge (canvas) |
+| `GroovyRoll.vue` | The scrolling timeline: take replay, and the live Timeline view |
+| `GroovyMetronome.vue` | The metronome sheet: tempo, meter, beat pads, gap, sound, drums |
+| `GroovyModal.vue` | The sheet the metronome and the tuner open in |
 | `GroovyFretboard.vue` | The scale map, and the selected note lit on it |
 | `GroovyNoteCard.vue` | The selected note read out, plus the running numbers |
-| `GroovyTuner.vue` | Chromatic tuner on the pitch tracker |
+| `GroovyTuner.vue` | Chromatic tuner on the pitch tracker (its own sheet) |
 | `GroovyInputSetup.vue` | Device, channel, detector tuning, calibration |
 | `GroovyAmp.vue` | The amp panel |
 | `GroovyTakeCompare.vue` | Tiles, histograms, per-position chart, table |
@@ -391,10 +394,44 @@ and monitoring feel comes from the interface's direct monitor, not from here.
 
 ---
 
+## The Pocket — the live surface
+
+The roll below used to be the live view, and the player rejected it: upcoming
+grid lines sliding toward a now-line train you to **anticipate beats with your
+eyes**, which is the opposite of the skill being practised. The Pocket replaces
+it while you play (Pocket / Timeline toggle on the second toolbar row; a take
+opened for replay always uses the roll). The rule it is built on: **nothing on
+it moves with the beat.** Nothing moves at all until you play. Your ears own
+the time; the screen only answers.
+
+- **The axis** is early ↔ late, centred on the beat, ±3 × tolerance wide
+  (at least ±45 ms). The band carries the three pocket zones.
+- **The disc** is the latest note (or the selected one, ← / →), dropped onto
+  the axis where it landed, with a bar from the beat so distance reads at a
+  glance. Same colour and label rules as the roll. A note past the end of the
+  scale parks at the edge with an arrow.
+- **Afterimages**: the last 28 notes as fading ticks. A tight cluster and a
+  scattered one look different without reading a number.
+- **The feel bracket** under the band: mean ± spread over those 28 notes.
+- **The verdict** in words (In the pocket / A touch late / Early …) plus
+  the ms, and a **streak**: notes in a row that stayed in the pocket
+  (green + yellow, same as the in-pocket stat), with the session best.
+- **Where in the bar**: the last 96 notes split by grid position, each cell's
+  mean as a dot, and one sentence for the worst position once it has three
+  notes ("Dragging “2 &” by 18 ms"). Hits carry a `gridKey` so notes played
+  under another meter or subdivision don't pollute it.
+- A soft **wash** of the zone colour crosses the panel on every note, for
+  peripheral vision while your eyes are on the neck.
+
+With the Pocket showing the timing large, the note card drops its own ms block
+(`timing` prop) and keeps pitch and the running numbers.
+
 ## Reading the roll
 
-The now-line sits at 72% rather than at the right edge, so the next beat is
-visible on its way in and you can aim at it.
+The roll is the timeline: replaying takes, and the live Timeline view for
+anyone who wants it. The now-line sits at 72% rather than at the right edge,
+so the next beat is visible on its way in — which is exactly why it is no
+longer the default live view (see the Pocket above).
 
 It is one lane. Every note you play leaves a **large circle** at the moment
 you played it, which then scrolls away with the grid. A short stub joins the
@@ -641,16 +678,61 @@ play from 0, which is close but not exact.
 
 ---
 
+## Metronome
+
+The toolbar keeps only what you touch mid-practice — tempo, tap, a click mute
+— plus a summary button (the beat pattern in miniature, the meter, a gap
+badge) that opens the **metronome sheet** (**M**). The sheet holds the rest:
+tempo with hold-to-repeat and tap, meter, grid, the beat editor, gap, sound,
+click and drum volume, drum pattern. Start/Stop sits in its header so changes
+can be heard as they are made.
+
+**Beat pads.** One pad per slot of the bar, grouped by pulse; the pad's height
+is what that slot plays: **accent / normal / soft / mute**. Click cycles
+(shift-click or right-click backwards, ↑ / ↓ when focused), and a drag across
+the row draws the heights in like a step sequencer. Presets: every beat, with
+subdivisions, downbeat only, backbeat (2 & 4, or 2 & 3 in 3/4), off-beats.
+Patterns are stored per meter + subdivision (`prefs.beatPatterns`, keyed by
+`beatKey()`), since the slots of one grid are not the slots of another; an
+unedited grid uses `defaultBeats()`, seeded from the old `clickSubdivisions`
+pref. The three weights map onto the click's existing bar / pulse / sub voices
+(`BEAT_KIND`), so the native helper needs no new voice ids. The transport
+asks `config.beatsFor(meterId, subdiv)` per click, so an edit lands on the
+next scheduled slot. Takes store the pattern they were played to
+(`settings.beats`) and replay it.
+
+**Gap.** Play N bars, then M silent bars, repeat. Click *and* drums drop out;
+the grid and the detector keep running, so the silent bars are still scored —
+it tests where your own time drifts with nothing to lean on. The cycle counts
+from Start, and recording restarts it on the take's first bar
+(`transport.gapFrom`), so a count-in never falls silent.
+
+**Sounds.** Woodblock (the original), beep, clave, cowbell, stick — all
+synthesised in `click.js`. Accent is higher as well as louder on the pitched
+ones, which is the part that survives a loud amp. The chosen sound is module
+state (`setClickSound`), so the transport, replay and the native renderer all
+follow it; in engine mode a change re-renders and re-uploads the four click
+voices (`NativeEngine.refreshClicks()`).
+
 ## Tuner
 
-The **Tuner** chip opens a chromatic tuner beside the note card, running on the
-same pitch tracker as the roll (A4 = 440). The tracker wobbles by a few cents
-between its ~35 readings a second. That is fine for drawing a note and useless
-for tuning one, so the needle shows a median of the last few readings. The run
-restarts whenever the pitch jumps, and the last reading stays up, dimmed, after
-the string dies away. The needle uses the pocket colours: green within ±5¢,
-yellow to ±15¢, red beyond. When the note is an open string of the instrument
-chosen on the scale map, it names the string.
+The **Tuner** button (**T**) opens a chromatic tuner in its own dark sheet: you
+tune before you play, so it is allowed to cover everything. It runs on the same
+pitch tracker as the roll. The tracker wobbles by a few cents between its ~35
+readings a second. That is fine for drawing a note and useless for tuning one,
+so the needle shows a median of the last few readings. The run restarts
+whenever the pitch jumps, and the last reading stays up, dimmed, after the
+string dies away.
+
+Two readouts of one number: the **arc** (coarse, pocket colours: green within
+±5¢, yellow to ±15¢, red beyond) and a **strobe** band that drifts left when
+flat and right when sharp, standing still only in tune — far finer than a
+needle. Held within ±3¢ for half a second the dial glows and that open string
+(of the instrument chosen on the scale map) is ticked. Clicking a string plays
+its reference pitch with a few harmonics, or a 41 Hz low E is inaudible on
+anything but a cab. The A4 reference is adjustable (415–466 Hz,
+`prefs.tunerRef`); the tracker speaks A440 and the tuner just shifts where
+"in tune" is.
 
 **The number to practise against is the spread, not the mean.** A consistent
 15 ms behind the click is a feel; 15 ms of scatter either side of it is a timing

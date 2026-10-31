@@ -11,7 +11,7 @@
 
 import { ensureAudio, currentContext, outputLatencySec } from './context'
 import { scheduleClick } from './click'
-import { slotKind } from './grid'
+import { slotKind, BEAT_KIND } from './grid'
 import { freqOfMidi } from './pitch'
 import { Transport } from './transport'
 
@@ -146,10 +146,15 @@ export class TakeReplay {
 
     const seg = this.grid.segments[0]
     const subs = !!this.take.settings?.clickSubdivisions
+    // Takes recorded with a beat pattern replay it; older ones use the weights.
+    const beats = this.take.settings?.beats
+    const spb = seg.slotsPerBar
     while (seg.origin + this._slot * seg.slotSec < horizon) {
-      const kind = slotKind(this._slot, seg.subdiv, seg.meter)
+      let kind = slotKind(this._slot, seg.subdiv, seg.meter)
+      if (beats?.length === spb) kind = BEAT_KIND[beats[((this._slot % spb) + spb) % spb]] || null
+      else if (kind === 'sub' && !subs) kind = null
       const t = seg.origin + this._slot * seg.slotSec
-      if (this._click && (kind !== 'sub' || subs)) scheduleClick(ac, this._origin + t, kind)
+      if (this._click && kind) scheduleClick(ac, this._origin + t, kind)
       this._slot++
     }
 

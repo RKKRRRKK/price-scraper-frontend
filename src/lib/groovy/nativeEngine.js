@@ -92,11 +92,12 @@ function loadSourceModule(ac) {
   return modules.get(ac)
 }
 
-// Every voice, rendered at `sampleRate` through the real voice code with the
-// buses at unity. Levels are applied per play instead.
-export async function renderVoices(sampleRate) {
+// Every voice (or those `only` keeps), rendered at `sampleRate` through the
+// real voice code with the buses at unity. Levels are applied per play instead.
+export async function renderVoices(sampleRate, only = null) {
   const out = {}
   for (const [name, fn] of Object.entries(RENDER)) {
+    if (only && !only(name)) continue
     const oac = new OfflineAudioContext(1, Math.ceil(sampleRate * 0.4), sampleRate)
     clickBus(oac).gain.value = 1
     drumBus(oac).gain.value = 1
@@ -202,6 +203,16 @@ export class NativeEngine {
       throw new Error('The helper is connected but no audio is arriving from it.')
     }
     return node
+  }
+
+  // The click sound changed: render the four click weights again and replace
+  // them on the helper. Same ids, so bookings already made pick up the new
+  // samples on their own.
+  async refreshClicks() {
+    if (!this.node) return
+    const voices = await renderVoices(this.sampleRate, (n) => n.startsWith('click-'))
+    if (!this.node) return
+    for (const [name, pcm] of Object.entries(voices)) this.monitor.uploadVoice(VOICE_IDS[name], pcm)
   }
 
   close() {

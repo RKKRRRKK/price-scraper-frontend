@@ -17,7 +17,7 @@
 
       <!-- placed items -->
       <ComponentSprite
-        v-for="it in data.items"
+        v-for="it in visibleItems"
         :key="it.id"
         :item="it"
         :layout="sceneLayout"
@@ -27,7 +27,7 @@
       />
 
       <!-- wires (drawn above parts so connections stay visible on boards) -->
-      <g class="wires">
+      <g v-if="!wiresHidden" class="wires">
         <g v-for="w in data.wires" :key="w.id">
           <path
             :d="wirePath(w)" class="wire"
@@ -79,8 +79,11 @@ const props = defineProps({
   wireType: { type: String, default: 'M-M' },
   locked: { type: Boolean, default: false },
   highlightDepth: { type: Number, default: 1 },
+  // layer visibility: hidden parts/wires aren't drawn and can't be clicked
+  hiddenItemIds: { type: Array, default: () => [] },
+  wiresHidden: { type: Boolean, default: false },
 })
-const emit = defineEmits(['add', 'move', 'select', 'add-wire', 'remove-wire', 'delete-selected', 'placed', 'cancel'])
+const emit = defineEmits(['add', 'move', 'move-end', 'select', 'add-wire', 'remove-wire', 'delete-selected', 'placed', 'cancel'])
 
 const wrap = ref(null)
 const svgEl = ref(null)
@@ -105,6 +108,10 @@ const sceneLayout = computed(() => {
   const holesById = {}
   for (const l of ls) for (const h of l.holes) { holes.push(h); holesById[h.id] = h }
   return { ...ls[0], holes, holesById }
+})
+const visibleItems = computed(() => {
+  const hidden = new Set(props.hiddenItemIds)
+  return (props.data.items || []).filter((it) => !hidden.has(it.id))
 })
 const itemsById = computed(() => {
   const m = {}
@@ -164,6 +171,7 @@ function wireHitRadius() {
   return Math.max(10, 12 * scale)
 }
 function nearestWire(p) {
+  if (props.wiresHidden) return null
   let best = null
   let bestD = wireHitRadius() ** 2
   const ctx = wireCtx()
@@ -330,7 +338,7 @@ function nearestEndpoint(p) {
 
 // ── topmost item under a point ──
 function topItemAt(p) {
-  const items = props.data.items
+  const items = visibleItems.value
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i]
     const b = itemBounds(sceneLayout.value, it, boardLayouts.value[it.id])
@@ -354,7 +362,7 @@ function placeAt(kind, p) {
   const item = makeItem(kind, { x: hole?.x ?? p.x, y: hole?.y ?? p.y })
   if (hole) placeInlineItem(layoutForHole(hole), item, hole)
   emit('add', item)
-  emit('select', item.id)
+  emit('select', { type: 'item', id: item.id })
   emit('placed')
 }
 
@@ -433,6 +441,7 @@ function onMove(e) {
 }
 
 function onUp(e) {
+  if (drag.value) emit('move-end')
   drag.value = null
   pan.value = null
   try { svgEl.value.releasePointerCapture(e.pointerId) } catch { /* ignore */ }

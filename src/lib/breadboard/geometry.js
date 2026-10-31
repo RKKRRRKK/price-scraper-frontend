@@ -172,6 +172,9 @@ export function inlinePinXY(layout, item, pin, index) {
   return { x: (item.x || 0) + index * PITCH, y: item.y || 0 }
 }
 
+// Bodies ComponentSprite draws directly over their own pin row (no legs).
+const FOOTPRINT_BODIES = new Set(['to92', 'irrx', 'pot', 'trimpot'])
+
 // Axis-aligned bounds of a placed item, in scene space. Used for selection
 // outlines (sprite) and click hit-testing (canvas) so the two always agree.
 export function itemBounds(layout, item, boardLayout) {
@@ -192,8 +195,10 @@ export function itemBounds(layout, item, boardLayout) {
   // The body is drawn perpendicular to the pin line, so pad that axis on both
   // sides (the body can land either way once a part is rotated). For a horizontal
   // pin row the body is above/below; for a vertical row it's left/right.
-  const reach = 30
-  const along = 14
+  // Footprint bodies sit right over their pins, so they get a snug box.
+  const footprint = FOOTPRINT_BODIES.has(item.body || tpl?.body)
+  const reach = footprint ? 18 : 30
+  const along = footprint ? 10 : 14
   if (maxX - minX >= maxY - minY) {
     return { x: minX - along, y: minY - reach, w: maxX - minX + along * 2, h: maxY - minY + reach * 2 }
   }

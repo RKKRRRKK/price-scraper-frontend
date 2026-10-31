@@ -619,10 +619,10 @@
                 <span class="dot"></span>
               </button>
               <div class="takes" :class="{ open: takesOpen }">
-                <button class="dk-takes" @click.stop="takesOpen = !takesOpen">
+                <button ref="takesBtn" class="dk-takes" @click.stop="toggleTakes">
                   Takes <span class="take-count">{{ takes.length }}</span>
                 </button>
-                <div class="takes-panel" @click.stop>
+                <div class="takes-panel" :style="takesPanelStyle" @click.stop>
                   <div class="ph"><span>Session takes</span></div>
                   <div class="pn">Recorded from your mic. Session only — download to keep; nothing is saved to Supabase.</div>
                   <div v-if="!takes.length" class="takes-empty">No takes yet — hit the red button.</div>
@@ -630,6 +630,7 @@
                     <i class="pi pi-wave-pulse" style="font-size: 0.75rem; color: var(--text-faint);"></i>
                     <span class="tn">{{ tk.name }}</span>
                     <span class="td">{{ tk.secs }}s</span>
+                    <button class="take-btn" :class="{ playing: playingTakeId === tk.id }" :title="playingTakeId === tk.id ? 'Stop' : 'Play'" @click="toggleTakePlay(tk)"><i class="pi" :class="playingTakeId === tk.id ? 'pi-stop-circle' : 'pi-play'"></i></button>
                     <a class="take-btn" :href="tk.url" :download="tk.name + '.' + tk.ext" title="Download"><i class="pi pi-download"></i></a>
                     <button class="take-btn danger" title="Discard" @click="discardTake(tk.id)"><i class="pi pi-times"></i></button>
                   </div>
@@ -980,6 +981,26 @@ const imageUrl = ref('')
 const takes = ref([])
 const recording = ref(false)
 const takesOpen = ref(false)
+const takesBtn = ref(null)
+const takesPanelStyle = ref({})
+// The dock scrolls horizontally (overflow-x: auto), which clips an absolutely
+// positioned panel above it — so the panel is fixed and anchored to the button.
+function placeTakesPanel() {
+  const r = takesBtn.value?.getBoundingClientRect()
+  if (!r) return
+  takesPanelStyle.value = {
+    right: Math.max(8, window.innerWidth - r.right) + 'px',
+    bottom: window.innerHeight - r.top + 8 + 'px',
+  }
+}
+function openTakes() {
+  placeTakesPanel()
+  takesOpen.value = true
+}
+function toggleTakes() {
+  if (takesOpen.value) takesOpen.value = false
+  else openTakes()
+}
 let takeSeq = 0
 let recStartedAt = 0
 const recorder = new TakeRecorder()
@@ -1311,9 +1332,26 @@ let stableStart = null
 let followHeld = 0
 let followOkUntil = 0
 let followFrac = 0 // 0..1 of the current note already played (painted, not reactive)
-const FOLLOW_GRACE_MS = 220 // a dropout shorter than this doesn't stall the note
-const FOLLOW_ONSET_MS = 70 // how long a pitch has to settle before it counts
-const FOLLOW_EARLY = 0.55 // fraction of a note after which the next one may take over
+// Which upcoming note the mic is currently hearing (0 = the current one, 1 = the
+// next, 2 = the one after), and since when — a pitch has to settle before it
+// moves anything.
+let candK = -1
+let lastHeardAt = 0
+// The player's own sharp/flat lean in semitones, learned while they're on the
+// right note. Bawu pitch bends with breath pressure, so the window to match a
+// note is centred on how THIS instrument is being played, not on A=440.
+let pitchBias = 0
+// A tongued re-attack (a dropout or a sharp dip in level) — the only way to tell
+// two repeated notes of the same pitch apart.
+let articulated = false
+let levelEnv = 0
+let quietSince = null
+const FOLLOW_GRACE_MS = 280 // a dropout shorter than this doesn't stall the note
+const FOLLOW_ONSET_MS = 60 // how long a pitch has to settle before it counts
+const FOLLOW_TOL_CUR = 0.75 // semitones either side of the current note that still count
+const FOLLOW_TOL_NEXT = 0.55 // tighter for the next note, so a breathy-sharp note doesn't skip
+const FOLLOW_EARLY = 0.1 // last fraction of a note the player may cut short to move on
+const FOLLOW_BIAS_MAX = 0.35
 // The sound currently in the air. A tie or a slur is ONE sound spanning several
 // notes, so the voice outlives the note that started it and gets glided rather
 // than restruck; `glidePending` marks a portamento already scheduled ahead of
@@ -1338,10 +1376,7 @@ function resetPlayback(toIdx = 0) {
   releaseVoice()
   curIdx = Math.max(0, Math.min(playableNotes.value.length - 1, toIdx))
   t = playableNotes.value[curIdx]?.start || 0
-  followHeld = 0
-  followOkUntil = 0
-  followFrac = 0
-  stableStart = null
+  resetFollow()
   syncTriggers()
   uiIdx.value = curIdx
 }
@@ -1415,7 +1450,9 @@ function frame(ts) {
       // at the tempo it is written at, and only steps on once the note has had
       // its full length. Stop blowing and the song stops with you.
       const cur = notes[curIdx]
-      if (cur) {
+      // A note the bawu can't sound can't be waited on — pass straight over it.
+      if (cur && cur.row === null) advanceFollow()
+      else if (cur) {
         if (performance.now() < followOkUntil) {
           followHeld = Math.min(cur.beats, followHeld + dt * (bpm.value / 60))
         }
@@ -1519,33 +1556,138 @@ const TRACE_WINDOW_MS = 6000
 
 function onPitch(p) {
   pitch.value = p
+  const at = performance.now()
   if (!p) {
-    stableStart = null
+    // Silence or breath noise. A short gap is the tracker blinking (the grace
+    // window covers it); a longer one is a tongued re-attack or a stop.
+    if (quietSince == null) quietSince = at
+    else if (at - quietSince >= 45 && followHeld > 0) articulated = true
+    if (at - lastHeardAt > 120) {
+      stableStart = null
+      candK = -1
+    }
     updateTip(null)
     return
   }
-  const at = performance.now()
+  quietSince = null
+  lastHeardAt = at
   traceSamples.push({ at, mf: p.midiFloat })
   while (traceSamples.length && at - traceSamples[0].at > TRACE_WINDOW_MS) traceSamples.shift()
   updateTip(p)
+  if (mode.value === 'follow' && playing.value) followHear(p, at)
+}
 
-  if (mode.value === 'follow' && playing.value) {
-    const cur = playableNotes.value[curIdx]
-    const nxt = playableNotes.value[curIdx + 1]
-    if (cur && p.midi === cur.midi) {
-      // Settle first, then keep the note moving for as long as it keeps coming.
-      if (stableStart == null) stableStart = at
-      if (at - stableStart >= FOLLOW_ONSET_MS) followOkUntil = at + FOLLOW_GRACE_MS
-    } else if (cur && nxt && p.midi === nxt.midi && followHeld >= cur.beats * FOLLOW_EARLY) {
-      // Moved on early — most of the note was played, so take it as played
-      // rather than stalling the song on a note nobody is sounding any more.
-      advanceFollow()
-      stableStart = at
-    } else {
-      stableStart = null
-      followOkUntil = 0
+// The playable note `k` steps on from the current one (0 = current), passing
+// over notes the bawu can't sound — nobody can be waited on to play those.
+function followNote(k) {
+  const notes = playableNotes.value
+  let i = curIdx
+  for (let n = 0; n < k; n++) {
+    i++
+    while (i < notes.length && notes[i].row === null) i++
+  }
+  return i < notes.length ? i : -1
+}
+
+// Is the (bias-corrected) heard pitch close enough to count as `midi`?
+function nearNote(mf, midi, tol = FOLLOW_TOL_CUR) {
+  return Math.abs(mf - pitchBias - midi) <= tol
+}
+
+// Has the current note been played long enough that moving on is allowed?
+// Cutting the last sliver short is fine; leaving from the middle is not.
+function followNearlyDone(cur) {
+  return followHeld >= cur.beats * (1 - FOLLOW_EARLY)
+}
+
+// Follow mode's ear: decide whether the player is on the current note or has
+// moved to the next one. Forgiving about pitch — a bawu wanders with the breath
+// and the tracker drops frames — but every note has to actually be played.
+function followHear(p, at) {
+  const notes = playableNotes.value
+  const cur = notes[curIdx]
+  if (!cur) return
+  const heard = p.midiFloat - pitchBias
+
+  // Nearer of the current note and the next; the current one wins a tie.
+  let k = -1
+  let best = Infinity
+  for (let j = 0; j <= 1; j++) {
+    const i = followNote(j)
+    if (i < 0) break
+    const d = Math.abs(heard - notes[i].midi)
+    if (d <= (j === 0 ? FOLLOW_TOL_CUR : FOLLOW_TOL_NEXT) && d < best - 1e-6) {
+      best = d
+      k = j
     }
   }
+  // An octave slip on the current note (overblown or a tracker octave error)
+  // keeps it alive, but never moves the song or teaches the bias.
+  const folded = k < 0 && Math.abs(Math.abs(heard - cur.midi) - 12) <= 0.5
+  if (folded) k = 0
+
+  if (k !== candK) {
+    candK = k
+    stableStart = at
+  }
+  const settled = at - stableStart
+
+  if (k === 0) {
+    if (!folded) {
+      // Repeated same-pitch notes only separate by a tongued re-attack.
+      if (levelEnv && p.rms < levelEnv * 0.4) {
+        if (followHeld > 0) articulated = true
+        levelEnv *= 0.97 // so a player who settles quieter isn't one long dip
+      } else {
+        levelEnv = levelEnv ? levelEnv * 0.85 + p.rms * 0.15 : p.rms
+        const ni = followNote(1)
+        const nxt = ni >= 0 ? notes[ni] : null
+        if (articulated && nxt && !nxt.tiedIn && nxt.midi === cur.midi) {
+          // A re-tongue mid-note is just a breath, not the next note.
+          if (!followNearlyDone(cur)) articulated = false
+          else {
+            advanceFollow()
+            followOkUntil = at + FOLLOW_GRACE_MS
+            return
+          }
+        }
+      }
+      if (settled >= FOLLOW_ONSET_MS) {
+        const off = p.midiFloat - cur.midi
+        if (Math.abs(off - pitchBias) <= 0.5) {
+          pitchBias = Math.max(-FOLLOW_BIAS_MAX, Math.min(FOLLOW_BIAS_MAX, pitchBias + (off - pitchBias) * 0.03))
+        }
+      }
+    }
+    if (settled >= FOLLOW_ONSET_MS) followOkUntil = at + FOLLOW_GRACE_MS
+  } else if (k === 1) {
+    // The player has moved on. Believe it once the current note is nearly done;
+    // before that the song waits on the current note, and the next one doesn't
+    // count toward it.
+    if (settled >= FOLLOW_ONSET_MS) {
+      if (followNearlyDone(cur)) {
+        advanceFollow()
+        candK = 0
+        followOkUntil = at + FOLLOW_GRACE_MS
+      } else {
+        followOkUntil = Math.min(followOkUntil, at)
+      }
+    }
+  } else {
+    // A wrong note lets the grace run out soon, rather than at once — one bad
+    // frame mid-note shouldn't stall anything.
+    followOkUntil = Math.min(followOkUntil, at + 100)
+  }
+}
+
+function resetFollow() {
+  followHeld = 0
+  followOkUntil = 0
+  followFrac = 0
+  stableStart = null
+  candK = -1
+  articulated = false
+  quietSince = null
 }
 
 function updateTip(p) {
@@ -1554,7 +1696,7 @@ function updateTip(p) {
     tipText.value = ''
     return
   }
-  if (p.midi === cur.midi) {
+  if (nearNote(p.midiFloat, cur.midi)) {
     tipText.value = mode.value === 'follow' && playing.value ? 'hold it' : 'that’s the note'
     return
   }
@@ -1566,6 +1708,7 @@ function advanceFollow() {
   followHeld = 0
   followOkUntil = 0
   followFrac = 0
+  articulated = false
   if (curIdx >= notes.length - 1) {
     if (streaming.value) return
     playing.value = false
@@ -1589,10 +1732,7 @@ function togglePlay() {
   }
   if (t > totalBeats.value) resetPlayback(0)
   syncTriggers()
-  stableStart = null
-  followHeld = 0
-  followOkUntil = 0
-  followFrac = 0
+  resetFollow()
   playing.value = true
   if (mode.value === 'follow' && !micOn.value) toggleMic()
 }
@@ -1630,10 +1770,7 @@ function setMode(m) {
   mode.value = m
   playing.value = false
   releaseVoice()
-  stableStart = null
-  followHeld = 0
-  followOkUntil = 0
-  followFrac = 0
+  resetFollow()
   syncTriggers()
 }
 
@@ -1695,7 +1832,7 @@ async function toggleRecord() {
       url: URL.createObjectURL(blob),
       ext: takeExtension(recorder.mimeType),
     })
-    takesOpen.value = true
+    openTakes()
     showToast('Take ready — session only, download to keep')
   } else {
     try {
@@ -1711,9 +1848,34 @@ async function toggleRecord() {
   }
 }
 
+// Replay in-page: one shared <audio>, so starting another take (or the same one
+// again) stops whatever was playing.
+const playingTakeId = ref('')
+let takeAudio = null
+function stopTakePlayback() {
+  if (takeAudio) {
+    takeAudio.pause()
+    takeAudio.src = ''
+    takeAudio = null
+  }
+  playingTakeId.value = ''
+}
+function toggleTakePlay(tk) {
+  if (playingTakeId.value === tk.id) return stopTakePlayback()
+  stopTakePlayback()
+  const a = new Audio(tk.url)
+  a.onended = a.onerror = () => {
+    if (takeAudio === a) stopTakePlayback()
+  }
+  takeAudio = a
+  playingTakeId.value = tk.id
+  a.play().catch(stopTakePlayback)
+}
+
 function discardTake(id) {
   const idx = takes.value.findIndex((x) => x.id === id)
   if (idx === -1) return
+  if (playingTakeId.value === id) stopTakePlayback()
   URL.revokeObjectURL(takes.value[idx].url)
   takes.value.splice(idx, 1)
 }
@@ -2974,6 +3136,7 @@ function onDocClick() {
 }
 
 function onResize() {
+  if (takesOpen.value) placeTakesPanel()
   vw.value = viewportW()
   vh.value = viewportH()
   if (window.matchMedia) coarsePointer.value = window.matchMedia('(pointer: coarse)').matches
@@ -3004,6 +3167,7 @@ onBeforeUnmount(() => {
   releaseVoice(0.02)
   tracker.stop()
   if (recording.value) recorder.stop()
+  stopTakePlayback()
   for (const take of takes.value) URL.revokeObjectURL(take.url)
   discardDraft()
   window.removeEventListener('keydown', onKeydown)
@@ -3455,7 +3619,7 @@ onBeforeUnmount(() => {
 .takes { position: relative; flex-shrink: 0; }
 .bawu-app .dk-takes { font-size: 0.75rem; color: var(--text-dim); font-weight: 600; white-space: nowrap; }
 .take-count { font-size: 0.62rem; font-weight: 700; background: var(--bg-sunken); border-radius: 999px; padding: 0.05rem 0.4rem; color: var(--text-faint); }
-.takes-panel { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); width: 18rem; background: #fff; border: 1px solid var(--border); border-radius: 0.6rem; box-shadow: var(--shadow-lg); padding: 0.3rem; z-index: 40; }
+.takes-panel { display: none; position: fixed; width: 18rem; max-width: calc(100vw - 1rem); max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 0.6rem; box-shadow: var(--shadow-lg); padding: 0.3rem; z-index: 60; }
 .takes.open .takes-panel { display: block; }
 .takes-panel .ph { display: flex; justify-content: space-between; padding: 0.3rem 0.5rem 0.2rem; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
 .takes-panel .pn { font-size: 0.72rem; color: var(--text-faint); padding: 0 0.5rem 0.4rem; line-height: 1.35; }
@@ -3466,6 +3630,7 @@ onBeforeUnmount(() => {
 .take-btn { width: 1.6rem; height: 1.6rem; border-radius: 0.35rem; display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 0.72rem; text-decoration: none; }
 .take-btn:hover { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.08); color: var(--accent-600); }
 .take-btn.danger:hover { color: #c33; }
+.take-btn.playing { color: var(--accent-600); background: var(--accent-050); }
 .takes-empty { padding: 0.8rem 0.5rem; text-align: center; font-size: 0.8rem; color: var(--text-faint); }
 
 /* ── Sliders ── */

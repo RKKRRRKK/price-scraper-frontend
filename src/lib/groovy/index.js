@@ -41,7 +41,11 @@ export {
   patternsFor,
   patternById,
   patternRes,
+  beatKey,
+  defaultBeats,
+  beatPresets,
 } from './grid'
+export { CLICK_SOUNDS, setClickSound } from './click'
 export { Transport } from './transport'
 export {
   isSupported as isInputSupported,

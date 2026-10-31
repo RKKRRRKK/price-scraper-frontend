@@ -167,8 +167,14 @@ the button doesn't appear for them.
 
 ## How it behaves
 
-- **Modes** — *Follow me*: the song waits at the playhead until the mic hears the
-  target note held for ~120 ms (Space advances manually). *Steady*: scrolls at the
+- **Modes** — *Follow me*: the playhead walks through a note only while the mic
+  hears it (±¾ semitone around a learned sharp/flat bias, octave slips tolerated).
+  Moving to the next note advances only once ≥90% of the current one has been
+  held — leave earlier (or never play it) and the song waits on it; repeated
+  same-pitch notes advance on a tongued re-attack, under the same 90% rule;
+  unplayable notes are passed over (Space advances manually).
+  Pitch comes from a normalized (McLeod NSDF) autocorrelation in
+  `lib/bawu/audio/pitch.js`, so it's level-independent. *Steady*: scrolls at the
   set BPM with metronome, optional synth. *Listen*: synth plays the piece.
 - **The deck** — a **transverse** bawu is drawn across the top, held out to the
   player's right the way it is actually played: foot at the left, then the finger

@@ -24,6 +24,11 @@ export const DEFAULT_PREFS = {
   clickSubdivisions: false,
   drumsOn: false,
   patternId: null,
+  // The metronome popup. beatPatterns is keyed by beatKey(meter, subdiv) and
+  // only holds patterns that have been edited; the rest are the default.
+  clickSound: 'wood',
+  beatPatterns: {},
+  gap: { on: false, play: 4, mute: 2 },
   clickLevel: 0.8,
   drumLevel: 0.7,
   toleranceMs: 25,
@@ -42,9 +47,11 @@ export const DEFAULT_PREFS = {
   amp: { gain: 1, drive: 0, bass: 0, mid: 0, treble: 0, level: 0.8, compress: 0, monitor: false },
   // Look for the Windows native monitor helper (lib/groovy/nativeMonitor.js).
   nativeHelper: true,
-  // Roll
+  // Practice surface: 'pocket' (the gauge) or 'timeline' (the roll). A take
+  // opened for replay always uses the timeline.
+  liveView: 'pocket',
   windowBars: 2,
-  tunerOpen: false,
+  tunerRef: 440,
   // Scale map under the roll. root is a pitch class (0 = C); from/to are frets.
   scale: { open: true, root: 9, type: 'minorPent', labels: 'degrees', from: 0, to: 12, tuning: 'bass4' },
 }
@@ -59,6 +66,8 @@ function loadPrefs() {
       ...saved,
       amp: { ...DEFAULT_PREFS.amp, ...(saved.amp || {}) },
       scale: { ...DEFAULT_PREFS.scale, ...(saved.scale || {}) },
+      gap: { ...DEFAULT_PREFS.gap, ...(saved.gap || {}) },
+      beatPatterns: { ...(saved.beatPatterns || {}) },
       // The offset is the one setting that never survives a reload. The
       // browser renegotiates its buffer depth every time the input stream
       // opens, so a remembered number describes a path that no longer exists

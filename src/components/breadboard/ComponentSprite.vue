@@ -103,37 +103,34 @@
       <circle cx="-2" cy="-2" r="2" class="btn-gloss" />
     </g>
 
-    <!-- ════ TO-92 (transistor / DS18B20) ════ -->
+    <!-- ════ TO-92 (transistor / DS18B20) — top-down footprint over its own pins ════ -->
     <g v-else-if="body === 'to92'" :transform="moduleTransform">
-      <line v-for="(p, i) in mpts" :key="'l' + i" :x1="p.x" :y1="p.y" :x2="p.x" :y2="bodyBottom" class="leg" />
       <path :d="to92Path" class="to92-body" />
-      <line :x1="modCx - to92HalfW + 2" :y1="bodyBottom - 1.5" :x2="modCx + to92HalfW - 2" :y2="bodyBottom - 1.5" class="to92-seam" />
-      <text :x="modCx" :y="bodyTop + 13" class="chip-label">{{ shortPart }}</text>
+      <line :x1="fp.l + 3" :y1="pinRowY + 6" :x2="fp.r - 3" :y2="pinRowY + 6" class="to92-seam" />
+      <text :x="modCx" :y="pinRowY + 2" class="chip-label">{{ shortPart }}</text>
     </g>
 
-    <!-- ════ TSOP38238 IR receiver ════ -->
+    <!-- ════ TSOP38238 IR receiver — body over its pins, lens bulging off the front face ════ -->
     <g v-else-if="body === 'irrx'" :transform="moduleTransform">
-      <line v-for="(p, i) in mpts" :key="'l' + i" :x1="p.x" :y1="p.y" :x2="p.x" :y2="bodyBottom" class="leg" />
-      <rect :x="modCx - 14" :y="bodyTop" width="28" height="20" rx="4" class="irrx-base" />
-      <circle :cx="modCx" :cy="bodyTop + 4" r="9" class="irrx-dome" />
-      <text :x="modCx" :y="bodyTop + 30" class="chip-label">IR&#8201;RX</text>
+      <path :d="irrxLensPath" class="irrx-dome" />
+      <ellipse :cx="modCx - 4" :cy="pinRowY - 13" rx="4" ry="1.8" class="irrx-gloss" />
+      <rect :x="fp.l" :y="pinRowY - 9" :width="fp.r - fp.l" height="18" rx="3" class="irrx-base" />
+      <text :x="modCx" :y="pinRowY + 3" class="chip-label">IR&#8201;RX</text>
     </g>
 
-    <!-- ════ Potentiometer ════ -->
+    <!-- ════ Potentiometer — base spanning its pins, knob on top ════ -->
     <g v-else-if="body === 'pot'" :transform="moduleTransform">
-      <line v-for="(p, i) in mpts" :key="'l' + i" :x1="p.x" :y1="p.y" :x2="p.x" :y2="bodyBottom" class="leg" />
-      <rect :x="modCx - 16" :y="bodyTop" width="32" height="22" rx="3" class="pot-base" />
-      <circle :cx="modCx" :cy="bodyTop - 4" r="14" class="pot-knob" />
-      <circle :cx="modCx - 4" :cy="bodyTop - 8" r="3" class="pot-gloss" />
-      <line :x1="modCx" :y1="bodyTop - 4" :x2="modCx" :y2="bodyTop - 16" class="pot-ind" />
+      <rect :x="fp.l" :y="pinRowY - 11" :width="fp.r - fp.l" height="22" rx="4" class="pot-base" />
+      <circle :cx="modCx" :cy="pinRowY" r="14" class="pot-knob" />
+      <circle :cx="modCx - 4" :cy="pinRowY - 4" r="3" class="pot-gloss" />
+      <line :x1="modCx" :y1="pinRowY" :x2="modCx" :y2="pinRowY - 12" class="pot-ind" />
     </g>
 
-    <!-- ════ Trimpot (square trimmer + screw) ════ -->
+    <!-- ════ Trimpot (trimmer body spanning its pins + screw) ════ -->
     <g v-else-if="body === 'trimpot'" :transform="moduleTransform">
-      <line v-for="(p, i) in mpts" :key="'l' + i" :x1="p.x" :y1="p.y" :x2="p.x" :y2="bodyBottom" class="leg" />
-      <rect :x="modCx - 16" :y="bodyBottom - 26" width="32" height="26" rx="2.5" class="trim-body" />
-      <circle :cx="modCx" :cy="bodyBottom - 13" r="9" class="trim-screw" />
-      <line :x1="modCx - 6" :y1="bodyBottom - 13" :x2="modCx + 6" :y2="bodyBottom - 13" class="trim-slot" />
+      <rect :x="fp.l" :y="pinRowY - 11" :width="fp.r - fp.l" height="22" rx="2.5" class="trim-body" />
+      <circle :cx="modCx" :cy="pinRowY" r="9" class="trim-screw" />
+      <line :x1="modCx - 6" :y1="pinRowY" :x2="modCx + 6" :y2="pinRowY" class="trim-slot" />
     </g>
 
     <!-- ════ I²C breakout (VEML7700 / BME280) ════ -->
@@ -337,16 +334,31 @@ const pinSpan = computed(() => {
 })
 const breakoutH = computed(() => 34)
 
-// TO-92 D-shape path
-const to92HalfW = computed(() => Math.max(pinSpan.value + 16, 22) / 2)
+// Footprint parts (TO-92, IR RX, pots) sit directly over their own pin row with
+// no legs: `fp` is the body's extent along the row — the pins plus a margin that
+// covers their holes but stops well short of the neighbouring columns. Their
+// depth across the row stays under ±18 so the adjacent rows' holes stay visible.
+const fp = computed(() => {
+  const xs = mpts.value.map((p) => p.x)
+  const l = Math.min(...xs, modCx.value)
+  const r = Math.max(...xs, modCx.value)
+  const half = Math.max((r - l) / 2 + 8, 11)
+  return { l: modCx.value - half, r: modCx.value + half }
+})
+
+// TO-92 D-shape: flat face just below the pins, rounded back above them
 const to92Path = computed(() => {
+  const { l, r } = fp.value
+  const face = pinRowY.value + 8
+  const shoulder = pinRowY.value - 2
+  return `M ${l} ${face} L ${r} ${face} L ${r} ${shoulder} A ${(r - l) / 2} 12 0 0 0 ${l} ${shoulder} Z`
+})
+
+// IR receiver lens: half-dome bulging from the body's back edge
+const irrxLensPath = computed(() => {
   const cx = modCx.value
-  const w = to92HalfW.value * 2
-  const top = bodyTop.value
-  const bot = bodyBottom.value
-  const l = cx - w / 2
-  const r = cx + w / 2
-  return `M ${l} ${bot} L ${r} ${bot} L ${r} ${top + 6} Q ${cx} ${top - 6} ${l} ${top + 6} Z`
+  const edge = pinRowY.value - 8
+  return `M ${cx - 12} ${edge} A 12 9 0 0 1 ${cx + 12} ${edge} Z`
 })
 
 // part labels
@@ -494,10 +506,18 @@ const tagW = computed(() => 12 + (props.item.label?.length || 1) * 6)
 .irrx-base {
   fill: #26252a;
 }
+.irrx-base {
+  stroke: #000;
+  stroke-width: 0.5px;
+}
 .irrx-dome {
   fill: #1b1b1b;
   stroke: #444;
   stroke-width: 1px;
+}
+.irrx-gloss {
+  fill: #ffffff;
+  opacity: 0.22;
 }
 .pot-base {
   fill: #2f6fae;

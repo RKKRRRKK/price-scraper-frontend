@@ -1,60 +1,83 @@
 // Mic pitch tracking.
 //
-// Time-domain autocorrelation (the classic ACF2+ approach): trims silence,
-// finds the lag with the best correlation, refines with parabolic
-// interpolation. Solid for a monophonic wind instrument.
+// Normalized square-difference autocorrelation (McLeod's NSDF): the curve is
+// scaled by the window's own energy, so a soft breath reads the same as a loud
+// one — the old fixed-amplitude silence trim threw away every window whose
+// peak stayed under 0.2, which is most of a quiet bawu note. The height of the
+// chosen peak doubles as a clarity score (1 = perfectly periodic, breath noise
+// sits well below), which is what separates a note from hiss.
 
 import { midiFloatOfFreq, noteOfFreq } from '../notes'
 import { ensureAudio } from './context'
 import { acquireMic, releaseMic } from './mic'
 
-function autoCorrelate(buf, sampleRate) {
-  const SIZE = buf.length
+const MIN_RMS = 0.003 // below this it's the room, not the instrument
+const MIN_CLARITY = 0.5 // NSDF peak a window needs to count as pitched
+const PEAK_K = 0.9 // first key peak within this much of the best wins (avoids octave-down)
+const F_MIN = 150
+const F_MAX = 1600
+
+function detectPitch(buf, sampleRate) {
+  const N = buf.length
   let rms = 0
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i]
-  rms = Math.sqrt(rms / SIZE)
-  if (rms < 0.008) return { freq: -1, rms }
+  for (let i = 0; i < N; i++) rms += buf[i] * buf[i]
+  rms = Math.sqrt(rms / N)
+  if (rms < MIN_RMS) return { freq: -1, rms, clarity: 0 }
 
-  let r1 = 0
-  let r2 = SIZE - 1
-  const thres = 0.2
-  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < thres) { r1 = i } else break
-  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i } else break
-  const b = buf.slice(r1, r2)
-  const N = b.length
-  if (N < 32) return { freq: -1, rms }
-
-  const c = new Float32Array(N)
-  for (let lag = 0; lag < N; lag++) {
-    let sum = 0
-    for (let i = 0; i < N - lag; i++) sum += b[i] * b[i + lag]
-    c[lag] = sum
+  const minLag = Math.floor(sampleRate / F_MAX)
+  const maxLag = Math.min(N >> 1, Math.ceil(sampleRate / F_MIN))
+  const nsdf = new Float32Array(maxLag + 2)
+  for (let lag = 0; lag <= maxLag + 1; lag++) {
+    let acf = 0
+    let m = 0
+    for (let i = 0; i < N - lag; i++) {
+      const a = buf[i]
+      const b = buf[i + lag]
+      acf += a * b
+      m += a * a + b * b
+    }
+    nsdf[lag] = m > 0 ? (2 * acf) / m : 0
   }
 
-  let d = 0
-  while (d < N - 1 && c[d] > c[d + 1]) d++
-  let maxval = -1
-  let maxpos = -1
-  for (let i = d; i < N; i++) {
-    if (c[i] > maxval) { maxval = c[i]; maxpos = i }
+  // Key maxima: the highest point of each positive lobe after the curve first
+  // dips below zero (the lobe at lag 0 is the signal matching itself).
+  const peaks = []
+  let lag = 1
+  while (lag <= maxLag && nsdf[lag] > 0) lag++
+  let best = -1
+  let bestPos = -1
+  for (; lag <= maxLag; lag++) {
+    if (nsdf[lag] > 0) {
+      if (nsdf[lag] > best) { best = nsdf[lag]; bestPos = lag }
+    } else if (bestPos > 0) {
+      peaks.push(bestPos)
+      best = -1
+      bestPos = -1
+    }
   }
-  if (maxpos <= 0) return { freq: -1, rms }
-  let T0 = maxpos
+  if (bestPos > 0) peaks.push(bestPos)
+  const usable = peaks.filter((p) => p >= minLag)
+  if (!usable.length) return { freq: -1, rms, clarity: 0 }
 
-  const x1 = c[T0 - 1] ?? c[T0]
-  const x2 = c[T0]
-  const x3 = c[T0 + 1] ?? c[T0]
+  let top = 0
+  for (const p of usable) top = Math.max(top, nsdf[p])
+  const T = usable.find((p) => nsdf[p] >= PEAK_K * top)
+  const clarity = nsdf[T]
+  if (clarity < MIN_CLARITY) return { freq: -1, rms, clarity }
+
+  // Parabolic refinement around the integer lag.
+  const x1 = nsdf[T - 1]
+  const x2 = nsdf[T]
+  const x3 = nsdf[T + 1]
   const a = (x1 + x3 - 2 * x2) / 2
-  const bb = (x3 - x1) / 2
-  if (a) T0 = T0 - bb / (2 * a)
-
-  const freq = sampleRate / T0
-  if (freq < 60 || freq > 2000) return { freq: -1, rms }
-  return { freq, rms }
+  const shift = a ? (x1 - x3) / (4 * a) : 0
+  const freq = sampleRate / (T + shift)
+  if (freq < F_MIN || freq > F_MAX) return { freq: -1, rms, clarity }
+  return { freq, rms, clarity }
 }
 
 // Starts the mic and calls onPitch(~30/s) with either null (silence) or
-// { freq, midiFloat, midi, name, cents, rms }.
+// { freq, midiFloat, midi, name, cents, rms, clarity }.
 export class PitchTracker {
   constructor() {
     this.running = false
@@ -81,13 +104,13 @@ export class PitchTracker {
       if (ts - last < 33) return // ~30 Hz is plenty
       last = ts
       this._analyser.getFloatTimeDomainData(buf)
-      const { freq, rms } = autoCorrelate(buf, ac.sampleRate)
+      const { freq, rms, clarity } = detectPitch(buf, ac.sampleRate)
       if (freq <= 0) {
-        onPitch(null)
+        onPitch(null, rms)
       } else {
         const midiFloat = midiFloatOfFreq(freq)
         const info = noteOfFreq(freq)
-        onPitch({ freq, midiFloat, midi: info.midi, name: info.name, cents: info.cents, rms })
+        onPitch({ freq, midiFloat, midi: info.midi, name: info.name, cents: info.cents, rms, clarity })
       }
     }
     this._raf = requestAnimationFrame(tick)

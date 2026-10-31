@@ -17,58 +17,124 @@
     <div v-for="g in groups" :key="g.id" class="pal-group">
       <div class="pal-group-label">{{ g.label }}</div>
       <div class="pal-items">
-        <button
-          v-for="kind in g.kinds" :key="kind"
-          class="pal-item"
-          :class="{ active: isActive(kind) }"
-          :title="labelFor(kind)"
-          @click="pick(kind)"
-        >
-          <img class="pal-icon" :src="iconUrl(kind)" alt="" draggable="false" />
-          <span class="pal-label">{{ labelFor(kind) }}</span>
-          <i v-if="inStock(kind)" class="pi pi-star-fill stock-star" title="In stock"></i>
-        </button>
-        <div v-if="g.id === 'active' && !g.kinds.length" class="pal-empty">
-          Place a part from the <strong>Library</strong> and it shows up here.
-        </div>
+        <template v-for="kind in g.kinds" :key="kind">
+          <div class="pal-row" :class="{ 'layer-off': g.id === 'active' && kindHidden(kind) }">
+            <button
+              class="pal-item"
+              :class="{ active: isActive(kind) }"
+              :title="labelFor(kind)"
+              @click="pick(kind)"
+            >
+              <img class="pal-icon" :src="iconUrl(kind)" alt="" draggable="false" />
+              <span class="pal-label">{{ labelFor(kind) }}</span>
+              <i v-if="inStock(kind)" class="pi pi-star-fill stock-star" title="In stock"></i>
+            </button>
+            <!-- layer controls: only for things actually on the sheet -->
+            <template v-if="g.id === 'active' && countOf(kind)">
+              <button
+                v-if="kind !== 'wire'"
+                class="layer-btn layer-count"
+                :class="{ open: expanded.has(kind) }"
+                :title="expanded.has(kind) ? 'Hide the list' : 'List each one'"
+                @click="toggleExpand(kind)"
+              >
+                {{ countOf(kind) }}<i class="pi pi-chevron-down"></i>
+              </button>
+              <span v-else class="layer-btn layer-count static">{{ countOf(kind) }}</span>
+              <button
+                class="layer-btn layer-eye"
+                :title="kindHidden(kind) ? 'Show' : 'Hide'"
+                @click="kind === 'wire' ? $emit('toggle-wires') : $emit('toggle-kind', kind)"
+              >
+                <i :class="kindHidden(kind) ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+              </button>
+            </template>
+          </div>
+          <!-- per-instance layers -->
+          <div v-if="g.id === 'active' && expanded.has(kind) && countOf(kind)" class="layer-list">
+            <div
+              v-for="it in itemsOf(kind)" :key="it.id"
+              class="layer-item"
+              :class="{ sel: it.id === selectedId, 'layer-off': itemHidden(it) }"
+            >
+              <button class="layer-name" :title="`Select ${it.label}`" @click="$emit('select-item', it.id)">
+                {{ it.label || labelFor(kind) }}
+              </button>
+              <button
+                class="layer-btn layer-eye"
+                :disabled="hiddenKinds.includes(kind)"
+                :title="hiddenItems.includes(it.id) ? 'Show' : 'Hide'"
+                @click="$emit('toggle-item', it.id)"
+              >
+                <i :class="hiddenItems.includes(it.id) ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { COMPONENTS, BOARDS, getTemplate, iconUrl } from '@/lib/breadboard/templates'
 import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 
 const props = defineProps({
   tool: { type: Object, default: null },
-  // distinct kinds placed on the current sheet (drives the "Active devices" group)
-  usedKinds: { type: Array, default: () => [] },
+  // parts on the current sheet (drive the "Active devices" group + its layers)
+  items: { type: Array, default: () => [] },
+  wireCount: { type: Number, default: 0 },
+  selectedId: { type: String, default: null },
+  // layer visibility, owned by the view
+  hiddenKinds: { type: Array, default: () => [] },
+  hiddenItems: { type: Array, default: () => [] },
+  wiresHidden: { type: Boolean, default: false },
 })
-const emit = defineEmits(['select-tool', 'custom', 'create', 'library'])
+const emit = defineEmits(['select-tool', 'custom', 'create', 'library', 'toggle-kind', 'toggle-item', 'toggle-wires', 'select-item'])
 
 const lib = useBreadboardLibraryStore()
 
 // Only the common discrete parts live in the palette permanently. Everything else
-// (sensors, boards, custom library parts) lives in the Library — it surfaces under
-// "Active devices" once it's placed on the sheet, so re-adding more is one click.
+// (sensors, boards, custom library parts) lives in the Library. "Active devices"
+// doubles as the sheet's layer list: every kind that's placed (core parts and
+// jumper wires included) shows up there with a visibility toggle.
 const CORE_KINDS = ['resistor', 'led', 'cap_104', 'button', 'wire']
 const ACTIVE_BASE = ['diode', 'transistor', 'potentiometer', 'ic']
 
 const groups = computed(() => {
-  const known = new Set([...CORE_KINDS, ...ACTIVE_BASE])
   const placed = []
-  for (const k of props.usedKinds) {
-    // 'custom' boards are one-offs per sheet — can't be re-added blindly from here
-    if (k === 'custom' || known.has(k) || placed.includes(k)) continue
-    placed.push(k)
+  for (const it of props.items) {
+    if (ACTIVE_BASE.includes(it.kind) || placed.includes(it.kind)) continue
+    placed.push(it.kind)
   }
+  if (props.wireCount) placed.push('wire')
   return [
     { id: 'core', label: 'Core', kinds: CORE_KINDS },
     { id: 'active', label: 'Active devices', kinds: [...ACTIVE_BASE, ...placed] },
   ]
 })
+
+const expanded = ref(new Set())
+function toggleExpand(kind) {
+  const s = new Set(expanded.value)
+  if (s.has(kind)) s.delete(kind)
+  else s.add(kind)
+  expanded.value = s
+}
+function itemsOf(kind) {
+  return props.items.filter((it) => it.kind === kind)
+}
+function countOf(kind) {
+  return kind === 'wire' ? props.wireCount : itemsOf(kind).length
+}
+function kindHidden(kind) {
+  return kind === 'wire' ? props.wiresHidden : props.hiddenKinds.includes(kind)
+}
+function itemHidden(it) {
+  return props.hiddenKinds.includes(it.kind) || props.hiddenItems.includes(it.id)
+}
 
 function inStock(kind) {
   return lib.isInStock(kind)
@@ -172,6 +238,97 @@ const hintText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+.pal-row {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+.pal-row .pal-item {
+  flex: 1;
+  min-width: 0;
+}
+.pal-row.layer-off .pal-item {
+  opacity: 0.45;
+}
+/* ── layer controls (count/expand + eye) ── */
+.layer-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  padding: 0 0.3rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  cursor: pointer;
+  color: var(--bb-text-faint, #9a9a9a);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.layer-btn i {
+  font-size: 0.75rem;
+}
+.layer-btn:hover:not(:disabled):not(.static) {
+  background: var(--bb-sunken, #f3f2f0);
+  color: var(--bb-text, #1a1a1a);
+}
+.layer-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.layer-count i {
+  font-size: 0.55rem;
+  transition: transform 0.12s;
+}
+.layer-count.open i {
+  transform: rotate(180deg);
+}
+.layer-count.static {
+  cursor: default;
+}
+.layer-off .layer-eye {
+  color: #b91c1c;
+}
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  margin: 0 0 0.25rem 1.4rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--bb-border, #e5e4e1);
+}
+.layer-item {
+  display: flex;
+  align-items: center;
+  border-radius: 0.4rem;
+}
+.layer-item.sel {
+  background: #fee2e2;
+}
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.76rem;
+  color: var(--bb-text, #1a1a1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.layer-item.sel .layer-name {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.layer-item.layer-off .layer-name {
+  opacity: 0.45;
 }
 .pal-item {
   display: flex;

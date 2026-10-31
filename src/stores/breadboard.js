@@ -14,19 +14,56 @@ function blankData(type = 'half') {
   }
 }
 
+// Deep copy of a sheet's data with the arrays the editor relies on filled in.
+function normalizedCopy(data) {
+  const d = JSON.parse(JSON.stringify(data || blankData()))
+  d.breadboards = d.breadboards?.length ? d.breadboards : [{ id: 'bb1', type: 'half', x: 24, y: 150 }]
+  d.items = d.items || []
+  d.wires = d.wires || []
+  return d
+}
+
 export const useBreadboardStore = defineStore('breadboard', () => {
-  const sheets = ref([]) // breadboard_sheets rows
+  const sheets = ref([]) // breadboard_sheets rows — `data` is always the saved (Supabase) state
   const activeSheetId = ref(null)
   const loading = ref(false)
   const loaded = ref(false)
   const saving = ref(false)
   const error = ref(null)
 
+  // Edits land in a per-sheet draft and only reach Supabase on an explicit save.
+  // `baselines` holds the JSON of what's saved, so "unsaved changes" is a string compare.
+  const drafts = ref({}) // sheetId → working copy
+  const baselines = ref({}) // sheetId → JSON of the saved data
+
   const activeSheet = computed(
     () => sheets.value.find((s) => s.id === activeSheetId.value) || null,
   )
 
-  const saveTimers = new Map()
+  function isDirty(id) {
+    const d = drafts.value[id]
+    return !!d && JSON.stringify(d) !== baselines.value[id]
+  }
+  const dirtyIds = computed(() => Object.keys(drafts.value).filter(isDirty))
+
+  // The working copy for a sheet, created from the saved data on first open.
+  function openDraft(id) {
+    const sheet = sheets.value.find((s) => s.id === id)
+    if (!sheet) return null
+    if (!drafts.value[id]) {
+      const d = normalizedCopy(sheet.data)
+      baselines.value[id] = JSON.stringify(d)
+      drafts.value[id] = d
+    }
+    return drafts.value[id]
+  }
+
+  // Swap a sheet's whole working copy (undo/redo, AI build).
+  function setDraft(id, data) {
+    if (!(id in baselines.value)) openDraft(id)
+    drafts.value[id] = data
+    return drafts.value[id]
+  }
 
   async function fetchSheets() {
     if (loaded.value || loading.value) return
@@ -82,43 +119,38 @@ export const useBreadboardStore = defineStore('breadboard', () => {
     activeSheetId.value = id
   }
 
-  // Update a sheet's data locally (immediate) and persist (debounced).
-  function updateSheetData(id, data) {
+  // Write a sheet's draft to Supabase. Edits made while the request is in flight
+  // stay unsaved, since the baseline is the snapshot that was actually sent.
+  async function saveSheet(id) {
     const sheet = sheets.value.find((s) => s.id === id)
-    if (!sheet) return
-    sheet.data = data
-    sheet.updated_at = new Date().toISOString()
-    sortSheets()
-    scheduleSave(id)
-  }
-
-  function scheduleSave(id) {
-    if (saveTimers.has(id)) clearTimeout(saveTimers.get(id))
-    saveTimers.set(
-      id,
-      setTimeout(() => {
-        saveTimers.delete(id)
-        flushSave(id)
-      }, 600),
-    )
-  }
-
-  async function flushSave(id) {
-    const sheet = sheets.value.find((s) => s.id === id)
-    if (!sheet) return
+    const draft = drafts.value[id]
+    if (!sheet || !draft) return
+    const json = JSON.stringify(draft)
+    const now = new Date().toISOString()
     saving.value = true
+    error.value = null
     try {
       const { error: err } = await supabase
         .from('breadboard_sheets')
-        .update({ data: sheet.data, updated_at: new Date().toISOString() })
+        .update({ data: JSON.parse(json), updated_at: now })
         .eq('id', id)
       if (err) throw err
+      sheet.data = JSON.parse(json)
+      sheet.updated_at = now
+      baselines.value[id] = json
+      sortSheets()
     } catch (e) {
-      console.error('[Breadboard] flushSave error:', e)
+      console.error('[Breadboard] saveSheet error:', e)
       error.value = e.message
+      throw e
     } finally {
       saving.value = false
     }
+  }
+
+  function dropDraft(id) {
+    delete drafts.value[id]
+    delete baselines.value[id]
   }
 
   async function renameSheet(id, name) {
@@ -148,6 +180,7 @@ export const useBreadboardStore = defineStore('breadboard', () => {
       const { error: err } = await supabase.from('breadboard_sheets').delete().eq('id', id)
       if (err) throw err
       sheets.value = sheets.value.filter((s) => s.id !== id)
+      dropDraft(id)
       if (activeSheetId.value === id) {
         activeSheetId.value = sheets.value[0]?.id || null
       }
@@ -169,7 +202,7 @@ export const useBreadboardStore = defineStore('breadboard', () => {
         .insert({
           user_id: auth.user.id,
           name: `${src.name} copy`,
-          data: JSON.parse(JSON.stringify(src.data || blankData())),
+          data: normalizedCopy(drafts.value[id] || src.data),
         })
         .select('*')
         .single()
@@ -189,8 +222,8 @@ export const useBreadboardStore = defineStore('breadboard', () => {
   }
 
   function reset() {
-    for (const t of saveTimers.values()) clearTimeout(t)
-    saveTimers.clear()
+    drafts.value = {}
+    baselines.value = {}
     sheets.value = []
     activeSheetId.value = null
     loaded.value = false
@@ -207,10 +240,15 @@ export const useBreadboardStore = defineStore('breadboard', () => {
     loaded,
     saving,
     error,
+    drafts,
+    dirtyIds,
+    isDirty,
+    openDraft,
+    setDraft,
+    saveSheet,
     fetchSheets,
     createSheet,
     selectSheet,
-    updateSheetData,
     renameSheet,
     deleteSheet,
     duplicateSheet,

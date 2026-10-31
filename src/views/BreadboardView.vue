@@ -46,7 +46,9 @@
         >
           <span class="rail-item-icon"><i class="pi pi-microchip"></i></span>
           <span class="rail-item-body">
-            <span class="rail-item-name">{{ s.name }}</span>
+            <span class="rail-item-name">
+              <span v-if="store.dirtyIds.includes(s.id)" class="dirty-dot" title="Unsaved changes"></span>{{ s.name }}
+            </span>
             <span class="rail-meta">
               <span class="stat stat-board">{{ sheetBoard(s) }}</span>
               <span class="stat" title="Parts"><i class="pi pi-box"></i>{{ sheetParts(s) }}</span>
@@ -76,6 +78,15 @@
             <i class="pi pi-bars" style="font-size: 0.75rem"></i>
           </button>
           <input class="sheet-name" :value="store.activeSheet?.name" @change="renameSheet($event.target.value)" />
+
+          <div class="history-ctrl">
+            <button class="btn-ghost btn-sm" :disabled="!canUndo" @click="undo" title="Undo (Ctrl+Z)">
+              <i class="pi pi-undo" style="font-size: 0.75rem"></i>
+            </button>
+            <button class="btn-ghost btn-sm" :disabled="!canRedo" @click="redo" title="Redo (Ctrl+Shift+Z)">
+              <i class="pi pi-undo redo-icon" style="font-size: 0.75rem"></i>
+            </button>
+          </div>
 
           <select class="sel" :value="boardType" @change="changeSize($event.target.value)">
             <option v-for="b in BREADBOARD_LIST" :key="b.type" :value="b.type">{{ b.label }}</option>
@@ -108,7 +119,19 @@
 
           <div class="toolbar-spacer"></div>
 
-          <span v-if="store.saving" class="save-dot"><i class="pi pi-spin pi-spinner" style="font-size: 0.7rem"></i> saving…</span>
+          <span v-if="dirty && !store.saving" class="unsaved-pill" title="This sheet differs from what's saved in Supabase">
+            <span class="dirty-dot"></span> Unsaved changes
+          </span>
+          <button
+            class="btn-sm save-btn"
+            :class="dirty ? 'btn-primary' : 'btn-ghost'"
+            :disabled="!dirty || store.saving"
+            @click="save"
+            title="Save to Supabase (Ctrl+S)"
+          >
+            <i :class="store.saving ? 'pi pi-spin pi-spinner' : dirty ? 'pi pi-save' : 'pi pi-check'" style="font-size: 0.75rem"></i>
+            {{ store.saving ? 'Saving…' : dirty ? 'Save' : 'Saved' }}
+          </button>
 
           <button class="btn-ghost btn-sm" @click="fitView" title="Fit to view"><i class="pi pi-window-maximize" style="font-size: 0.75rem"></i></button>
           <button class="btn-primary btn-sm" @click="openAi" title="Copy a prompt for an AI assistant, or build the board from its reply">
@@ -122,8 +145,17 @@
           <ComponentPalette
             class="pane palette-pane"
             :tool="tool"
-            :used-kinds="usedKinds"
+            :items="data.items"
+            :wire-count="data.wires.length"
+            :selected-id="selectedId"
+            :hidden-kinds="hiddenKinds"
+            :hidden-items="hiddenItems"
+            :wires-hidden="wiresHidden"
             @select-tool="tool = $event"
+            @toggle-kind="toggleKindHidden"
+            @toggle-item="toggleItemHidden"
+            @toggle-wires="toggleWiresHidden"
+            @select-item="onSelect({ type: 'item', id: $event })"
             @custom="customOpen = true"
             @create="openCreator()"
             @library="libraryOpen = true"
@@ -142,8 +174,11 @@
               :wire-type="wireType"
               :locked="locked"
               :highlight-depth="highlightDepth"
+              :hidden-item-ids="hiddenItemIds"
+              :wires-hidden="wiresHidden"
               @add="onAdd"
               @move="onMove"
+              @move-end="commit"
               @select="onSelect"
               @add-wire="onAddWire"
               @remove-wire="onRemoveWire"
@@ -250,9 +285,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { v4 as uuid } from 'uuid'
-import { useBreadboardStore, blankData } from '@/stores/breadboard'
+import { useBreadboardStore } from '@/stores/breadboard'
 import { useBreadboardLibraryStore } from '@/stores/breadboardLibrary'
 import BreadboardCanvas from '@/components/breadboard/BreadboardCanvas.vue'
 import ComponentPalette from '@/components/breadboard/ComponentPalette.vue'
@@ -310,33 +345,167 @@ const newForm = ref({ name: '', type: 'half' })
 
 const WIRE_COLORS = ['#16a34a', '#dc2626', '#2563eb', '#f59e0b', '#000000', '#9333ea']
 
-// ── working-copy sync ──
+// ── working copy ──
+// `data` is the active sheet's draft in the store; edits mutate it in place and
+// only reach Supabase through save(). Switching sheets keeps each draft.
 function loadActive() {
-  const s = store.activeSheet
-  if (!s) { data.value = null; return }
-  const d = JSON.parse(JSON.stringify(s.data || blankData()))
-  d.breadboards = d.breadboards?.length ? d.breadboards : [{ id: 'bb1', type: 'half', x: 24, y: 150 }]
-  d.items = d.items || []
-  d.wires = d.wires || []
+  const id = store.activeSheetId
+  const d = id ? store.openDraft(id) : null
   data.value = d
   selectedId.value = null
   selectedWire.value = null
   tool.value = null
+  resetVisibility()
+  if (!d) return
+  historyFor(id) // seed the undo baseline before any edit
   resetLabelCounters(d.items)
 }
-watch(() => store.activeSheetId, loadActive, { immediate: true })
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('beforeunload', onBeforeUnload)
   await Promise.all([store.fetchSheets(), library.fetchLibrary()])
   if (!data.value) loadActive()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 
 // kinds present on the current sheet — surfaced in the library as "on sheet".
 const usedKinds = computed(() => [...new Set((data.value?.items || []).map((i) => i.kind))])
 
-function persist() {
-  if (store.activeSheetId && data.value) store.updateSheetData(store.activeSheetId, data.value)
+// ── undo / redo ──
+// Per-sheet stacks of JSON snapshots. `last` is the snapshot matching the
+// current draft; commit() pushes it when an edit changes the draft.
+const HISTORY_LIMIT = 100
+const histories = new Map() // sheetId → { undo: [], redo: [], last }
+const historyVer = ref(0) // bumps so canUndo/canRedo recompute
+function historyFor(id) {
+  if (!histories.has(id)) {
+    histories.set(id, { undo: [], redo: [], last: JSON.stringify(store.drafts[id]) })
+  }
+  return histories.get(id)
 }
+const canUndo = computed(() => {
+  void historyVer.value
+  const id = store.activeSheetId
+  return !!id && !!histories.get(id)?.undo.length
+})
+const canRedo = computed(() => {
+  void historyVer.value
+  const id = store.activeSheetId
+  return !!id && !!histories.get(id)?.redo.length
+})
+
+// Record the current draft as one undo step (no-op when nothing changed).
+function commit() {
+  const id = store.activeSheetId
+  if (!id || !data.value) return
+  const h = historyFor(id)
+  const now = JSON.stringify(data.value)
+  if (now === h.last) return
+  h.undo.push(h.last)
+  if (h.undo.length > HISTORY_LIMIT) h.undo.shift()
+  h.redo = []
+  h.last = now
+  historyVer.value++
+}
+function applySnapshot(id, json) {
+  data.value = store.setDraft(id, JSON.parse(json))
+  if (selectedId.value && !data.value.items.some((i) => i.id === selectedId.value)) selectedId.value = null
+  if (selectedWire.value && !data.value.wires.some((w) => w.id === selectedWire.value)) selectedWire.value = null
+  resetLabelCounters(data.value.items)
+  historyVer.value++
+}
+function undo() {
+  const id = store.activeSheetId
+  const h = id && histories.get(id)
+  if (!h?.undo.length) return
+  commit() // fold in any in-flight edit so it can be redone
+  h.redo.push(h.last)
+  h.last = h.undo.pop()
+  applySnapshot(id, h.last)
+}
+function redo() {
+  const id = store.activeSheetId
+  const h = id && histories.get(id)
+  if (!h?.redo.length) return
+  h.undo.push(h.last)
+  h.last = h.redo.pop()
+  applySnapshot(id, h.last)
+}
+
+// ── save ──
+const dirty = computed(() => !!store.activeSheetId && store.dirtyIds.includes(store.activeSheetId))
+async function save() {
+  const id = store.activeSheetId
+  if (!id || store.saving) return
+  try {
+    await store.saveSheet(id)
+  } catch (e) {
+    window.alert(`Couldn't save: ${e.message}`)
+  }
+}
+function onBeforeUnload(e) {
+  if (!store.dirtyIds.length) return
+  e.preventDefault()
+  e.returnValue = ''
+}
+
+function isTypingTarget(t) {
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+}
+function onKey(e) {
+  if (!(e.ctrlKey || e.metaKey) || !data.value) return
+  const k = e.key.toLowerCase()
+  if (k === 's') {
+    e.preventDefault()
+    // blur first so a half-typed field fires its change (and lands in the draft)
+    if (isTypingTarget(document.activeElement)) document.activeElement.blur()
+    nextTick(save)
+    return
+  }
+  if (isTypingTarget(e.target)) return // leave text-field undo alone
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo() }
+}
+
+// ── layer visibility (view state only — never saved, not undoable) ──
+const hiddenKinds = ref([])
+const hiddenItems = ref([])
+const wiresHidden = ref(false)
+function resetVisibility() {
+  hiddenKinds.value = []
+  hiddenItems.value = []
+  wiresHidden.value = false
+}
+const hiddenItemIds = computed(() =>
+  (data.value?.items || [])
+    .filter((it) => hiddenKinds.value.includes(it.kind) || hiddenItems.value.includes(it.id))
+    .map((it) => it.id),
+)
+function toggleIn(list, v) {
+  return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+}
+function toggleKindHidden(kind) {
+  hiddenKinds.value = toggleIn(hiddenKinds.value, kind)
+}
+function toggleItemHidden(id) {
+  hiddenItems.value = toggleIn(hiddenItems.value, id)
+}
+function toggleWiresHidden() {
+  wiresHidden.value = !wiresHidden.value
+  if (wiresHidden.value) selectedWire.value = null
+}
+// Hiding the selected part drops the selection (its outline is gone too). Picking
+// a hidden part from the layer list still selects it for the inspector.
+watch([hiddenKinds, hiddenItems], () => {
+  if (selectedId.value && hiddenItemIds.value.includes(selectedId.value)) selectedId.value = null
+})
+
+// (after the history + visibility state it touches is declared)
+watch(() => store.activeSheetId, loadActive, { immediate: true })
 
 // ── derived ──
 const boardType = computed(() => data.value?.breadboards?.[0]?.type || 'half')
@@ -352,14 +521,18 @@ const netMap = computed(() => {
   return m
 })
 
+// rail stats reflect the working copy, saved or not
+function sheetData(s) {
+  return store.drafts[s.id] || s.data
+}
 function sheetParts(s) {
-  return s.data?.items?.length || 0
+  return sheetData(s)?.items?.length || 0
 }
 function sheetWires(s) {
-  return s.data?.wires?.length || 0
+  return sheetData(s)?.wires?.length || 0
 }
 function sheetBoard(s) {
-  const t = s.data?.breadboards?.[0]?.type
+  const t = sheetData(s)?.breadboards?.[0]?.type
   const label = BREADBOARD_LIST.find((b) => b.type === t)?.label || t || '—'
   return String(label).split('(')[0].trim() // drop the "(830 pts)" detail for the rail
 }
@@ -400,13 +573,15 @@ function renameSheet(name) {
 async function removeSheet() {
   if (!store.activeSheetId) return
   if (!window.confirm('Delete this sheet? This cannot be undone.')) return
-  await store.deleteSheet(store.activeSheetId)
+  const id = store.activeSheetId
+  await store.deleteSheet(id)
+  histories.delete(id)
   loadActive()
 }
 function changeSize(type) {
   if (!data.value) return
   data.value.breadboards[0].type = type
-  persist()
+  commit()
   nextTick(() => canvasRef.value?.fit())
 }
 function fitView() {
@@ -420,7 +595,7 @@ function toggleLock() {
 // ── canvas ops ──
 function onAdd(item) {
   data.value.items.push(item)
-  persist()
+  commit()
 }
 function onMove({ id, x, y, pins }) {
   const it = data.value.items.find((i) => i.id === id)
@@ -428,16 +603,17 @@ function onMove({ id, x, y, pins }) {
   it.x = x
   it.y = y
   if (pins) it.pins = pins
-  persist()
+  // no commit here — the canvas emits move-end once the drag finishes, so a
+  // whole drag is a single undo step
 }
 function onAddWire(wire) {
   data.value.wires.push(wire)
-  persist()
+  commit()
 }
 function onRemoveWire(id) {
   data.value.wires = data.value.wires.filter((w) => w.id !== id)
   if (selectedWire.value === id) selectedWire.value = null
-  persist()
+  commit()
 }
 
 // ── selection (items + wires share one entry point) ──
@@ -454,19 +630,19 @@ function onDeleteSelected() {
 // ── wire inspector ops ──
 function setWireColor(color) {
   const w = selectedWireObj.value
-  if (w) { w.color = color; persist() }
+  if (w) { w.color = color; commit() }
 }
 function setWireType(type) {
   const w = selectedWireObj.value
-  if (w) { w.type = type; wireType.value = type; persist() }
+  if (w) { w.type = type; wireType.value = type; commit() }
 }
 function setWireGauge(gauge) {
   const w = selectedWireObj.value
-  if (w) { w.gauge = gauge; wireGauge.value = gauge; persist() }
+  if (w) { w.gauge = gauge; wireGauge.value = gauge; commit() }
 }
 function flipWireArc() {
   const w = selectedWireObj.value
-  if (w) { w.arc = w.arc === -1 ? 1 : -1; persist() }
+  if (w) { w.arc = w.arc === -1 ? 1 : -1; commit() }
 }
 function deleteWire() {
   if (selectedWire.value) onRemoveWire(selectedWire.value)
@@ -474,16 +650,16 @@ function deleteWire() {
 
 // ── inspector ops ──
 function renameItem(label) {
-  if (selectedItem.value) { selectedItem.value.label = label; persist() }
+  if (selectedItem.value) { selectedItem.value.label = label; commit() }
 }
 function updateProp({ key, value }) {
-  if (selectedItem.value) { selectedItem.value.props = { ...selectedItem.value.props, [key]: value }; persist() }
+  if (selectedItem.value) { selectedItem.value.props = { ...selectedItem.value.props, [key]: value }; commit() }
 }
 function setPin({ pinId, hole }) {
   const it = selectedItem.value
   if (!it) return
   const pin = it.pins.find((p) => p.id === pinId)
-  if (pin) { pin.hole = hole; persist() }
+  if (pin) { pin.hole = hole; commit() }
 }
 function setPinCount(n) {
   const it = selectedItem.value
@@ -496,7 +672,7 @@ function setPinCount(n) {
     pins.push({ id: String(i), name: String(i), hole: ex ? ex.hole : null })
   }
   it.pins = pins
-  persist()
+  commit()
 }
 function deleteItem() {
   const it = selectedItem.value
@@ -505,7 +681,7 @@ function deleteItem() {
   data.value.wires = data.value.wires.filter((w) => !endpoints.has(w.from) && !endpoints.has(w.to))
   data.value.items = data.value.items.filter((i) => i.id !== it.id)
   selectedId.value = null
-  persist()
+  commit()
 }
 // Switch a part between plugging into the grid and sitting off-board (wired to
 // its pins). Existing wires reference stable pin endpoints, so they survive.
@@ -526,7 +702,7 @@ function setPlacement(mode) {
       it.y = lay.y0 + others * 120
     }
   }
-  persist()
+  commit()
 }
 function duplicateItem() {
   const it = selectedItem.value
@@ -539,7 +715,7 @@ function duplicateItem() {
   clone.pins = clone.pins.map((p) => ({ ...p, hole: null })) // re-place to avoid overlap
   data.value.items.push(clone)
   selectedId.value = clone.id
-  persist()
+  commit()
 }
 
 // ── custom board ──
@@ -556,7 +732,7 @@ function addCustomBoard({ name, pinNames }) {
   data.value.items.push(item)
   selectedId.value = item.id
   customOpen.value = false
-  persist()
+  commit()
   nextTick(() => canvasRef.value?.fit())
 }
 
@@ -641,12 +817,12 @@ function buildFromText(text) {
   d.breadboards = d.breadboards?.length ? d.breadboards : [{ id: 'bb1', type: 'half', x: 24, y: 150 }]
   d.items = d.items || []
   d.wires = d.wires || []
-  data.value = d
+  data.value = store.setDraft(store.activeSheetId, d)
   selectedId.value = null
   selectedWire.value = null
   tool.value = null
   resetLabelCounters(d.items)
-  persist()
+  commit()
   importWarnings.value = res.warnings || []
   aiOpen.value = false
   nextTick(() => canvasRef.value?.fit())
@@ -962,12 +1138,52 @@ function buildFromText(text) {
 .wire-swatch.on {
   border-color: var(--bb-accent);
 }
-.save-dot {
-  font-size: 0.72rem;
+.history-ctrl {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+.history-ctrl .btn-sm {
+  padding: 0.35rem 0.5rem;
+}
+.redo-icon {
+  transform: scaleX(-1);
+}
+.btn-ghost:disabled,
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.save-btn {
+  min-width: 5.2rem;
+  justify-content: center;
+}
+.save-btn.btn-ghost:disabled {
+  opacity: 1;
   color: var(--bb-text-faint);
+}
+.dirty-dot {
+  display: inline-block;
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #f59e0b;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+.unsaved-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+.unsaved-pill .dirty-dot {
+  margin-right: 0.3rem;
 }
 .lock-btn.on {
   background: var(--bb-accent-050);
@@ -1017,7 +1233,7 @@ function buildFromText(text) {
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 13rem 1fr 16.5rem;
+  grid-template-columns: 15rem 1fr 16.5rem;
   overflow: hidden;
 }
 .pane {

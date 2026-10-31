@@ -31,7 +31,7 @@ as Squell). Until they're run the UI works but sheets / library won't save/load.
 | `src/lib/breadboard/nets.js` | `computeNets(data)` — union-find net engine. |
 | `src/lib/breadboard/markdown.js` | `buildSheetMarkdown(sheet, {inStockOnly})` (state + inventory + AI build spec), `buildStateMarkdown()` (current wiring only, no instructions), `copyToClipboard()`, re-exports Squell's `downloadTextFile`/`slugify`. |
 | `src/lib/breadboard/importBuild.js` | `parseBuild(text)` — turns an LLM `BreadboardBuild` JSON into a sheet `data` object. |
-| `src/stores/breadboard.js` | Pinia store: Supabase CRUD, debounced autosave, sheet catalogue. Mirrors `stores/squell.js`. |
+| `src/stores/breadboard.js` | Pinia store: Supabase CRUD, per-sheet drafts + explicit `saveSheet`, dirty tracking, sheet catalogue. |
 | `src/stores/breadboardLibrary.js` | Pinia store: user's custom parts + stock list (one Supabase row). On load registers custom parts into `templates.js` so they behave like built-ins. |
 | `src/views/BreadboardView.vue` | Main view: sheet rail, toolbar, workspace (palette · canvas · inspector), modals. Owns the working copy of `data` and applies all edit ops. |
 | `src/components/breadboard/BreadboardCanvas.vue` | Interaction orchestrator: render, click-to-place, drag-to-move, wire draw, pan/zoom. |
@@ -106,7 +106,21 @@ otherwise by their strip/rail.
   and remap any pin to a row+column or a rail.
 - **Pan/zoom:** drag empty canvas to pan, wheel to zoom; the **Fit** button reframes.
 
-Sheets autosave (debounced) to Supabase via the store.
+- **Layers:** the palette's **Active devices** group lists every placed kind (core parts and
+  jumper wires included) with a count and an eye toggle. The count expands a per-part list —
+  click a name to select it, or hide just that one. Hidden parts/wires aren't drawn or
+  hit-tested. Visibility is view state only (not saved, not undoable).
+- **Undo/redo:** Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y). Every edit goes through `commit()` in
+  the view, which snapshots the draft as JSON; a drag is one step (`move-end`).
+
+**Saving is explicit.** Edits land in a per-sheet draft in the store (`drafts`); the sheet row's
+`data` stays the saved Supabase state. `baselines` holds its JSON, so the toolbar's **Unsaved
+changes** pill and the rail's amber dot are a string compare. **Save** / Ctrl+S calls
+`saveSheet(id)`. Drafts survive switching sheets and routes; closing the tab with unsaved
+drafts asks first.
+
+**Footprint bodies:** TO-92, IR receiver, pot and trimpot draw straight over their own pin
+row with no legs (`FOOTPRINT_BODIES` in `geometry.js` gives them a snug hit box).
 
 ---
 
@@ -158,8 +172,8 @@ The **palette** (left "Add parts" list) is deliberately short: it only shows the
 discrete parts permanently — **Core** (resistor, LED, ceramic cap, button, jumper wire) and
 **Active devices** (diode, transistor, pot, IC). Everything else (sensors, boards, custom
 parts) lives in the **Library**; once a part is placed on the sheet it appears under **Active
-devices** so re-adding more is one click (`ComponentPalette` takes a `usedKinds` prop for this).
-Per-sheet `custom` boards are excluded from that auto-list (they're one-offs).
+devices** so re-adding more is one click (`ComponentPalette` takes the sheet's `items` for this).
+Placed core parts and jumper wires show up there too, as layers with visibility toggles.
 
 Beyond that, the palette has **Create** and **Library** buttons:
 
