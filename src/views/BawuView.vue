@@ -57,7 +57,7 @@
             <i class="pi pi-spin pi-spinner" style="font-size: 1.25rem;"></i>
           </div>
           <div v-else-if="!store.scores.length && !store.folders.length && !addingFolder" class="rail-state">
-            <i class="pi pi-headphones rail-state-icon"></i>
+            <i class="pi ti-bawu rail-state-icon"></i>
             <span>No scores yet — snap a photo of jianpu to start.</span>
           </div>
           <div v-else-if="railQuery && !matchedScores.length" class="rail-state">
@@ -189,7 +189,7 @@
         />
 
         <div v-if="!score" class="empty">
-          <div class="empty-art"><i class="pi pi-headphones" style="font-size: 3.5rem; color: var(--text-faint);"></i></div>
+          <div class="empty-art"><i class="pi ti-bawu" style="font-size: 3.5rem; color: var(--text-faint);"></i></div>
           <div class="empty-title">No score selected</div>
           <div class="empty-sub">Photograph jianpu or western notation and let the AI turn it into a practice roll — or type jianpu by hand.</div>
           <div class="empty-actions">

@@ -38,9 +38,15 @@
           </select>
         </label>
 
-        <div class="seg" role="group" aria-label="Scale">
+        <label v-if="scales.length > SCALES.length" class="sel">
+          <span class="sel-label">Scale</span>
+          <select :value="value.type" @change="set({ type: $event.target.value })">
+            <option v-for="s in scales" :key="s.id" :value="s.id">{{ s.label }}</option>
+          </select>
+        </label>
+        <div v-else class="seg" role="group" aria-label="Scale">
           <button
-            v-for="s in SCALES"
+            v-for="s in scales"
             :key="s.id"
             :class="{ on: value.type === s.id }"
             @click="set({ type: s.id })"
@@ -197,6 +203,9 @@ const props = defineProps({
   // { midi, key } — the note to light, or null. `key` changes per note so the
   // ring pops again when the same pitch is played twice.
   lit: { type: Object, default: null },
+  // The scales on offer. Groovy shows its four as buttons; a longer list (the
+  // Looper's) becomes a dropdown.
+  scales: { type: Array, default: () => SCALES },
 })
 const emit = defineEmits(['update'])
 
@@ -446,7 +455,7 @@ onBeforeUnmount(() => ro?.disconnect())
   height: 1.7rem;
   border: 1px solid var(--border);
   border-radius: 0.35rem;
-  background: #fff;
+  background: var(--fb-field, #fff);
   padding: 0 0.3rem;
   font-size: 0.74rem;
 }
@@ -471,7 +480,7 @@ onBeforeUnmount(() => ro?.disconnect())
 }
 
 .seg button.on {
-  background: #fff;
+  background: var(--fb-field, #fff);
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
@@ -492,7 +501,7 @@ onBeforeUnmount(() => ro?.disconnect())
   height: 1.7rem;
   border-radius: 0.35rem;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--fb-field, #fff);
   color: var(--text-dim);
   font-size: 0.6rem;
   display: grid;
@@ -511,7 +520,7 @@ onBeforeUnmount(() => ro?.disconnect())
   margin-left: 0.2rem;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--fb-field, #fff);
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-dim);
@@ -540,25 +549,25 @@ onBeforeUnmount(() => ro?.disconnect())
 }
 
 .board {
-  fill: #faf9f7;
+  fill: var(--fb-board, #faf9f7);
 }
 
 .inlay {
-  fill: #e4e2dc;
+  fill: var(--fb-inlay, #e4e2dc);
 }
 
 .wire {
-  stroke: #cfccc5;
+  stroke: var(--fb-wire, #cfccc5);
   stroke-width: 1.5;
 }
 
 .nut {
-  stroke: #5c5c5c;
+  stroke: var(--fb-nut, #5c5c5c);
   stroke-width: 4;
 }
 
 .string {
-  stroke: #a19d95;
+  stroke: var(--fb-string, #a19d95);
 }
 
 .str-name {
@@ -571,7 +580,7 @@ onBeforeUnmount(() => ro?.disconnect())
 
 .fret-num {
   font-size: 0.66rem;
-  fill: #b5b2ab;
+  fill: var(--fb-fretnum, #b5b2ab);
   text-anchor: middle;
   font-variant-numeric: tabular-nums;
 }
@@ -582,7 +591,7 @@ onBeforeUnmount(() => ro?.disconnect())
 }
 
 .dot circle {
-  fill: var(--text);
+  fill: var(--fb-dot, var(--text));
 }
 
 .dot.root circle {
@@ -590,7 +599,7 @@ onBeforeUnmount(() => ro?.disconnect())
 }
 
 .dot text {
-  fill: #fff;
+  fill: var(--fb-dot-ink, #fff);
   font-weight: 700;
   text-anchor: middle;
   dominant-baseline: central;
@@ -614,7 +623,7 @@ onBeforeUnmount(() => ro?.disconnect())
 }
 
 .lit .ghost {
-  fill: #fff;
+  fill: var(--fb-field, #fff);
   stroke: var(--text);
   stroke-width: 1.5;
   stroke-dasharray: 3 2;

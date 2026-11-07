@@ -182,6 +182,19 @@ export class BassAmp {
     }
   }
 
+  // Where the tone stack and the cabinet sit. 'bass' is the constructor's
+  // voicing; 'guitar' moves everything up — a guitar has nothing useful under
+  // 80 Hz, and its cabinet rolls off higher than a bass cab does.
+  setVoicing(v) {
+    const g = v === 'guitar'
+    this.rumble.frequency.value = g ? 80 : 32
+    this.bass.frequency.value = g ? 160 : 110
+    this.mid.frequency.value = g ? 900 : 700
+    this.treble.frequency.value = g ? 3400 : 2800
+    this.cab.frequency.value = g ? 5800 : 4500
+    this.presence.frequency.value = g ? 2800 : 2200
+  }
+
   dispose() {
     try {
       this.monitor.disconnect()

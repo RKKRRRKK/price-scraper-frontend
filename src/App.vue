@@ -16,7 +16,9 @@
 
     <!-- Protected area with Menubar -->
     <div v-else class="surface-ground min-h-screen flex flex-column">
-<nav class="app-navbar surface-card shadow-2 mb-3">
+<!-- Views with their own full-bleed background (route meta `flush`) sit
+     directly under the bar instead of below the usual 1rem gap. -->
+<nav class="app-navbar surface-card shadow-2" :class="{ 'mb-3': !route.meta.flush }">
   <router-link to="/" class="logo-link">
     <img
       src="/everything.webp"
@@ -58,6 +60,11 @@
         <router-link :to="{ name: 'monitor' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }" title="Monitor">
             <i class="pi pi-server mr-2" /><span class="nav-text">Monitor</span>
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'health' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Health">
+            <i class="pi pi-heart mr-2" /><span class="nav-text">Health</span>
           </a>
         </router-link>
       </div>
@@ -104,12 +111,17 @@
         </router-link>
         <router-link :to="{ name: 'bawu' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }" title="Bawu">
-            <i class="pi pi-headphones mr-2" /><span class="nav-text">Bawu</span>
+            <i class="pi ti-bawu mr-2" /><span class="nav-text">Bawu</span>
           </a>
         </router-link>
         <router-link :to="{ name: 'groovy' }" custom v-slot="{ href, navigate, isActive }">
           <a :href="href" @click="navigate" :class="{ active: isActive }" title="Groovy">
-            <i class="pi pi-stopwatch mr-2" /><span class="nav-text">Groovy</span>
+            <i class="pi ti-groovy mr-2" /><span class="nav-text">Groovy</span>
+          </a>
+        </router-link>
+        <router-link :to="{ name: 'looper' }" custom v-slot="{ href, navigate, isActive }">
+          <a :href="href" @click="navigate" :class="{ active: isActive }" title="Looper">
+            <i class="pi ti-looper mr-2" /><span class="nav-text">Looper</span>
           </a>
         </router-link>
       </div>
@@ -183,6 +195,11 @@
               <i class="pi pi-server mr-2" />Monitor
             </a>
           </router-link>
+          <router-link :to="{ name: 'health' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi pi-heart mr-2" />Health
+            </a>
+          </router-link>
         </div>
       </AccordionContent>
     </AccordionPanel>
@@ -235,12 +252,17 @@
           </router-link>
           <router-link :to="{ name: 'bawu' }" custom v-slot="{ href, navigate, isActive }">
             <a :href="href" @click="navigate" :class="{ active: isActive }">
-              <i class="pi pi-headphones mr-2" />Bawu
+              <i class="pi ti-bawu mr-2" />Bawu
             </a>
           </router-link>
           <router-link :to="{ name: 'groovy' }" custom v-slot="{ href, navigate, isActive }">
             <a :href="href" @click="navigate" :class="{ active: isActive }">
-              <i class="pi pi-stopwatch mr-2" />Groovy
+              <i class="pi ti-groovy mr-2" />Groovy
+            </a>
+          </router-link>
+          <router-link :to="{ name: 'looper' }" custom v-slot="{ href, navigate, isActive }">
+            <a :href="href" @click="navigate" :class="{ active: isActive }">
+              <i class="pi ti-looper mr-2" />Looper
             </a>
           </router-link>
         </div>
@@ -637,11 +659,12 @@ function goLogin() {
   gap: 0.25rem;
 }
 
-/* Thirteen links across four labelled sections need ~1570px with icons and
-   labels; below that the bar sheds one layer at a time rather than overflowing
-   the page. First the icons go — a word identifies a destination better than a
-   glyph, and two of these links would otherwise both be pi-database. */
-@media (max-width: 1699.98px) {
+/* Fifteen links across four labelled sections need ~2010px with icons and
+   labels (measured at 1920 wide); below that the bar sheds one layer at a time
+   rather than overflowing the page. First the icons go — a word identifies a
+   destination better than a glyph, and two of these links would otherwise both
+   be pi-database. */
+@media (max-width: 2099.98px) {
   .nav-section-links a .pi {
     display: none;
   }

@@ -1,0 +1,6 @@
+# Holds the watch auth key and Supabase token — never commit.
+.env
+.venv/
+out/
+__pycache__/
+*.pyc

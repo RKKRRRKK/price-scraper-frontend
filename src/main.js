@@ -1,5 +1,6 @@
 import '@/assets/main.css'
 import 'primeicons/primeicons.css'
+import '@/assets/tool-icons.css'
  import { definePreset } from '@primeuix/themes';
 import '@/assets/primeflex‑custom.scss'  
 import { createApp } from 'vue'

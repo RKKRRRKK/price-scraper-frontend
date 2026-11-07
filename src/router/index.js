@@ -8,6 +8,7 @@ import SettingsView from '@/views/SettingsView.vue'
 import DataView from '@/views/DataView.vue'
 import TempsView from '@/views/TempsView.vue'
 import MonitorView from '@/views/MonitorView.vue'
+import HealthView from '@/views/HealthView.vue'
 import NotesView from '@/views/NotesView.vue'
 import RemindersView from '@/views/RemindersView.vue'
 import DocumentsView from '@/views/DocumentsView.vue'
@@ -16,6 +17,7 @@ import BreadboardView from '@/views/BreadboardView.vue'
 import CanvyView from '@/views/CanvyView.vue'
 import BawuView from '@/views/BawuView.vue'
 import GroovyView from '@/views/GroovyView.vue'
+import LooperView from '@/views/LooperView.vue'
 
 const routes = [
   {
@@ -56,6 +58,12 @@ const routes = [
     name: 'monitor',
     component: MonitorView,
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/health',
+    name: 'health',
+    component: HealthView,
+    meta: { requiresAuth: true, flush: true },
   },
   {
     path: '/notes',
@@ -103,6 +111,12 @@ const routes = [
     path: '/groovy',
     name: 'groovy',
     component: GroovyView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/looper',
+    name: 'looper',
+    component: LooperView,
     meta: { requiresAuth: true },
   },
 ]

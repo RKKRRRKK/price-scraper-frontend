@@ -14,6 +14,19 @@ export const SCALES = [
   { id: 'minorPent', label: 'Minor pent.', name: 'minor pentatonic', parent: 'minor', steps: [[0, 1], [3, 3], [5, 4], [7, 5], [10, 7]] },
 ]
 
+// More for the Looper's picker, where guitar parts get written too. Two steps
+// may share a degree number: the blue note is a ♭5 next to the 5, so it is
+// spelled as an altered fifth (A blues has E♭, not D♯).
+export const EXTRA_SCALES = [
+  { id: 'blues', label: 'Blues', parent: 'minor', steps: [[0, 1], [3, 3], [5, 4], [6, 5], [7, 5], [10, 7]] },
+  { id: 'majorBlues', label: 'Major blues', parent: 'major', steps: [[0, 1], [2, 2], [3, 3], [4, 3], [7, 5], [9, 6]] },
+  { id: 'dorian', label: 'Dorian', steps: [[0, 1], [2, 2], [3, 3], [5, 4], [7, 5], [9, 6], [10, 7]] },
+  { id: 'mixolydian', label: 'Mixolydian', steps: [[0, 1], [2, 2], [4, 3], [5, 4], [7, 5], [9, 6], [10, 7]] },
+  { id: 'harmonicMinor', label: 'Harmonic minor', steps: [[0, 1], [2, 2], [3, 3], [5, 4], [7, 5], [8, 6], [11, 7]] },
+]
+
+export const ALL_SCALES = [...SCALES, ...EXTRA_SCALES]
+
 // Strings listed low to high, as MIDI note numbers of the open strings.
 export const TUNINGS = [
   { id: 'bass4', label: '4-string bass', strings: [28, 33, 38, 43] },
@@ -52,7 +65,7 @@ function wrap(semis) {
 }
 
 export function scaleById(id) {
-  return SCALES.find((s) => s.id === id) || SCALES[0]
+  return ALL_SCALES.find((s) => s.id === id) || SCALES[0]
 }
 
 export function tuningById(id) {
